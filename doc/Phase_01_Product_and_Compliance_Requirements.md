@@ -1,192 +1,278 @@
-# Aegis-X --- Phase 01: Product & Compliance Requirements
+# Aegis-X — Phase 01: Product & Compliance Requirements
 
-> **Objective:** Define the business problem, users, system scope,
-> compliance boundaries, success metrics, and technology foundation
-> before implementation begins.
+> **Document Type:** Software Requirements Specification (SRS)
+>
+> **Version:** 1.0 (MVP)
+>
+> **Project:** Aegis-X – AI-Assisted Compliance & Settlement Orchestration System
 
-------------------------------------------------------------------------
+---
 
-# 1. Problem Statement
+# Table of Contents
 
-## Existing Problem
+1. Executive Summary
+2. Problem Statement
+3. Proposed Solution
+4. Business Scenario
+5. User Personas
+6. Project Scope
+7. Functional Requirements
+8. Non-Functional Requirements
+9. Transaction State Machine
+10. AI Responsibilities
+11. Deterministic Policy Engine
+12. Success Metrics
+13. Technology Stack
+14. Acceptance Criteria
 
-Cross-border payments often face delays not because the payment network
-fails, but because compliance activities happen across disconnected
-systems.
+---
 
-``` text
+# 1. Executive Summary
+
+Aegis-X is an **AI-assisted compliance and settlement orchestration system** for cross-border payments.
+
+Instead of treating compliance as a single manual approval step, Aegis-X creates a **stateful evidence-driven workflow** where documents are collected, analyzed, validated, and audited before settlement proceeds.
+
+The system combines:
+
+- Dynamic evidence collection
+- AI-assisted document understanding
+- Deterministic compliance validation
+- Human escalation
+- Complete auditability
+
+> **Core Principle:** AI assists with understanding evidence, while Java makes the final compliance decision.
+
+---
+
+# 2. Problem Statement
+
+Cross-border payments are frequently delayed because compliance information is spread across multiple disconnected processes.
+
+A typical payment may require:
+
+- Commercial invoice
+- Beneficiary verification
+- Purpose-code validation
+- Supporting documents
+- Compliance review
+
+Current workflows typically involve manual emails, repeated follow-ups, and fragmented tracking.
+
+## Existing Workflow
+
+```text
 Payment Created
       ↓
 Manual Email
       ↓
 Invoice Requested
       ↓
-Shipping Proof Requested
+Supporting Documents Requested
       ↓
 Compliance Review
       ↓
 Payment Released
 ```
 
-### Current Challenges
+## Current Challenges
 
--   Missing documents delay settlement.
--   Compliance officers manually follow up with merchants.
--   Transaction status is scattered across multiple systems.
--   Audit trails become fragmented.
--   AI models cannot be trusted to independently authorize financial
-    transactions.
+- Missing documents delay settlement.
+- Compliance teams manually chase customers.
+- No centralized transaction state.
+- Audit trails become fragmented.
+- Traditional rule engines struggle when information is incomplete.
 
-## Proposed Solution
+---
 
-**Aegis-X** acts as an intelligent compliance orchestration layer
-between payment authorization and settlement.
+# 3. Proposed Solution
 
-``` text
+Aegis-X introduces an **evidence-first compliance workflow**.
+
+```text
 Payment Event
       ↓
-Detect Missing Evidence
+Webhook
       ↓
-Request Documents
+Transaction Created
       ↓
-OCR + AI Analysis
+Evidence Collection
+      ↓
+OCR Processing
+      ↓
+AI Analysis
       ↓
 Deterministic Policy Engine
       ↓
-PASS / HOLD
+APPROVED / COMPLIANCE_HOLD
       ↓
-Payment Capture / Human Review
+Settlement / Human Review
 ```
 
-The AI interprets evidence, while deterministic Java rules control
-financial actions.
+Instead of asking:
 
-------------------------------------------------------------------------
+> "Should this payment be approved?"
 
-# 2. Business Scenario
+Aegis-X asks:
 
-> **ABC Exports (India)** needs to pay **XYZ Imports LLC (USA)** **USD
-> 2,000** for exported goods.
+> "What evidence is missing, and what does the available evidence prove?"
 
-### Transaction Flow
+---
 
-1.  Merchant creates a payment.
-2.  Stripe Sandbox authorizes the payment.
-3.  Aegis-X detects that the commercial invoice is missing.
-4.  The Evidence Collector sends a WhatsApp message requesting the
-    invoice.
-5.  The merchant uploads the invoice PDF.
-6.  OCR extracts the document contents.
-7.  Spring AI analyzes the extracted information.
-8.  The Policy Engine verifies beneficiary, amount, purpose code, and
-    required evidence.
-9.  If every rule passes, Stripe captures the payment.
-10. Otherwise, the transaction enters **COMPLIANCE_HOLD** for human
-    review.
+# 4. Business Scenario
 
-------------------------------------------------------------------------
+A single reference scenario is used throughout development.
 
-# 3. User Personas
+## Scenario
+
+| Item | Value |
+|------|-------|
+| Merchant | ABC Exports (India) |
+| Beneficiary | XYZ Imports LLC (USA) |
+| Amount | USD 2,000 |
+| Purpose | Cross-border business payment |
+
+## Expected Workflow
+
+1. Merchant creates a payment.
+2. Razorpay Sandbox triggers a webhook.
+3. A transaction enters **EVIDENCE_PENDING**.
+4. Merchant uploads an invoice.
+5. OCR extracts document text.
+6. Spring AI generates structured evidence.
+7. Java Policy Engine evaluates compliance.
+8. Transaction becomes:
+   - **APPROVED**, or
+   - **COMPLIANCE_HOLD**.
+
+This scenario becomes the reference example for development, testing, and demonstrations.
+
+---
+
+# 5. User Personas
 
 ## Merchant
 
-**Role:** Business initiating cross-border payments.
+### Role
 
-Responsibilities: - Create payments - Upload invoices - Submit
-supporting documents - Track transaction status
+Creates cross-border payments and submits supporting documents.
 
-Pain Points: - Doesn't know which documents are missing. - Waits for
-manual compliance responses. - Has limited visibility into payment
-progress.
+### Responsibilities
+
+- Create payments
+- Upload invoices
+- Track transaction status
+
+### Pain Points
+
+- Doesn't know which documents are missing.
+- Waits for manual compliance updates.
+- Has limited visibility into payment progress.
+
+---
 
 ## Compliance Officer
 
-**Role:** Reviews transactions requiring manual intervention.
+### Role
 
-Responsibilities: - Review HOLD transactions - Verify compliance
-evidence - Approve or reject exceptions - Monitor audit history
+Reviews transactions requiring manual intervention.
 
-Pain Points: - Manual document chasing - Fragmented transaction
-information - Repetitive verification tasks
+### Responsibilities
+
+- Review HOLD transactions
+- Validate evidence
+- Approve or reject exceptions
+- Monitor audit history
+
+### Pain Points
+
+- Manual document collection
+- Fragmented transaction information
+- Repetitive verification tasks
+
+---
 
 ## Administrator
 
-**Role:** Maintains the Aegis-X platform.
+### Role
 
-Responsibilities: - Manage users - Configure integrations - Maintain
-reference data - Monitor system health
+Maintains the Aegis-X platform.
 
-Pain Points: - Needs centralized visibility - Requires reliable audit
-logs - Must quickly identify failures.
+### Responsibilities
 
-------------------------------------------------------------------------
+- Manage users
+- Configure integrations
+- Maintain reference data
+- Monitor system health
 
-# 4. Project Scope
+---
 
-## Included
+# 6. Project Scope
 
--   Stripe Sandbox payment authorization
--   Transaction lifecycle management
--   Document upload
--   OCR document extraction
--   AI-based evidence analysis
--   Purpose-code validation
--   Deterministic PASS/HOLD decisions
--   WhatsApp notifications
--   Audit logging
--   Web dashboard
+## Included in MVP
+
+- Razorpay Sandbox integration
+- Payment webhook handling
+- Transaction lifecycle
+- Document upload
+- OCR
+- AI evidence analysis
+- Deterministic policy engine
+- Human review workflow
+- Audit logging
+- Web dashboard
 
 ## Not Included
 
--   Real FEMA approval
--   Live bank integration
--   SWIFT settlement
--   Production KYC onboarding
--   Real AML screening
+- Live banking integrations
+- SWIFT settlement
+- Real FEMA approval
+- Production AML screening
+- Enterprise KYC onboarding
 
-------------------------------------------------------------------------
+Keeping these features out of scope allows the MVP to remain achievable during the hackathon.
 
-# 5. Functional Requirements
+---
 
-  ID      Requirement
-  ------- ------------------------------
-  FR-01   User login
-  FR-02   JWT authentication
-  FR-03   Create payment
-  FR-04   Create transaction
-  FR-05   Stripe payment authorization
-  FR-06   Upload invoice
-  FR-07   Track required documents
-  FR-08   OCR document extraction
-  FR-09   AI compliance analysis
-  FR-10   Policy evaluation
-  FR-11   Capture payment after PASS
-  FR-12   Hold transaction
-  FR-13   Human review
-  FR-14   Audit logging
-  FR-15   WhatsApp notifications
+# 7. Functional Requirements
 
-------------------------------------------------------------------------
+| ID | Requirement |
+|----|-------------|
+| FR-01 | User login |
+| FR-02 | Create transaction |
+| FR-03 | Receive Razorpay webhook |
+| FR-04 | Upload invoice |
+| FR-05 | Extract document text |
+| FR-06 | Generate structured AI analysis |
+| FR-07 | Validate compliance rules |
+| FR-08 | Mark APPROVED/HOLD |
+| FR-09 | Human review |
+| FR-10 | Audit logging |
+| FR-11 | Dashboard visibility |
 
-# 6. Non-Functional Requirements
+---
 
-  Category          Requirement
-  ----------------- -----------------------------------------------------
-  Security          JWT authentication
-  Performance       API response under 500 ms (excluding AI processing)
-  Reliability       Every state transition logged
-  Maintainability   Modular Spring Boot architecture
-  Scalability       Event-driven integrations
-  Auditability      Immutable audit trail
+# 8. Non-Functional Requirements
 
-------------------------------------------------------------------------
+| Category | Requirement |
+|-----------|------------|
+| Security | JWT authentication |
+| Performance | Fast API responses |
+| Reliability | Every state transition logged |
+| Maintainability | Modular Spring Boot architecture |
+| Auditability | Immutable audit trail |
+| Scalability | Event-driven workflow |
 
-# 7. Transaction Lifecycle
+---
 
-``` text
+# 9. Transaction State Machine
+
+Aegis-X uses a state-machine approach instead of scattered status flags.
+
+```text
 CREATED
    ↓
-AUTHORIZED
+PAYMENT_RECEIVED
    ↓
 EVIDENCE_PENDING
    ↓
@@ -194,201 +280,138 @@ OCR_PROCESSING
    ↓
 AI_ANALYSIS
    ↓
-POLICY_CHECK
-   ├── PASS → PAYMENT_CAPTURED
-   └── HOLD → HUMAN_REVIEW
+POLICY_EVALUATION
+   ├── APPROVED
+   └── COMPLIANCE_HOLD
 ```
 
-------------------------------------------------------------------------
+Every state transition is stored in PostgreSQL and recorded in the audit log.
 
-# 8. Compliance Model
+---
 
-## Required Evidence
+# 10. AI Responsibilities
 
-  Evidence              Mandatory
-  --------------------- -------------
-  Commercial Invoice    Yes
-  Beneficiary Details   Yes
-  Purpose Code          Yes
-  Shipping Proof        Conditional
+The AI acts as an **Evidence Analyst**, not a decision-maker.
 
-## Compliance Checks
+## AI Can
 
-  Check                         Output
-  ----------------------------- ---------
-  Invoice exists                Boolean
-  Beneficiary matches           Boolean
-  Amount matches                Boolean
-  Purpose code valid            Boolean
-  OCR confidence acceptable     Boolean
-  Required documents complete   Boolean
+- Extract invoice number
+- Extract beneficiary information
+- Extract transaction amount
+- Detect inconsistencies
+- Generate structured JSON
+- Explain findings
+- Return confidence scores
 
-------------------------------------------------------------------------
+### Example Output
 
-# 9. AI Boundary
-
-## AI Responsibilities
-
--   Extract invoice fields
--   Identify beneficiary names
--   Compare transaction values
--   Generate structured JSON
--   Explain inconsistencies
-
-Example:
-
-``` json
+```json
 {
-  "beneficiaryMatch": true,
-  "amountMatch": true,
   "invoiceNumber": "INV-2048",
-  "confidence": 0.98
+  "beneficiary": "XYZ Imports LLC",
+  "amount": 2000,
+  "confidence": 0.97,
+  "reasoning": [
+    "Beneficiary matches payment.",
+    "Amount matches invoice."
+  ]
 }
 ```
 
-## AI Restrictions
+## AI Cannot
 
--   Capture payments
--   Override compliance rules
--   Change transaction states
--   Ignore required documents
+- Approve payments
+- Reject payments
+- Change transaction state
+- Trigger Razorpay settlement
+- Override compliance rules
 
-------------------------------------------------------------------------
+This separation is one of Aegis-X's most important architectural principles.
 
-# 10. Deterministic Policy Engine
+---
 
-``` java
+# 11. Deterministic Policy Engine
+
+The Java Policy Engine is the **only** component allowed to make compliance decisions.
+
+### Example Logic
+
+```java
 if (!invoicePresent) return HOLD;
 if (!beneficiaryMatch) return HOLD;
-if (!purposeCodeValid) return HOLD;
-if (!amountMatch) return HOLD;
+if (!requiredFieldsValid) return HOLD;
+if (!complianceRulesPassed) return HOLD;
 
-return PASS;
+return APPROVED;
 ```
 
-### Decision Matrix
+## Decision Matrix
 
-  Condition              Result
-  ---------------------- --------
-  Invoice missing        HOLD
-  Beneficiary mismatch   HOLD
-  Invalid purpose code   HOLD
-  Amount mismatch        HOLD
-  All checks pass        PASS
+| Condition | Result |
+|-----------|--------|
+| Missing invoice | HOLD |
+| Beneficiary mismatch | HOLD |
+| Invalid required field | HOLD |
+| Compliance rule failed | HOLD |
+| All rules pass | APPROVED |
 
-------------------------------------------------------------------------
+The AI provides evidence.
 
-# 11. WhatsApp Evidence Workflow
+**Java makes the decision.**
 
-``` text
-Payment Authorized
-      ↓
-Missing Invoice Detected
-      ↓
-WhatsApp Notification
-      ↓
-Merchant Uploads PDF
-      ↓
-OCR Processing
-      ↓
-AI Analysis
-      ↓
-Policy Re-Evaluation
-```
-
-------------------------------------------------------------------------
+---
 
 # 12. Success Metrics
 
-  Metric                       Target
-  ---------------------------- ------------------------------------
-  Payment authorization        Successful in Stripe Sandbox
-  Missing-document detection   Automatic
-  OCR extraction               Structured document data generated
-  AI analysis                  Structured compliance JSON
-  Policy evaluation            Deterministic PASS/HOLD
-  Payment capture              Only after PASS
-  Audit coverage               Every state transition recorded
-  Dashboard visibility         Real-time transaction tracking
+The MVP is measured using observable outcomes.
 
-------------------------------------------------------------------------
+| Metric | Target |
+|---------|---------|
+| Payment webhook received | Success |
+| Transaction created | Success |
+| Invoice uploaded | Success |
+| OCR extraction | Structured text |
+| AI analysis | Structured JSON |
+| Policy evaluation | APPROVED/HOLD |
+| Audit logging | Every event recorded |
+| Dashboard updates | Real-time |
 
-# 13. MVP Success Criteria
+---
 
--   Merchant logs in.
--   Creates a payment.
--   Stripe authorizes the payment.
--   Transaction enters `EVIDENCE_PENDING`.
--   WhatsApp requests the missing invoice.
--   Merchant uploads a PDF.
--   OCR extracts document text.
--   Spring AI generates structured analysis.
--   Policy Engine evaluates PASS/HOLD.
--   PASS captures the payment.
--   HOLD triggers human review.
--   Every event appears in the audit timeline.
+# 13. Technology Stack
 
-------------------------------------------------------------------------
+| Layer | Technology |
+|-------|------------|
+| Frontend | HTML5, CSS3, Bootstrap 5, JavaScript, Thymeleaf |
+| Backend | Java 21, Spring Boot 3, Spring Web, Spring Security, Spring Data JPA, Hibernate |
+| Database | PostgreSQL |
+| AI | Spring AI, LLM, Apache Tika, Tesseract OCR |
+| Payments | Razorpay Sandbox, Razorpay Webhooks |
+| Messaging | WhatsApp Business API |
+| Security | JWT, BCrypt, Bean Validation |
+| Testing | JUnit 5, Mockito, Testcontainers, Postman |
+| Deployment | Docker, Docker Compose, Railway |
 
-# 14. Final Technology Stack
+---
 
-## Frontend
+# 14. Acceptance Criteria
 
--   HTML5
--   CSS3
--   Bootstrap 5
--   JavaScript
--   Thymeleaf
+Phase 01 is complete when:
 
-## Backend
+- [x] Business problem is documented.
+- [x] MVP scope is defined.
+- [x] User personas are finalized.
+- [x] Transaction lifecycle is defined.
+- [x] AI responsibilities are separated from business rules.
+- [x] Policy engine responsibilities are documented.
+- [x] Technology stack is finalized.
+- [x] Success metrics are established.
+- [x] Development roadmap is ready for implementation.
 
--   Java 21
--   Spring Boot 3
--   Spring Security
--   Spring Data JPA
--   Hibernate
+---
 
-## Database
+# Phase 01 Outcome
 
--   MySQL 8
+This document establishes the **Software Requirements Specification (SRS)** for Aegis-X. It defines the business problem, system boundaries, user roles, compliance model, AI responsibilities, and MVP objectives.
 
-## AI
-
--   Spring AI
--   LLM
--   Apache Tika
--   Tesseract OCR
-
-## Integrations
-
--   Stripe Sandbox
--   WhatsApp Business API
-
-## Testing
-
--   JUnit 5
--   Mockito
--   Testcontainers
--   Postman
-
-## Deployment
-
--   Docker
-
-------------------------------------------------------------------------
-
-# Phase 01 Deliverables
-
--   Problem Statement
--   Business Scenario
--   User Personas
--   Project Scope
--   Functional Requirements
--   Non-Functional Requirements
--   Transaction Lifecycle
--   Compliance Model
--   AI Boundaries
--   Deterministic Policy Rules
--   Success Metrics
--   MVP Definition
--   Final Technology Stack
+All subsequent implementation phases should reference this document to ensure that AI remains an evidence-analysis component while deterministic Java code remains the final authority for compliance decisions and transaction orchestration.
