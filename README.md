@@ -114,19 +114,26 @@ cd backend
 
 ## Verification
 
-### Health Check Endpoint
+### Health & Readiness Check Endpoints
 
-Once the application is running, test the health check endpoint:
+1. **Application Health (`/api/health`):**
+   ```bash
+   curl -X GET http://localhost:8080/api/health
+   # Expected Response: Aegis-X Backend Running
+   ```
 
-**HTTP Request:**
-```bash
-curl -X GET http://localhost:8080/api/health
-```
+2. **Spring Boot Actuator Health (`/actuator/health`):**
+   ```bash
+   curl -X GET http://localhost:8080/actuator/health
+   # Expected Response: {"status":"UP"}
+   ```
 
-**Expected Response (HTTP 200 OK):**
-```text
-Aegis-X Backend Running
-```
+3. **Railway / Container Probes (`/actuator/health/liveness`, `/actuator/health/readiness`):**
+   ```bash
+   curl -X GET http://localhost:8080/actuator/health/liveness
+   curl -X GET http://localhost:8080/actuator/health/readiness
+   # Expected Response: {"status":"UP"}
+   ```
 
 ---
 

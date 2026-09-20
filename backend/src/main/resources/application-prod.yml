@@ -7,6 +7,12 @@ spring:
       hibernate:
         format_sql: false
 
+management:
+  endpoint:
+    health:
+      show-details: never
+      show-components: never
+
 logging:
   level:
     com.aegisx: INFO
