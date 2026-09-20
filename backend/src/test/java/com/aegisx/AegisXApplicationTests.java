@@ -1,13 +1,12 @@
-package com.aegisx.aegisx;
+package com.aegisx;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 
 @SpringBootTest
-class AegisxApplicationTests {
+class AegisXApplicationTests {
 
-	@Test
-	void contextLoads() {
-	}
-
+    @Test
+    void contextLoads() {
+    }
 }
