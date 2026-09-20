@@ -22,6 +22,7 @@ class ProfileConfigurationTest {
         void devProfileConfiguresDdlAutoUpdate() {
             assertEquals("update", environment.getProperty("spring.jpa.hibernate.ddl-auto"));
             assertEquals("true", environment.getProperty("spring.jpa.show-sql"));
+            assertEquals("jdbc:postgresql://localhost:5432/aegisx", environment.getProperty("spring.datasource.url"));
         }
     }
 
