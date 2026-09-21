@@ -196,6 +196,138 @@ curl -i -X GET http://localhost:8080/api/auth/me \
 
 ---
 
+## Transaction Management (Phase 05)
+
+The Transaction module serves as the central stateful orchestrator for Aegis-X. Status transitions are strictly guarded by `TransactionStateMachine` and protected with JPA optimistic locking (`@Version`).
+
+### Transaction State Machine Lifecycle
+
+```text
+  [CREATED]
+      │ (Razorpay Sandbox Webhook)
+      ▼
+  [PAYMENT_RECEIVED]
+      │ (Awaiting Merchant Invoice)
+      ▼
+  [EVIDENCE_PENDING]
+      │ (Document Upload & Tesseract/Tika Ingestion)
+      ▼
+  [OCR_PROCESSING]
+      │ (Structured Text Extraction)
+      ▼
+  [AI_ANALYSIS]
+      │ (Spring AI Regulatory Reasoning)
+      ▼
+  [POLICY_EVALUATION]
+      ├──▶ [APPROVED]        (Deterministic Java Policy Engine passes)
+      └──▶ [COMPLIANCE_HOLD] (Deterministic compliance rules flagged)
+```
+
+| State | Legal Next State(s) | Trigger / Authority |
+| :--- | :--- | :--- |
+| `CREATED` | `PAYMENT_RECEIVED` | Razorpay payment webhook ingestion |
+| `PAYMENT_RECEIVED` | `EVIDENCE_PENDING` | Payment acknowledgement & document requirement |
+| `EVIDENCE_PENDING` | `OCR_PROCESSING` | Merchant invoice upload |
+| `OCR_PROCESSING` | `AI_ANALYSIS` | Apache Tika & Tesseract text extraction |
+| `AI_ANALYSIS` | `POLICY_EVALUATION` | Spring AI structured compliance reasoning |
+| `POLICY_EVALUATION` | `APPROVED`, `COMPLIANCE_HOLD` | Java Policy Engine (Rules `PR-01` to `PR-08`) |
+| `APPROVED` | *(Terminal)* | Settlement authorized |
+| `COMPLIANCE_HOLD` | *(Terminal)* | Compliance officer review required |
+
+---
+
+### 1. Create a Transaction
+
+```bash
+curl -i -X POST http://localhost:8080/api/transactions \
+  -H "Authorization: Bearer <MERCHANT_JWT_TOKEN>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "amount": 5000.00,
+    "currency": "USD",
+    "beneficiaryName": "Pacific Coast Trading LLC",
+    "purposeCode": "P0103"
+  }'
+```
+
+**Expected Response (`201 Created`):**
+```json
+{
+  "id": "e8a93cb1-923c-42b7-8db1-7b79dae13b82",
+  "referenceNumber": "TXN-20260921-8F3A7C",
+  "merchantId": "c3b9b4f2-9599-4c81-b586-4e5bfaef1e97",
+  "amount": 5000.00,
+  "currency": "USD",
+  "beneficiaryName": "Pacific Coast Trading LLC",
+  "purposeCode": "P0103",
+  "status": "CREATED",
+  "createdAt": "2026-09-21T20:30:00Z",
+  "updatedAt": "2026-09-21T20:30:00Z"
+}
+```
+
+---
+
+### 2. List Merchant Transactions
+
+```bash
+curl -i -X GET "http://localhost:8080/api/transactions?page=0&size=10" \
+  -H "Authorization: Bearer <MERCHANT_JWT_TOKEN>"
+```
+
+**Expected Response (`200 OK`):**
+```json
+{
+  "content": [
+    {
+      "id": "e8a93cb1-923c-42b7-8db1-7b79dae13b82",
+      "referenceNumber": "TXN-20260921-8F3A7C",
+      "merchantId": "c3b9b4f2-9599-4c81-b586-4e5bfaef1e97",
+      "amount": 5000.00,
+      "currency": "USD",
+      "beneficiaryName": "Pacific Coast Trading LLC",
+      "purposeCode": "P0103",
+      "status": "CREATED",
+      "createdAt": "2026-09-21T20:30:00Z",
+      "updatedAt": "2026-09-21T20:30:00Z"
+    }
+  ],
+  "pageable": {
+    "pageNumber": 0,
+    "pageSize": 10
+  },
+  "totalElements": 1,
+  "totalPages": 1
+}
+```
+
+---
+
+### 3. Get Single Transaction by ID
+
+```bash
+curl -i -X GET http://localhost:8080/api/transactions/e8a93cb1-923c-42b7-8db1-7b79dae13b82 \
+  -H "Authorization: Bearer <MERCHANT_JWT_TOKEN>"
+```
+
+**Expected Response (`200 OK`):**
+```json
+{
+  "id": "e8a93cb1-923c-42b7-8db1-7b79dae13b82",
+  "referenceNumber": "TXN-20260921-8F3A7C",
+  "merchantId": "c3b9b4f2-9599-4c81-b586-4e5bfaef1e97",
+  "amount": 5000.00,
+  "currency": "USD",
+  "beneficiaryName": "Pacific Coast Trading LLC",
+  "purposeCode": "P0103",
+  "status": "CREATED",
+  "createdAt": "2026-09-21T20:30:00Z",
+  "updatedAt": "2026-09-21T20:30:00Z"
+}
+```
+
+---
+
 ## Verification & Health Probes
 
 ### Health & Readiness Check Endpoints
@@ -223,7 +355,7 @@ curl -i -X GET http://localhost:8080/api/auth/me \
 
 ## Build & Test
 
-To execute automated unit, repository, and integration tests:
+To execute automated unit, repository, concurrency, and integration tests:
 
 ```bash
 cd backend
@@ -238,4 +370,5 @@ cd backend
 ```
 
 The resulting JAR will be generated at `backend/target/aegisx-0.0.1-SNAPSHOT.jar`.
+
 
