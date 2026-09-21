@@ -74,7 +74,17 @@ Default configuration in `.env`:
 DB_URL=jdbc:postgresql://localhost:5432/aegisx
 DB_USERNAME=postgres
 DB_PASSWORD=postgres
+JWT_SECRET=404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970
+JWT_EXPIRATION=86400000
 ```
+
+| Variable | Description | Default / Example |
+| :--- | :--- | :--- |
+| `DB_URL` | PostgreSQL JDBC connection URL | `jdbc:postgresql://localhost:5432/aegisx` |
+| `DB_USERNAME` | PostgreSQL database user | `postgres` |
+| `DB_PASSWORD` | PostgreSQL database password | `postgres` |
+| `JWT_SECRET` | HMAC-SHA256 Secret (256-bit Hex/Base64) | *Configured via env variable* |
+| `JWT_EXPIRATION` | Token TTL in milliseconds | `86400000` (24 hours) |
 
 ---
 
@@ -112,7 +122,81 @@ cd backend
 
 ---
 
-## Verification
+## Authentication & User Management (Phase 04)
+
+Aegis-X implements stateless JWT authentication with role-based access control (`MERCHANT`, `COMPLIANCE_OFFICER`, `ADMIN`).
+
+### 1. Register a New User
+
+```bash
+curl -i -X POST http://localhost:8080/api/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{
+    "fullName": "ABC Exports",
+    "email": "merchant@example.com",
+    "password": "Password@123",
+    "role": "MERCHANT"
+  }'
+```
+
+**Expected Response (`201 Created`):**
+```json
+{
+  "id": "c3b9b4f2-9599-4c81-b586-4e5bfaef1e97",
+  "fullName": "ABC Exports",
+  "email": "merchant@example.com",
+  "role": "MERCHANT",
+  "createdAt": "2026-09-21T07:15:00",
+  "updatedAt": "2026-09-21T07:15:00"
+}
+```
+
+---
+
+### 2. Authenticate (Login)
+
+```bash
+curl -i -X POST http://localhost:8080/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "merchant@example.com",
+    "password": "Password@123"
+  }'
+```
+
+**Expected Response (`200 OK`):**
+```json
+{
+  "token": "eyJhbGciOiJIUzI1NiJ9...",
+  "tokenType": "Bearer",
+  "expiresIn": 86400
+}
+```
+
+---
+
+### 3. Fetch Current User Profile (`/api/auth/me`)
+
+```bash
+curl -i -X GET http://localhost:8080/api/auth/me \
+  -H "Authorization: Bearer <YOUR_JWT_TOKEN>"
+```
+
+**Expected Response (`200 OK`):**
+```json
+{
+  "id": "c3b9b4f2-9599-4c81-b586-4e5bfaef1e97",
+  "fullName": "ABC Exports",
+  "email": "merchant@example.com",
+  "role": "MERCHANT",
+  "createdAt": "2026-09-21T07:15:00",
+  "updatedAt": "2026-09-21T07:15:00"
+}
+```
+
+---
+
+## Verification & Health Probes
 
 ### Health & Readiness Check Endpoints
 
@@ -139,7 +223,7 @@ cd backend
 
 ## Build & Test
 
-To execute automated unit and integration tests:
+To execute automated unit, repository, and integration tests:
 
 ```bash
 cd backend
@@ -154,3 +238,4 @@ cd backend
 ```
 
 The resulting JAR will be generated at `backend/target/aegisx-0.0.1-SNAPSHOT.jar`.
+
