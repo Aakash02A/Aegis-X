@@ -49,7 +49,7 @@ class AuthIntegrationTest {
         RegisterRequest registerReq = RegisterRequest.builder()
                 .fullName("ABC Exports Pvt Ltd")
                 .email("abc.exports@example.com")
-                .password("SecureSecret123!")
+                .password("Password@123")
                 .role(Role.MERCHANT)
                 .build();
 
@@ -68,7 +68,7 @@ class AuthIntegrationTest {
         // 2. Login with correct credentials
         LoginRequest loginReq = LoginRequest.builder()
                 .email("abc.exports@example.com")
-                .password("SecureSecret123!")
+                .password("Password@123")
                 .build();
 
         MvcResult loginResult = mockMvc.perform(post("/api/auth/login")

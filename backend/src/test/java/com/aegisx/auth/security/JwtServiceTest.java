@@ -31,7 +31,7 @@ class JwtServiceTest {
         jwtService = new JwtService(fixedClock);
 
         // 256-bit test secret key
-        String secret = "404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970";
+        String secret = "dev-jwt-secret-key-for-aegis-x-application-security-testing-purposes-only";
         ReflectionTestUtils.setField(jwtService, "secretKey", secret);
         ReflectionTestUtils.setField(jwtService, "jwtExpirationMs", 3600000L); // 1 hour
 
@@ -92,7 +92,7 @@ class JwtServiceTest {
         // Advance clock past expiration (1 hour + 1 second)
         Clock advancedClock = Clock.fixed(fixedInstant.plus(Duration.ofHours(1)).plusSeconds(1), ZoneOffset.UTC);
         JwtService expiredJwtService = new JwtService(advancedClock);
-        ReflectionTestUtils.setField(expiredJwtService, "secretKey", "404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970");
+        ReflectionTestUtils.setField(expiredJwtService, "secretKey", "dev-jwt-secret-key-for-aegis-x-application-security-testing-purposes-only");
         ReflectionTestUtils.setField(expiredJwtService, "jwtExpirationMs", 3600000L);
 
         assertFalse(expiredJwtService.isTokenValid(token));
