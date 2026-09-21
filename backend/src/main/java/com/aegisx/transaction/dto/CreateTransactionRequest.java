@@ -1,0 +1,33 @@
+package com.aegisx.transaction.dto;
+
+import jakarta.validation.constraints.DecimalMin;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+import java.math.BigDecimal;
+
+@Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+public class CreateTransactionRequest {
+
+    @NotNull(message = "Amount is required")
+    @DecimalMin(value = "0.01", message = "Amount must be strictly positive")
+    private BigDecimal amount;
+
+    @NotBlank(message = "Currency is required")
+    @Size(min = 3, max = 3, message = "Currency must be a 3-letter ISO-4217 code")
+    private String currency;
+
+    @NotBlank(message = "Beneficiary name is required")
+    private String beneficiaryName;
+
+    @NotBlank(message = "Purpose code is required")
+    private String purposeCode;
+}

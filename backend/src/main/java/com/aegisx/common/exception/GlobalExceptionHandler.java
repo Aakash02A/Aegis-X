@@ -23,6 +23,16 @@ public class GlobalExceptionHandler {
         return buildResponse(HttpStatus.CONFLICT, "Conflict", ex.getMessage());
     }
 
+    @ExceptionHandler(TransactionNotFoundException.class)
+    public ResponseEntity<Map<String, Object>> handleTransactionNotFound(TransactionNotFoundException ex) {
+        return buildResponse(HttpStatus.NOT_FOUND, "Not Found", ex.getMessage());
+    }
+
+    @ExceptionHandler(IllegalTransactionStateException.class)
+    public ResponseEntity<Map<String, Object>> handleIllegalTransactionState(IllegalTransactionStateException ex) {
+        return buildResponse(HttpStatus.CONFLICT, "Conflict", ex.getMessage());
+    }
+
     @ExceptionHandler({BadCredentialsException.class, UsernameNotFoundException.class})
     public ResponseEntity<Map<String, Object>> handleBadCredentials(Exception ex) {
         return buildResponse(HttpStatus.UNAUTHORIZED, "Unauthorized", "Invalid credentials");
