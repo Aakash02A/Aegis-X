@@ -40,12 +40,12 @@ class ActuatorHealthTest {
 
     @Test
     void sensitiveEndpointsAreNotExposed() throws Exception {
-        // Confirm /actuator/env, /actuator/beans, /actuator/configprops return 404 Not Found
+        // Confirm sensitive endpoints /actuator/env, /actuator/beans are rejected with 403 Forbidden
         mockMvc.perform(get("/actuator/env"))
-                .andExpect(status().isNotFound());
+                .andExpect(status().isForbidden());
         mockMvc.perform(get("/actuator/beans"))
-                .andExpect(status().isNotFound());
+                .andExpect(status().isForbidden());
         mockMvc.perform(get("/actuator/configprops"))
-                .andExpect(status().isNotFound());
+                .andExpect(status().isForbidden());
     }
 }
