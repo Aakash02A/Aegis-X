@@ -43,6 +43,16 @@ public class GlobalExceptionHandler {
         return buildResponse(HttpStatus.BAD_REQUEST, "Bad Request", ex.getMessage());
     }
 
+    @ExceptionHandler(AIAnalysisException.class)
+    public ResponseEntity<Map<String, Object>> handleAIAnalysisException(AIAnalysisException ex) {
+        return buildResponse(HttpStatus.INTERNAL_SERVER_ERROR, "AI Analysis Failed", ex.getMessage());
+    }
+
+    @ExceptionHandler(InvalidAIResponseException.class)
+    public ResponseEntity<Map<String, Object>> handleInvalidAIResponse(InvalidAIResponseException ex) {
+        return buildResponse(HttpStatus.BAD_REQUEST, "Invalid AI Response", ex.getMessage());
+    }
+
     @ExceptionHandler({BadCredentialsException.class, UsernameNotFoundException.class})
     public ResponseEntity<Map<String, Object>> handleBadCredentials(Exception ex) {
         return buildResponse(HttpStatus.UNAUTHORIZED, "Unauthorized", "Invalid credentials");

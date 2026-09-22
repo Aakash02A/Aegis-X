@@ -41,8 +41,21 @@ aegisx:
   ocr:
     tesseract-path: ${TESSERACT_PATH:}
     language: ${OCR_LANGUAGE:eng}
+  ai:
+    prompt-version: v1
+    model-name: ${AI_MODEL_NAME:gpt-4o}
+    timeout-seconds: 30
+    max-retries: 2
 
 spring:
+  ai:
+    openai:
+      api-key: ${OPENAI_API_KEY:}
+      chat:
+        options:
+          temperature: 0.0
+          max-tokens: 2048
+          timeout-seconds: 30
   servlet:
     multipart:
       max-file-size: 20MB
