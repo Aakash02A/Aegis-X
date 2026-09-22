@@ -53,6 +53,16 @@ public class GlobalExceptionHandler {
         return buildResponse(HttpStatus.BAD_REQUEST, "Invalid AI Response", ex.getMessage());
     }
 
+    @ExceptionHandler(PolicyEvaluationException.class)
+    public ResponseEntity<Map<String, Object>> handlePolicyEvaluationException(PolicyEvaluationException ex) {
+        return buildResponse(HttpStatus.INTERNAL_SERVER_ERROR, "Policy Evaluation Failed", ex.getMessage());
+    }
+
+    @ExceptionHandler(MissingEvidenceException.class)
+    public ResponseEntity<Map<String, Object>> handleMissingEvidenceException(MissingEvidenceException ex) {
+        return buildResponse(HttpStatus.BAD_REQUEST, "Missing Evidence", ex.getMessage());
+    }
+
     @ExceptionHandler({BadCredentialsException.class, UsernameNotFoundException.class})
     public ResponseEntity<Map<String, Object>> handleBadCredentials(Exception ex) {
         return buildResponse(HttpStatus.UNAUTHORIZED, "Unauthorized", "Invalid credentials");
