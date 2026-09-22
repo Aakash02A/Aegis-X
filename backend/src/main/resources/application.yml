@@ -37,6 +37,11 @@ app:
       - image/png
     max-file-size-mb: 20
 
+aegisx:
+  ocr:
+    tesseract-path: ${TESSERACT_PATH:}
+    language: ${OCR_LANGUAGE:eng}
+
 spring:
   servlet:
     multipart:
