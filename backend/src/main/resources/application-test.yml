@@ -13,6 +13,22 @@ spring:
       hibernate:
         format_sql: true
 
+app:
+  storage:
+    root-path: ${APP_STORAGE_ROOT_PATH:./storage-test}
+    allowed-content-types:
+      - application/pdf
+      - image/jpeg
+      - image/png
+    max-file-size-mb: 20
+
+spring:
+  servlet:
+    multipart:
+      max-file-size: 20MB
+      max-request-size: 20MB
+      file-size-threshold: 2KB
+
 logging:
   level:
     com.aegisx: DEBUG

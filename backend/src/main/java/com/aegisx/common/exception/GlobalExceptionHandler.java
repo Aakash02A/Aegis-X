@@ -38,6 +38,11 @@ public class GlobalExceptionHandler {
         return buildResponse(HttpStatus.UNAUTHORIZED, "Unauthorized", ex.getMessage());
     }
 
+    @ExceptionHandler(InvalidDocumentException.class)
+    public ResponseEntity<Map<String, Object>> handleInvalidDocument(InvalidDocumentException ex) {
+        return buildResponse(HttpStatus.BAD_REQUEST, "Bad Request", ex.getMessage());
+    }
+
     @ExceptionHandler({BadCredentialsException.class, UsernameNotFoundException.class})
     public ResponseEntity<Map<String, Object>> handleBadCredentials(Exception ex) {
         return buildResponse(HttpStatus.UNAUTHORIZED, "Unauthorized", "Invalid credentials");

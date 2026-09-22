@@ -79,6 +79,13 @@
 			<scope>runtime</scope>
 		</dependency>
 
+		<!-- Apache Tika (content-based MIME type detection) -->
+		<dependency>
+			<groupId>org.apache.tika</groupId>
+			<artifactId>tika-core</artifactId>
+			<version>2.9.2</version>
+		</dependency>
+
 		<!-- Lombok -->
 		<dependency>
 			<groupId>org.projectlombok</groupId>
