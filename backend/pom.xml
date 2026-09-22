@@ -79,11 +79,29 @@
 			<scope>runtime</scope>
 		</dependency>
 
-		<!-- Apache Tika (content-based MIME type detection) -->
+		<!-- Apache Tika (text extraction from PDFs and images) -->
 		<dependency>
 			<groupId>org.apache.tika</groupId>
 			<artifactId>tika-core</artifactId>
 			<version>2.9.2</version>
+		</dependency>
+		<dependency>
+			<groupId>org.apache.tika</groupId>
+			<artifactId>tika-parsers-standard-package</artifactId>
+			<version>2.9.2</version>
+		</dependency>
+
+		<!-- Tesseract OCR Integration -->
+		<dependency>
+			<groupId>net.sourceforge.tess4j</groupId>
+			<artifactId>tess4j</artifactId>
+			<version>5.10.0</version>
+		</dependency>
+
+		<!-- JSON processing (already included with Spring Boot, but explicit for clarity) -->
+		<dependency>
+			<groupId>com.fasterxml.jackson.core</groupId>
+			<artifactId>jackson-databind</artifactId>
 		</dependency>
 
 		<!-- Lombok -->
