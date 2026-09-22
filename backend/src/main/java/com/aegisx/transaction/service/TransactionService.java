@@ -4,6 +4,7 @@ import com.aegisx.auth.entity.Role;
 import com.aegisx.auth.entity.User;
 import com.aegisx.auth.repository.UserRepository;
 import com.aegisx.common.exception.TransactionNotFoundException;
+import com.aegisx.document.service.DocumentService;
 import com.aegisx.transaction.dto.CreateTransactionRequest;
 import com.aegisx.transaction.dto.TransactionResponse;
 import com.aegisx.transaction.entity.Transaction;
@@ -32,6 +33,7 @@ public class TransactionService {
     private final TransactionRepository transactionRepository;
     private final UserRepository userRepository;
     private final TransactionStateMachine transactionStateMachine;
+    private final DocumentService documentService;
     private final Clock clock;
 
     @Transactional
@@ -110,6 +112,9 @@ public class TransactionService {
                 .orElseThrow(() -> new TransactionNotFoundException(transactionId));
 
         transactionStateMachine.transition(transaction, targetStatus, actor, reason);
+        if (targetStatus == TransactionStatus.EVIDENCE_PENDING) {
+            documentService.initializeChecklist(transaction.getId());
+        }
         Transaction updated = transactionRepository.save(transaction);
 
         return TransactionResponse.from(updated);
