@@ -20,8 +20,14 @@ jwt:
   secret: ${JWT_SECRET:dev-jwt-secret-key-for-aegis-x-application-security-testing-purposes-only}
   expiration: ${JWT_EXPIRATION:86400000}
 
+razorpay:
+  key-id: ${RAZORPAY_KEY_ID:rzp_test_mock_key}
+  key-secret: ${RAZORPAY_KEY_SECRET:rzp_test_mock_secret}
+  webhook-secret: ${RAZORPAY_WEBHOOK_SECRET:dev-webhook-secret-for-aegis-x-local-testing}
+
 server:
   port: ${PORT:8080}
+
 
 management:
   endpoints:
