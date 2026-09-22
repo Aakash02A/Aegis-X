@@ -10,6 +10,8 @@ CREATE TABLE document_extractions (
     extracted_data JSONB,
     extraction_method VARCHAR(50) NOT NULL,
     confidence_score DECIMAL(5, 2),
+    processing_duration_ms BIGINT,
+    ocr_language VARCHAR(10),
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );

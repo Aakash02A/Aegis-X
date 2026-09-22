@@ -55,6 +55,8 @@ public class OcrProcessingCoordinator {
         UUID documentId = document.getId();
         log.info("Starting OCR processing for document: {}", documentId);
 
+        long startTime = System.currentTimeMillis();
+
         try {
             // Update document status to OCR_PROCESSING
             document.setDocumentStatus(DocumentStatus.OCR_PROCESSING);
@@ -66,6 +68,7 @@ public class OcrProcessingCoordinator {
             log.debug("Tika extraction produced {} characters", extractedText.length());
 
             ExtractionMethod method = ExtractionMethod.TIKA;
+            String language = "eng"; // Default for MVP
 
             // Step 2: Decide: do we need OCR?
             if (!tikaTextExtractor.isSufficientText(extractedText)) {
@@ -87,19 +90,26 @@ public class OcrProcessingCoordinator {
             Double confidenceScore = structuredExtractionService.calculateConfidenceScore(structuredData);
             log.debug("Confidence score calculated: {}", confidenceScore);
 
-            // Step 5: Create and persist extraction record
+            // Step 5: Calculate processing duration
+            long processingDurationMs = System.currentTimeMillis() - startTime;
+            log.debug("Processing duration: {} ms", processingDurationMs);
+
+            // Step 6: Create and persist extraction record
             DocumentExtraction extraction = DocumentExtraction.builder()
                 .document(document)
                 .extractedText(extractedText)
                 .extractedData(structuredData)
                 .extractionMethod(method)
                 .confidenceScore(confidenceScore)
+                .processingDurationMs(processingDurationMs)
+                .ocrLanguage(language)
                 .build();
 
             extraction = extractionRepository.save(extraction);
-            log.info("DocumentExtraction saved with ID: {}", extraction.getId());
+            log.info("DocumentExtraction saved with ID: {}. Duration: {} ms, Confidence: {}", 
+                extraction.getId(), processingDurationMs, confidenceScore);
 
-            // Step 6: Update document status to OCR_COMPLETED
+            // Step 7: Update document status to OCR_COMPLETED
             document.setDocumentStatus(DocumentStatus.OCR_COMPLETED);
             documentRepository.save(document);
             log.info("Document status updated to OCR_COMPLETED. Document: {}", documentId);

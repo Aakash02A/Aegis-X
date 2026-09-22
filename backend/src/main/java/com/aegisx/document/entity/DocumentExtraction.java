@@ -85,6 +85,21 @@ public class DocumentExtraction extends BaseEntity {
     private Double confidenceScore;
 
     /**
+     * How long OCR processing took (milliseconds).
+     * Used for performance monitoring and optimization tracking.
+     */
+    @Column(name = "processing_duration_ms")
+    private Long processingDurationMs;
+
+    /**
+     * Language(s) used for OCR processing.
+     * Examples: "eng", "eng+hin", "eng+fra"
+     * Future support for multi-language extraction.
+     */
+    @Column(name = "ocr_language", length = 10)
+    private String ocrLanguage;
+
+    /**
      * Extraction method enumeration.
      */
     public enum ExtractionMethod {
