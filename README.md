@@ -328,6 +328,79 @@ curl -i -X GET http://localhost:8080/api/transactions/e8a93cb1-923c-42b7-8db1-7b
 
 ---
 
+## Razorpay Webhook Ingestion (Phase 06)
+
+Razorpay acts as an untrusted external event producer. Webhooks are authenticated via HMAC-SHA256 signatures, recorded for idempotency in `webhook_events`, and routed through `RazorpayWebhookDispatcher` to transition transactions from `CREATED` $\rightarrow$ `PAYMENT_RECEIVED` $\rightarrow$ `EVIDENCE_PENDING`.
+
+### Webhook Flow Architecture
+
+```text
+Razorpay Webhook Request
+         │
+         ▼
+[Signature Verification] (Constant-time HMAC-SHA256 comparison)
+         │ (valid)
+         ▼
+[Persist Event] (webhook_events table in RECEIVED state)
+         │
+         ▼
+[Idempotency Check] (duplicate event_id returns 200 OK immediately)
+         │ (new event)
+         ▼
+[RazorpayWebhookDispatcher]
+         ├──▶ [PaymentCapturedHandler]  ──▶ Transition: CREATED ➔ PAYMENT_RECEIVED ➔ EVIDENCE_PENDING
+         ├──▶ [PaymentFailedHandler]    ──▶ Log & Record error (no state mutation)
+         └──▶ [UnsupportedEventHandler] ──▶ Log unhandled events as IGNORED
+```
+
+---
+
+### Ingesting a `payment.captured` Webhook
+
+```bash
+# Payload containing transaction_reference in notes:
+PAYLOAD='{
+  "entity": "event",
+  "account_id": "acc_test123",
+  "event": "payment.captured",
+  "created_at": 1726963200,
+  "payload": {
+    "payment": {
+      "entity": {
+        "id": "pay_O7d3b8f2c19a",
+        "amount": 500000,
+        "currency": "USD",
+        "status": "captured",
+        "order_id": "order_H82kd91",
+        "notes": {
+          "transaction_reference": "TXN-20260921-8F3A7C"
+        }
+      }
+    }
+  }
+}'
+
+# Compute HMAC-SHA256 signature using your RAZORPAY_WEBHOOK_SECRET:
+SIGNATURE=$(echo -n "$PAYLOAD" | openssl dgst -sha256 -hmac "your_webhook_secret" | sed 's/^.* //')
+
+# Dispatch webhook:
+curl -i -X POST http://localhost:8080/api/webhooks/razorpay \
+  -H "X-Razorpay-Signature: $SIGNATURE" \
+  -H "X-Razorpay-Event-Id: evt_sample_12345" \
+  -H "Content-Type: application/json" \
+  -d "$PAYLOAD"
+
+```
+
+**Expected Response (`200 OK`):**
+```json
+{
+  "status": "ok"
+}
+```
+
+---
+
 ## Verification & Health Probes
 
 ### Health & Readiness Check Endpoints
@@ -370,5 +443,6 @@ cd backend
 ```
 
 The resulting JAR will be generated at `backend/target/aegisx-0.0.1-SNAPSHOT.jar`.
+
 
 
