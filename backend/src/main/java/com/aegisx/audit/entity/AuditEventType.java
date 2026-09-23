@@ -54,6 +54,9 @@ public enum AuditEventType {
     WEBHOOK_FAILED,
     WEBHOOK_SIGNATURE_VERIFIED,
 
+    // Manual Review
+    MANUAL_REVIEW_NOTE_ADDED,
+
     // System & Audit
     AUDIT_ERROR,
     SYSTEM_EVENT
