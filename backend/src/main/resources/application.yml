@@ -73,7 +73,10 @@ management:
     web:
       base-path: /actuator
       exposure:
-        include: health,info
+        # Expose: health, liveness, readiness (k8s probes), metrics (for monitoring dashboards)
+        include: health,info,metrics,prometheus
+        # Hide sensitive endpoints
+        exclude: env,beans,configprops
   endpoint:
     health:
       show-details: when_authorized
@@ -83,9 +86,34 @@ management:
         liveness:
           include: livenessState
         readiness:
-          include: readinessState
+          include: readinessState,db
   health:
     livenessstate:
       enabled: true
     readinessstate:
       enabled: true
+    # Database health check
+    db:
+      enabled: true
+  # Metrics configuration
+  metrics:
+    enable:
+      # Core metrics
+      jvm: true
+      process: true
+      system: true
+      logback: true
+      # HTTP metrics
+      http: true
+      http.server.requests: true
+      # Database metrics
+      hikaricp: true
+    # Export metrics to Prometheus format (for Grafana, ELK, etc.)
+    export:
+      prometheus:
+        enabled: true
+  # Tracing (optional, for distributed tracing)
+  tracing:
+    sampling:
+      probability: 0.1  # Sample 10% of requests for production
+

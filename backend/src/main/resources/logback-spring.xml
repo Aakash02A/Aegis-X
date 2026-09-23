@@ -1,0 +1,183 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+    <!-- Spring Boot profile-specific configuration support -->
+    <springProperty name="LOG_FILE" source="logging.file.name" defaultValue="aegisx.log"/>
+    <springProperty name="LOG_FILE_MAX_SIZE" source="logging.file.max-size" defaultValue="10MB"/>
+    <springProperty name="LOG_FILE_MAX_HISTORY" source="logging.file.max-history" defaultValue="30"/>
+
+    <!-- Define MDC properties for structured logging -->
+    <!-- correlationId: injected by CorrelationIdFilter into MDC -->
+    <!-- These will be automatically included in JSON logs -->
+
+    <!-- Console Appender (for development) -->
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder class="net.logstash.logback.encoder.LogstashEncoder">
+            <!-- Include correlation ID in every log line -->
+            <fieldNames>
+                <timestamp>@timestamp</timestamp>
+                <level>level</level>
+                <message>message</message>
+                <logger>logger</logger>
+                <thread>thread</thread>
+                <version>@version</version>
+            </fieldNames>
+            <!-- Custom fields to include in JSON -->
+            <customFields>{"application":"aegis-x","environment":"local"}</customFields>
+            <!-- Include MDC (which contains correlationId) -->
+            <includeMdc>true</includeMdc>
+            <!-- Include tags from logger context -->
+            <includeTags>true</includeTags>
+        </encoder>
+    </appender>
+
+    <!-- File Appender (for production) - JSON format for log aggregation -->
+    <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>${LOG_FILE}</file>
+        <encoder class="net.logstash.logback.encoder.LogstashEncoder">
+            <!-- JSON field mapping -->
+            <fieldNames>
+                <timestamp>@timestamp</timestamp>
+                <level>level</level>
+                <message>message</message>
+                <logger>logger</logger>
+                <thread>thread</thread>
+                <version>@version</version>
+            </fieldNames>
+            <!-- Custom fields to identify source -->
+            <customFields>{"application":"aegis-x","environment":"production"}</customFields>
+            <!-- Include Mapped Diagnostic Context (MDC) for correlation ID -->
+            <includeMdc>true</includeMdc>
+            <!-- Include tags from logger context -->
+            <includeTags>true</includeTags>
+            <!-- Include exception stack traces in JSON -->
+            <includeStacktrace>true</includeStacktrace>
+        </encoder>
+        <!-- Rolling policy: rotate daily and on size -->
+        <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+            <fileNamePattern>${LOG_FILE}.%d{yyyy-MM-dd}.%i.gz</fileNamePattern>
+            <maxFileSize>${LOG_FILE_MAX_SIZE}</maxFileSize>
+            <maxHistory>${LOG_FILE_MAX_HISTORY}</maxHistory>
+            <totalSizeCap>1GB</totalSizeCap>
+        </rollingPolicy>
+    </appender>
+
+    <!-- Async Appender for non-blocking JSON logging -->
+    <!-- This prevents log writes from blocking request threads -->
+    <appender name="ASYNC_FILE" class="ch.qos.logback.classic.AsyncAppender">
+        <queueSize>512</queueSize>
+        <discardingThreshold>0</discardingThreshold>
+        <appender-ref ref="FILE"/>
+    </appender>
+
+    <!-- Plain text appender for specific modules (fallback) -->
+    <appender name="PLAIN_TEXT_FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>logs/aegisx-plain.log</file>
+        <encoder>
+            <!-- Include correlation ID in plain text format for readability -->
+            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} [%X{correlationId}] %-5level %logger{36} - %msg%n</pattern>
+        </encoder>
+        <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+            <fileNamePattern>logs/aegisx-plain.%d{yyyy-MM-dd}.%i.gz</fileNamePattern>
+            <maxFileSize>10MB</maxFileSize>
+            <maxHistory>30</maxHistory>
+        </rollingPolicy>
+    </appender>
+
+    <!-- Root Logger Configuration -->
+    <!-- Default level: INFO to reduce noise -->
+    <!-- Logs go to both console (dev) and async file (prod-ready) -->
+    <root level="INFO">
+        <appender-ref ref="CONSOLE"/>
+        <appender-ref ref="ASYNC_FILE"/>
+    </root>
+
+    <!-- Spring Boot Framework Logging -->
+    <!-- Reduce noise from framework logs -->
+    <logger name="org.springframework" level="WARN"/>
+    <logger name="org.springframework.boot" level="WARN"/>
+    <logger name="org.springframework.security" level="WARN"/>
+    <logger name="org.springframework.data" level="WARN"/>
+    <logger name="org.hibernate" level="WARN"/>
+
+    <!-- Database Logging -->
+    <!-- Log SQL statements for debugging -->
+    <logger name="org.hibernate.SQL" level="DEBUG"/>
+    <logger name="org.hibernate.type.descriptor.sql.BasicBinder" level="TRACE"/>
+
+    <!-- Aegis-X Module Logging -->
+    <!-- All Aegis-X modules log at INFO level with correlation IDs -->
+    <logger name="com.aegisx" level="INFO"/>
+
+    <!-- Audit Module: Verbose logging for audit events -->
+    <!-- Every audit event is logged with full context -->
+    <logger name="com.aegisx.audit" level="INFO">
+        <appender-ref ref="CONSOLE"/>
+        <appender-ref ref="ASYNC_FILE"/>
+    </logger>
+
+    <!-- Transaction Module: Track state transitions -->
+    <!-- Important for understanding transaction lifecycle -->
+    <logger name="com.aegisx.transaction" level="INFO">
+        <appender-ref ref="CONSOLE"/>
+        <appender-ref ref="ASYNC_FILE"/>
+    </logger>
+
+    <!-- Policy Engine: Log all compliance decisions -->
+    <!-- Critical for audit trail and regulatory requirements -->
+    <logger name="com.aegisx.policy" level="INFO">
+        <appender-ref ref="CONSOLE"/>
+        <appender-ref ref="ASYNC_FILE"/>
+    </logger>
+
+    <!-- AI Module: Log regulatory analysis results -->
+    <!-- Important for understanding AI recommendations -->
+    <logger name="com.aegisx.ai" level="INFO">
+        <appender-ref ref="CONSOLE"/>
+        <appender-ref ref="ASYNC_FILE"/>
+    </logger>
+
+    <!-- Razorpay Integration: Log webhook processing -->
+    <!-- Track payment events for reconciliation -->
+    <logger name="com.aegisx.integration.razorpay" level="INFO">
+        <appender-ref ref="CONSOLE"/>
+        <appender-ref ref="ASYNC_FILE"/>
+    </logger>
+
+    <!-- WhatsApp Integration: Log communication events -->
+    <!-- Track document requests and uploads -->
+    <logger name="com.aegisx.integration.whatsapp" level="INFO">
+        <appender-ref ref="CONSOLE"/>
+        <appender-ref ref="ASYNC_FILE"/>
+    </logger>
+
+    <!-- Spring Profiles for Environment-Specific Configuration -->
+
+    <!-- Development Profile: Console output only, verbose -->
+    <springProfile name="dev">
+        <root level="DEBUG">
+            <appender-ref ref="CONSOLE"/>
+        </root>
+        <logger name="com.aegisx" level="DEBUG"/>
+        <logger name="org.springframework" level="DEBUG"/>
+    </springProfile>
+
+    <!-- Production Profile: File output with JSON, less verbose -->
+    <springProfile name="prod">
+        <root level="WARN">
+            <appender-ref ref="ASYNC_FILE"/>
+        </root>
+        <logger name="com.aegisx" level="INFO"/>
+        <logger name="com.aegisx.audit" level="INFO"/>
+        <logger name="com.aegisx.transaction" level="INFO"/>
+        <logger name="com.aegisx.policy" level="INFO"/>
+    </springProfile>
+
+    <!-- Test Profile: Minimal output -->
+    <springProfile name="test">
+        <root level="WARN">
+            <appender-ref ref="CONSOLE"/>
+        </root>
+        <logger name="com.aegisx" level="INFO"/>
+    </springProfile>
+
+</configuration>
