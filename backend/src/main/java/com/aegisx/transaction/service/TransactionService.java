@@ -1,9 +1,14 @@
 package com.aegisx.transaction.service;
 
+import com.aegisx.audit.entity.AuditEventType;
+import com.aegisx.audit.entity.AuditModule;
+import com.aegisx.audit.entity.ActorType;
+import com.aegisx.audit.service.AuditService;
 import com.aegisx.auth.entity.Role;
 import com.aegisx.auth.entity.User;
 import com.aegisx.auth.repository.UserRepository;
 import com.aegisx.common.exception.TransactionNotFoundException;
+import com.aegisx.common.filter.CorrelationIdFilter;
 import com.aegisx.document.service.DocumentService;
 import com.aegisx.transaction.dto.CreateTransactionRequest;
 import com.aegisx.transaction.dto.TransactionResponse;
@@ -11,8 +16,11 @@ import com.aegisx.transaction.entity.Transaction;
 import com.aegisx.transaction.entity.TransactionStatus;
 import com.aegisx.transaction.entity.TransitionActor;
 import com.aegisx.transaction.repository.TransactionRepository;
+import com.fasterxml.jackson.databind.node.JsonNodeFactory;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.slf4j.MDC;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
@@ -34,6 +42,7 @@ public class TransactionService {
     private final UserRepository userRepository;
     private final TransactionStateMachine transactionStateMachine;
     private final DocumentService documentService;
+    private final AuditService auditService;
     private final Clock clock;
 
     @Transactional
@@ -59,6 +68,26 @@ public class TransactionService {
         Transaction saved = transactionRepository.save(transaction);
         log.info("Created transaction with ID: {} and reference: {} for merchant: {}",
                 saved.getId(), saved.getReferenceNumber(), merchant.getEmail());
+
+        // Record audit event for transaction creation
+        String correlationId = MDC.get(CorrelationIdFilter.CORRELATION_ID_KEY);
+        ObjectNode eventData = JsonNodeFactory.instance.objectNode();
+        eventData.put("amount", request.getAmount().toString());
+        eventData.put("currency", normalizedCurrency);
+        eventData.put("beneficiaryName", request.getBeneficiaryName());
+        eventData.put("purposeCode", normalizedPurposeCode);
+
+        auditService.recordStateTransition(
+            saved,
+            AuditEventType.TRANSACTION_CREATED,
+            AuditModule.TRANSACTION,
+            merchant.getId(),
+            ActorType.USER,
+            correlationId,
+            null,
+            TransactionStatus.CREATED.name(),
+            eventData
+        );
 
         return TransactionResponse.from(saved);
     }
@@ -111,11 +140,30 @@ public class TransactionService {
         Transaction transaction = transactionRepository.findById(transactionId)
                 .orElseThrow(() -> new TransactionNotFoundException(transactionId));
 
+        TransactionStatus previousStatus = transaction.getStatus();
         transactionStateMachine.transition(transaction, targetStatus, actor, reason);
         if (targetStatus == TransactionStatus.EVIDENCE_PENDING) {
             documentService.initializeChecklist(transaction.getId());
         }
         Transaction updated = transactionRepository.save(transaction);
+
+        // Record audit event for state transition
+        String correlationId = MDC.get(CorrelationIdFilter.CORRELATION_ID_KEY);
+        ObjectNode eventData = JsonNodeFactory.instance.objectNode();
+        eventData.put("actor", actor);
+        eventData.put("reason", reason);
+
+        auditService.recordStateTransition(
+            updated,
+            AuditEventType.TRANSACTION_STATE_CHANGED,
+            AuditModule.TRANSACTION,
+            null,
+            ActorType.SYSTEM,
+            correlationId,
+            previousStatus.name(),
+            targetStatus.name(),
+            eventData
+        );
 
         return TransactionResponse.from(updated);
     }

@@ -1,9 +1,14 @@
 package com.aegisx.document.service;
 
+import com.aegisx.audit.entity.AuditEventType;
+import com.aegisx.audit.entity.AuditModule;
+import com.aegisx.audit.entity.ActorType;
+import com.aegisx.audit.service.AuditService;
 import com.aegisx.auth.entity.User;
 import com.aegisx.auth.entity.Role;
 import com.aegisx.auth.repository.UserRepository;
 import com.aegisx.common.exception.InvalidDocumentException;
+import com.aegisx.common.filter.CorrelationIdFilter;
 import com.aegisx.document.dto.DocumentResponse;
 import com.aegisx.document.dto.EvidenceStatusResponse;
 import com.aegisx.document.dto.RequiredDocumentResponse;
@@ -19,9 +24,12 @@ import com.aegisx.transaction.entity.TransactionStatus;
 import com.aegisx.transaction.entity.TransitionActor;
 import com.aegisx.transaction.repository.TransactionRepository;
 import com.aegisx.transaction.service.TransactionStateMachine;
+import com.fasterxml.jackson.databind.node.JsonNodeFactory;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.tika.Tika;
+import org.slf4j.MDC;
 import org.springframework.core.io.Resource;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.stereotype.Service;
@@ -46,6 +54,7 @@ public class DocumentService {
     private final RequiredDocumentRepository requiredDocumentRepository;
     private final StorageService storageService;
     private final TransactionStateMachine transactionStateMachine;
+    private final AuditService auditService;
 
     private static final List<DocumentType> REQUIRED_DOCUMENT_TYPES = List.of(
             DocumentType.INVOICE,
@@ -111,6 +120,25 @@ public class DocumentService {
                 .build();
 
         Document saved = documentRepository.save(document);
+
+        // Record audit event for document upload
+        String correlationId = MDC.get(CorrelationIdFilter.CORRELATION_ID_KEY);
+        ObjectNode eventData = JsonNodeFactory.instance.objectNode();
+        eventData.put("documentType", documentType.name());
+        eventData.put("originalFilename", file.getOriginalFilename());
+        eventData.put("fileSize", file.getSize());
+        eventData.put("mimeType", mimeType);
+        eventData.put("fileHash", fileHash);
+
+        auditService.recordUserEvent(
+            transaction,
+            AuditEventType.DOCUMENT_UPLOADED,
+            AuditModule.DOCUMENT,
+            uploader.getId(),
+            correlationId,
+            eventData
+        );
+
         updateChecklistStatus(transactionId, documentType, saved);
 
         if (transaction.getStatus() == TransactionStatus.EVIDENCE_PENDING) {

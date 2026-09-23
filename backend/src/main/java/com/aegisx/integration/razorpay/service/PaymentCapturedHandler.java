@@ -1,5 +1,9 @@
 package com.aegisx.integration.razorpay.service;
 
+import com.aegisx.audit.entity.AuditEventType;
+import com.aegisx.audit.entity.AuditModule;
+import com.aegisx.audit.entity.ActorType;
+import com.aegisx.audit.service.AuditService;
 import com.aegisx.integration.razorpay.dto.RazorpayWebhookPayload;
 import com.aegisx.integration.razorpay.entity.WebhookEvent;
 import com.aegisx.integration.razorpay.entity.WebhookProcessingStatus;
@@ -8,6 +12,8 @@ import com.aegisx.transaction.entity.TransactionStatus;
 import com.aegisx.transaction.entity.TransitionActor;
 import com.aegisx.transaction.repository.TransactionRepository;
 import com.aegisx.transaction.service.TransactionStateMachine;
+import com.fasterxml.jackson.databind.node.JsonNodeFactory;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -23,6 +29,7 @@ public class PaymentCapturedHandler implements RazorpayEventHandler {
 
     private final TransactionRepository transactionRepository;
     private final TransactionStateMachine transactionStateMachine;
+    private final AuditService auditService;
 
     @Override
     public boolean supports(String eventType) {
@@ -82,6 +89,22 @@ public class PaymentCapturedHandler implements RazorpayEventHandler {
                     "Razorpay payment captured: " + paymentId
             );
 
+            // Record webhook event audit
+            ObjectNode webhookData = JsonNodeFactory.instance.objectNode();
+            webhookData.put("paymentId", paymentId);
+            webhookData.put("amount", payload.getAmount());
+            webhookData.put("currency", payload.getCurrency());
+
+            auditService.recordWebhookEvent(
+                transaction,
+                AuditEventType.WEBHOOK_RECEIVED,
+                AuditModule.RAZORPAY,
+                correlationId,
+                paymentId,
+                "true",
+                webhookData
+            );
+
             // 2. PAYMENT_RECEIVED -> EVIDENCE_PENDING (Awaiting invoice upload)
             transactionStateMachine.transition(
                     transaction,
@@ -91,6 +114,24 @@ public class PaymentCapturedHandler implements RazorpayEventHandler {
             );
 
             transactionRepository.save(transaction);
+
+            // Record payment received event audit
+            ObjectNode paymentData = JsonNodeFactory.instance.objectNode();
+            paymentData.put("paymentId", paymentId);
+            paymentData.put("status", "captured");
+
+            auditService.recordStateTransition(
+                transaction,
+                AuditEventType.PAYMENT_RECEIVED,
+                AuditModule.RAZORPAY,
+                null,
+                ActorType.WEBHOOK,
+                correlationId,
+                TransactionStatus.CREATED.name(),
+                TransactionStatus.PAYMENT_RECEIVED.name(),
+                paymentData
+            );
+
             event.setProcessingStatus(WebhookProcessingStatus.PROCESSED);
         } else {
             log.info("[{}] Out-of-order / replay event: Transaction {} ({}) is already at status '{}'; skipping transition",
