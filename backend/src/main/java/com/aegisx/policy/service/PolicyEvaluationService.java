@@ -10,11 +10,7 @@ import com.aegisx.policy.entity.PolicyEvaluation;
 import com.aegisx.policy.repository.PolicyEvaluationRepository;
 import com.aegisx.policy.rules.RuleContext;
 import com.aegisx.transaction.entity.Transaction;
-import com.aegisx.transaction.entity.TransactionStatus;
-import com.aegisx.transaction.entity.TransitionActor;
 import com.aegisx.transaction.repository.TransactionRepository;
-import com.aegisx.transaction.service.TransactionService;
-import com.aegisx.transaction.service.TransactionStateMachine;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -50,47 +46,7 @@ public class PolicyEvaluationService {
     private final DocumentExtractionRepository documentExtractionRepository;
     private final RequiredDocumentRepository requiredDocumentRepository;
     private final AIAnalysisRepository aiAnalysisRepository;
-    private final TransactionStateMachine transactionStateMachine;
     private final ObjectMapper objectMapper;
-    
-    /**
-     * Evaluate policy for a transaction and handle state transitions.
-     * 
-     * Workflow:
-     * 1. Transition transaction to POLICY_EVALUATION state
-     * 2. Execute policy evaluation
-     * 3. Persist evaluation
-     * 4. Transition to final state based on decision (APPROVED or COMPLIANCE_HOLD)
-     * 
-     * @param transactionId Transaction to evaluate
-     * @return Persisted PolicyEvaluation with final decision
-     * @throws PolicyEvaluationException if evaluation fails
-     */
-    @Transactional
-    public PolicyEvaluation evaluateAndTransition(UUID transactionId) {
-        log.info("Starting policy evaluation and state transition for transaction: {}", transactionId);
-        
-        // Perform evaluation (this also persists the PolicyEvaluation)
-        PolicyEvaluation evaluation = evaluateTransaction(transactionId);
-        
-        // Transition to final state based on decision
-        Transaction transaction = transactionRepository.findById(transactionId)
-            .orElseThrow(() -> new MissingEvidenceException("Transaction not found: " + transactionId));
-        
-        TransactionStatus finalStatus = evaluation.getFinalDecision().equals("APPROVED") 
-            ? TransactionStatus.APPROVED 
-            : TransactionStatus.COMPLIANCE_HOLD;
-        
-        transactionStateMachine.transition(transaction, finalStatus, TransitionActor.POLICY_ENGINE, 
-            String.format("Policy evaluation complete: %s", evaluation.getFinalDecision()));
-        
-        transactionRepository.save(transaction);
-        
-        log.info("Policy evaluation and state transition completed for transaction: {}, Final status: {}", 
-            transactionId, finalStatus);
-        
-        return evaluation;
-    }
     
     /**
      * Evaluate policy for a transaction.
