@@ -46,6 +46,12 @@ aegisx:
     model-name: ${AI_MODEL_NAME:gpt-4o}
     timeout-seconds: 30
     max-retries: 2
+  whatsapp:
+    phone-number-id: ${WHATSAPP_PHONE_NUMBER_ID:}
+    access-token: ${WHATSAPP_ACCESS_TOKEN:}
+    webhook-verify-token: ${WHATSAPP_VERIFY_TOKEN:}
+    api-endpoint: https://graph.instagram.com/v18.0
+    sandbox-mode: ${WHATSAPP_SANDBOX_MODE:true}
 
 spring:
   ai:
