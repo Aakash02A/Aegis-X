@@ -40,8 +40,12 @@ public class DocumentController {
     }
 
     @GetMapping("/{transactionId}/documents")
-    public ResponseEntity<List<DocumentResponse>> listDocuments(@PathVariable UUID transactionId) {
-        return ResponseEntity.ok(documentService.listDocuments(transactionId));
+    public ResponseEntity<List<DocumentResponse>> listDocuments(
+            @PathVariable UUID transactionId,
+            Authentication authentication) {
+        // Security: Verify user has access to this transaction
+        String email = authentication.getName();
+        return ResponseEntity.ok(documentService.listDocuments(transactionId, email));
     }
 
     @GetMapping("/{transactionId}/documents/{documentId}/download")
@@ -58,7 +62,11 @@ public class DocumentController {
     }
 
     @GetMapping("/{transactionId}/evidence-status")
-    public ResponseEntity<EvidenceStatusResponse> getEvidenceStatus(@PathVariable UUID transactionId) {
-        return ResponseEntity.ok(documentService.getEvidenceStatus(transactionId));
+    public ResponseEntity<EvidenceStatusResponse> getEvidenceStatus(
+            @PathVariable UUID transactionId,
+            Authentication authentication) {
+        // Security: Verify user has access to this transaction
+        String email = authentication.getName();
+        return ResponseEntity.ok(documentService.getEvidenceStatus(transactionId, email));
     }
 }

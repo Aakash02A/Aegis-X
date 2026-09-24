@@ -1,6 +1,13 @@
 /**
  * API Client Module
  * Handles all HTTP requests with Bearer token authentication and correlation IDs
+ * 
+ * Security Note on JWT Storage:
+ * - Current implementation: JWT stored in localStorage (accessible to XSS)
+ * - Production recommendation: Use HttpOnly secure cookies to prevent XSS token theft
+ * - Mitigation in place: Frontend sanitizes HTML to prevent XSS attacks (see transaction-detail.js)
+ * - Expiration: JWTs expire server-side after configured duration (default 24 hours)
+ * - No refresh flow: Users must re-login after token expiration
  */
 
 class ApiClient {
@@ -161,8 +168,8 @@ class ApiClient {
         return this.get(`/transactions/${id}/notes`);
     }
 
-    async addTransactionNote(id, content) {
-        return this.post(`/transactions/${id}/notes`, { content });
+    async addTransactionNote(id, noteText) {
+        return this.post(`/transactions/${id}/notes`, { noteText });
     }
 
     async updateTransactionNote(transactionId, noteId, content) {

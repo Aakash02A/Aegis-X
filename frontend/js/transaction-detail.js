@@ -206,31 +206,71 @@ class TransactionDetail {
      */
     static async loadAudit(txnId) {
         try {
-            const events = await api.getTransactionAudit(txnId);
-            let html = '<div class="card"><div class="card-body">';
+            const response = await api.getTransactionAudit(txnId);
+            const container = document.getElementById('auditContent');
+            
+            // Handle both array and Page response formats
+            const events = Array.isArray(response) ? response : (response.content || []);
 
             if (!events || events.length === 0) {
-                html += '<p class="text-muted">No audit events</p>';
-            } else {
-                html += '<h5>Audit Trail</h5><div class="timeline">';
-                events.forEach((event, idx) => {
-                    html += `
-                        <div class="mb-3">
-                            <p><strong>${event.eventType}</strong></p>
-                            <p class="text-muted">${new Date(event.timestamp).toLocaleString()}</p>
-                            <p>${event.details || 'No details'}</p>
-                        </div>
-                    `;
-                });
-                html += '</div>';
+                container.innerHTML = '<p class="text-muted">No audit events</p>';
+                return;
             }
 
-            html += '</div></div>';
-            document.getElementById('auditContent').innerHTML = html;
+            container.innerHTML = '<h5>Audit Trail</h5><div class="timeline" id="auditTimeline"></div>';
+            const timeline = document.getElementById('auditTimeline');
+
+            events.forEach((event, idx) => {
+                const eventDiv = document.createElement('div');
+                eventDiv.className = 'mb-3';
+                
+                // Build event title safely
+                const titleEl = document.createElement('p');
+                titleEl.innerHTML = `<strong>${this.escapeHtml(event.eventType || 'Event')}</strong> 
+                                     <span class="badge bg-secondary">${this.escapeHtml(event.module || 'N/A')}</span>`;
+                eventDiv.appendChild(titleEl);
+                
+                // Timestamp
+                const timeEl = document.createElement('p');
+                timeEl.className = 'text-muted';
+                timeEl.textContent = new Date(event.createdAt).toLocaleString();
+                eventDiv.appendChild(timeEl);
+                
+                // State transition (if present)
+                if (event.previousState) {
+                    const stateEl = document.createElement('p');
+                    stateEl.textContent = `State: ${event.previousState} → ${event.newState}`;
+                    eventDiv.appendChild(stateEl);
+                }
+                
+                // Details (if present)
+                if (event.details) {
+                    const detailEl = document.createElement('p');
+                    detailEl.textContent = event.details;
+                    eventDiv.appendChild(detailEl);
+                }
+                
+                timeline.appendChild(eventDiv);
+            });
         } catch (error) {
             document.getElementById('auditContent').innerHTML = 
                 `<div class="alert alert-warning">Error loading audit trail: ${error.message}</div>`;
         }
+    }
+
+    /**
+     * Escape HTML special characters to prevent XSS
+     */
+    static escapeHtml(text) {
+        if (!text) return '';
+        const map = {
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;',
+            '"': '&quot;',
+            "'": '&#039;'
+        };
+        return text.replace(/[&<>"']/g, m => map[m]);
     }
 
     /**
@@ -239,39 +279,57 @@ class TransactionDetail {
     static async loadNotes(txnId) {
         try {
             const notes = await api.getTransactionNotes(txnId);
-            let html = '<div class="card"><div class="card-body">';
-
-            // Add note form
-            html += `
-                <h5 class="mb-3">Add Note</h5>
-                <form id="addNoteForm">
-                    <div class="mb-2">
-                        <textarea class="form-control" id="noteContent" rows="3" placeholder="Add a note..." required></textarea>
-                    </div>
-                    <button type="button" class="btn btn-primary btn-sm" onclick="TransactionDetail.addNote('${txnId}')">Add Note</button>
-                </form>
-                <hr>
+            const container = document.getElementById('notesContent');
+            
+            // Create form section
+            const formDiv = document.createElement('div');
+            formDiv.className = 'card';
+            formDiv.innerHTML = `
+                <div class="card-body">
+                    <h5 class="mb-3">Add Note</h5>
+                    <textarea class="form-control" id="noteContent" rows="3" placeholder="Add a note..." required></textarea>
+                    <button type="button" class="btn btn-primary btn-sm mt-2" onclick="TransactionDetail.addNote('${txnId}')">Add Note</button>
+                </div>
             `;
-
-            if (!notes || notes.length === 0) {
-                html += '<p class="text-muted">No notes yet</p>';
-            } else {
-                html += '<h5>Notes</h5>';
-                notes.forEach(note => {
-                    html += `
-                        <div class="card bg-light mb-2">
-                            <div class="card-body">
-                                <p><strong>${note.author}</strong></p>
-                                <p>${note.content}</p>
-                                <p class="text-muted small">${new Date(note.createdAt).toLocaleString()}</p>
-                            </div>
-                        </div>
-                    `;
-                });
+            container.appendChild(formDiv);
+            
+            // Add notes section
+            if (!notes || notes.content === undefined || notes.content.length === 0) {
+                container.appendChild(document.createElement('p')).textContent = 'No notes yet';
+                return;
             }
 
-            html += '</div></div>';
-            document.getElementById('notesContent').innerHTML = html;
+            const notesHeader = document.createElement('h5');
+            notesHeader.textContent = 'Notes';
+            container.appendChild(notesHeader);
+
+            notes.content.forEach(note => {
+                const noteCard = document.createElement('div');
+                noteCard.className = 'card bg-light mb-2';
+                
+                const body = document.createElement('div');
+                body.className = 'card-body';
+                
+                // Author line
+                const authorLine = document.createElement('p');
+                authorLine.innerHTML = `<strong>${this.escapeHtml(note.authorName || 'Unknown')}</strong> 
+                                       <span class="text-muted small">(${this.escapeHtml(note.authorEmail || '')})</span>`;
+                body.appendChild(authorLine);
+                
+                // Note text
+                const textEl = document.createElement('p');
+                textEl.textContent = note.noteText;
+                body.appendChild(textEl);
+                
+                // Timestamp
+                const timeEl = document.createElement('p');
+                timeEl.className = 'text-muted small';
+                timeEl.textContent = new Date(note.createdAt).toLocaleString();
+                body.appendChild(timeEl);
+                
+                noteCard.appendChild(body);
+                container.appendChild(noteCard);
+            });
         } catch (error) {
             document.getElementById('notesContent').innerHTML = 
                 `<div class="alert alert-warning">Error loading notes: ${error.message}</div>`;
@@ -289,6 +347,7 @@ class TransactionDetail {
                 return;
             }
 
+            // Backend expects { noteText } not { content }
             await api.addTransactionNote(txnId, content);
             document.getElementById('noteContent').value = '';
             this.loadNotes(txnId);

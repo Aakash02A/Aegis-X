@@ -31,19 +31,20 @@ spring:
       file-size-threshold: 2KB
 
 jwt:
-  secret: ${JWT_SECRET:dev-jwt-secret-key-for-aegis-x-application-security-testing-purposes-only}
+  secret: ${JWT_SECRET:}
   expiration: ${JWT_EXPIRATION:86400000}
 
 razorpay:
-  key-id: ${RAZORPAY_KEY_ID:rzp_test_mock_key}
-  key-secret: ${RAZORPAY_KEY_SECRET:rzp_test_mock_secret}
-  webhook-secret: ${RAZORPAY_WEBHOOK_SECRET:dev-webhook-secret-for-aegis-x-local-testing}
+  key-id: ${RAZORPAY_KEY_ID:}
+  key-secret: ${RAZORPAY_KEY_SECRET:}
+  webhook-secret: ${RAZORPAY_WEBHOOK_SECRET:}
 
 server:
   port: ${PORT:8080}
 
 app:
   storage:
+    type: ${STORAGE_TYPE:local}
     root-path: ${APP_STORAGE_ROOT_PATH:./storage}
     allowed-content-types:
       - application/pdf
@@ -52,6 +53,8 @@ app:
     max-file-size-mb: 20
 
 aegisx:
+  cors:
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000,http://localhost:8080}
   ocr:
     tesseract-path: ${TESSERACT_PATH:}
     language: ${OCR_LANGUAGE:eng}
@@ -64,7 +67,8 @@ aegisx:
     phone-number-id: ${WHATSAPP_PHONE_NUMBER_ID:}
     access-token: ${WHATSAPP_ACCESS_TOKEN:}
     webhook-verify-token: ${WHATSAPP_VERIFY_TOKEN:}
-    api-endpoint: https://graph.instagram.com/v18.0
+    app-secret: ${WHATSAPP_APP_SECRET:}
+    api-endpoint: https://graph.whatsapp.com/v18.0
     sandbox-mode: ${WHATSAPP_SANDBOX_MODE:true}
 
 management:

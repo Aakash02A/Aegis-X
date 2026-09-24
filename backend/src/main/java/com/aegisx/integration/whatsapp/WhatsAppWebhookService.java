@@ -30,6 +30,9 @@ public class WhatsAppWebhookService {
     
     @Value("${aegisx.whatsapp.webhook-verify-token}")
     private String webhookVerifyToken;
+
+    @Value("${aegisx.whatsapp.app-secret}")
+    private String appSecret;
     
     /**
      * Verify webhook token from Meta.
@@ -147,39 +150,55 @@ public class WhatsAppWebhookService {
     }
     
     /**
-     * Verify webhook request signature (if Meta includes X-Hub-Signature).
-     * Note: Meta sandbox may not sign requests; this is optional for MVP.
+     * Verify webhook request signature using X-Hub-Signature header.
      * 
-     * @param body Raw request body
-     * @param signature X-Hub-Signature header value
-     * @param appSecret App secret from Meta
-     * @return true if signature valid
+     * Meta signs webhook POST requests with HMAC-SHA256 using the app secret.
+     * Format: X-Hub-Signature: sha256=<hex_digest>
+     * 
+     * Security: This MUST be enforced for production to prevent injection attacks.
+     * 
+     * @param body Raw request body as JSON string
+     * @param signature X-Hub-Signature header value (format: sha256=...)
+     * @return true if signature valid, false otherwise
      */
-    public boolean verifyWebhookSignature(String body, String signature, String appSecret) {
+    public boolean verifyWebhookSignature(String body, String signature) {
         try {
-            if (signature == null || appSecret == null) {
-                log.debug("Webhook signature verification skipped: signature or secret missing");
-                return true;
+            // Security: STRICT verification - fail if any required component is missing
+            if (signature == null || signature.trim().isEmpty()) {
+                log.warn("Webhook signature verification failed: X-Hub-Signature header missing");
+                return false;
+            }
+
+            if (appSecret == null || appSecret.trim().isEmpty()) {
+                log.error("Webhook signature verification failed: app secret not configured");
+                return false;
+            }
+
+            if (body == null) {
+                log.warn("Webhook signature verification failed: request body is null");
+                return false;
             }
             
-            String expectedSignature = computeSignature(body, appSecret);
+            String expectedSignature = computeHmacSignature(body, appSecret);
             boolean valid = expectedSignature.equals(signature);
             
             if (!valid) {
-                log.warn("Webhook signature verification failed");
+                log.warn("Webhook signature verification failed: signature mismatch. Expected: {}, Got: {}",
+                    expectedSignature.substring(0, Math.min(10, expectedSignature.length())) + "...",
+                    signature.substring(0, Math.min(10, signature.length())) + "...");
             } else {
-                log.debug("Webhook signature verified");
+                log.debug("Webhook signature verified successfully");
             }
             
             return valid;
             
         } catch (Exception e) {
-            log.error("Error verifying webhook signature: {}", e.getMessage());
+            log.error("Error verifying webhook signature: {}", e.getMessage(), e);
             return false;
         }
     }
-    
-    private String computeSignature(String body, String appSecret) throws Exception {
+
+    private String computeHmacSignature(String body, String appSecret) throws Exception {
         MessageDigest digest = MessageDigest.getInstance("SHA-256");
         String input = body + appSecret;
         byte[] hash = digest.digest(input.getBytes(StandardCharsets.UTF_8));

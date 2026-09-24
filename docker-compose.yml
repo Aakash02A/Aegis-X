@@ -4,15 +4,15 @@ services:
     container_name: aegisx-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_DB: aegisx
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: ${DB_NAME:-aegisx}
+      POSTGRES_USER: ${DB_USERNAME:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
     ports:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d aegisx"]
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-postgres} -d ${DB_NAME:-aegisx}"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -28,11 +28,25 @@ services:
         condition: service_healthy
     environment:
       SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-prod}
-      DB_URL: jdbc:postgresql://postgres:5432/aegisx
-      DB_USERNAME: postgres
-      DB_PASSWORD: postgres
+      DB_URL: jdbc:postgresql://postgres:5432/${DB_NAME:-aegisx}
+      DB_USERNAME: ${DB_USERNAME:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:-postgres}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      RAZORPAY_KEY_ID: ${RAZORPAY_KEY_ID:-}
+      RAZORPAY_KEY_SECRET: ${RAZORPAY_KEY_SECRET:-}
+      RAZORPAY_WEBHOOK_SECRET: ${RAZORPAY_WEBHOOK_SECRET:-}
+      WHATSAPP_PHONE_NUMBER_ID: ${WHATSAPP_PHONE_NUMBER_ID:-}
+      WHATSAPP_ACCESS_TOKEN: ${WHATSAPP_ACCESS_TOKEN:-}
+      WHATSAPP_VERIFY_TOKEN: ${WHATSAPP_VERIFY_TOKEN:-}
+      WHATSAPP_APP_SECRET: ${WHATSAPP_APP_SECRET:-}
+      APP_STORAGE_ROOT_PATH: ${APP_STORAGE_ROOT_PATH:-/data/storage}
+      TESSERACT_PATH: ${TESSERACT_PATH:-}
     ports:
       - "8080:8080"
+    volumes:
+      - storage:/data/storage
 
 volumes:
   pgdata:
+  storage:

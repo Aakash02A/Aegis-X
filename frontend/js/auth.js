@@ -1,6 +1,15 @@
 /**
  * Auth Module
  * Handles login and registration pages
+ * 
+ * Security Notes:
+ * - JWTs are stored in localStorage for MVP (not ideal for production)
+ * - Production should use:
+ *   1. HttpOnly secure cookies (cannot be accessed by JavaScript)
+ *   2. Separate refresh token rotation
+ *   3. Token revocation on logout
+ * - Current implementation: token expires after duration specified by backend
+ * - No refresh token flow: new login required after expiration
  */
 
 class Auth {
@@ -113,7 +122,8 @@ class Auth {
         try {
             const response = await api.register(email, password, fullName);
             
-            // Transform backend response
+            // Transform backend response: { token, userId, email, role, expiresIn, tokenType }
+            // to user object: { id, email, fullName, role }
             const user = {
                 id: response.userId,
                 email: response.email,

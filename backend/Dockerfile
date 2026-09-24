@@ -18,6 +18,12 @@ RUN ./mvnw clean package -DskipTests -B
 FROM eclipse-temurin:21-jre-alpine
 WORKDIR /app
 
+# Install Tesseract OCR and language data
+RUN apk add --no-cache \
+    tesseract-ocr \
+    tesseract-ocr-data-eng \
+    && mkdir -p /usr/share/tessdata
+
 # Create non-root system user
 RUN addgroup -S aegisx && adduser -S aegisx -G aegisx
 

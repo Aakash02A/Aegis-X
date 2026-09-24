@@ -32,11 +32,13 @@ public class UserService {
             throw new EmailAlreadyExistsException("Email already registered: " + request.getEmail());
         }
 
+        // Security: All new registrations default to MERCHANT role
+        // Role escalation to ADMIN or COMPLIANCE_OFFICER requires separate admin operations
         User user = User.builder()
                 .fullName(request.getFullName())
                 .email(request.getEmail().toLowerCase().trim())
                 .passwordHash(passwordEncoder.encode(request.getPassword()))
-                .role(request.getRole())
+                .role(com.aegisx.auth.entity.Role.MERCHANT)  // Default role - cannot be escalated via registration
                 .build();
 
         User savedUser = userRepository.save(user);

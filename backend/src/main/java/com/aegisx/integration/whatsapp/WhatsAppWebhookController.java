@@ -63,20 +63,31 @@ public class WhatsAppWebhookController {
      * Webhook event endpoint (POST).
      * 
      * Receives messages, delivery receipts, read receipts from Meta.
+     * All POST requests MUST be verified via X-Hub-Signature header.
      * 
      * @param payload Webhook payload
-     * @param xHubSignature X-Hub-Signature header (optional)
+     * @param xHubSignature X-Hub-Signature header (REQUIRED for production)
+     * @param request Raw request for signature verification
      * @return 200 OK if processed successfully
      */
     @PostMapping
     public ResponseEntity<Void> handleWebhookEvent(
-        @RequestBody WhatsAppWebhookPayload payload,
-        @RequestHeader(value = "X-Hub-Signature", required = false) String xHubSignature
+        @RequestBody String rawPayload,
+        @RequestHeader(value = "X-Hub-Signature", required = false) String xHubSignature,
+        jakarta.servlet.http.HttpServletRequest request
     ) {
         log.info("Webhook event received");
         
         try {
-            // Verify token from header is not practical in POST; rely on HTTPS + webhook URL secrecy
+            // Security: Verify webhook signature (REQUIRED)
+            if (!webhookService.verifyWebhookSignature(rawPayload, xHubSignature)) {
+                log.error("Webhook signature verification failed - rejecting request");
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+            }
+
+            // Parse payload
+            com.fasterxml.jackson.databind.ObjectMapper objectMapper = new com.fasterxml.jackson.databind.ObjectMapper();
+            WhatsAppWebhookPayload payload = objectMapper.readValue(rawPayload, WhatsAppWebhookPayload.class);
             
             // Classify event type
             String eventType = webhookService.classifyEventType(payload);

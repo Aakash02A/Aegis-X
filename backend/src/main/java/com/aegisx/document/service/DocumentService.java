@@ -150,9 +150,12 @@ public class DocumentService {
     }
 
     @Transactional(readOnly = true)
-    public EvidenceStatusResponse getEvidenceStatus(UUID transactionId) {
+    public EvidenceStatusResponse getEvidenceStatus(UUID transactionId, String userEmail) {
         Transaction transaction = transactionRepository.findById(transactionId)
                 .orElseThrow(() -> new IllegalArgumentException("Transaction not found: " + transactionId));
+
+        // Security: Verify user has access to this transaction
+        verifyTransactionAccess(transaction, userEmail);
 
         List<RequiredDocument> allRequired = requiredDocumentRepository.findByTransactionId(transactionId);
         if (allRequired.isEmpty()) {
@@ -183,7 +186,9 @@ public class DocumentService {
     }
 
     @Transactional(readOnly = true)
-    public List<DocumentResponse> listDocuments(UUID transactionId) {
+    public List<DocumentResponse> listDocuments(UUID transactionId, String userEmail) {
+        User user = findUser(userEmail);
+        findAuthorizedTransaction(transactionId, user);
         return documentRepository.findByTransactionIdOrderByCreatedAtDesc(transactionId)
                 .stream()
                 .map(DocumentResponse::from)
@@ -204,6 +209,14 @@ public class DocumentService {
         Document document = documentRepository.findByIdAndTransactionId(documentId, transactionId)
                 .orElseThrow(() -> new IllegalArgumentException("Document not found for transaction: " + transactionId));
         return storageService.load(document.getStoragePath());
+    }
+
+    private void verifyTransactionAccess(Transaction transaction, String userEmail) {
+        User user = findUser(userEmail);
+        if (user.getRole() == Role.MERCHANT && !transaction.getMerchantId().equals(user.getId())) {
+            throw new IllegalArgumentException("Access denied: transaction not owned by user");
+        }
+        // COMPLIANCE_OFFICER and ADMIN have access to all transactions
     }
 
     private User findUser(String userEmail) {
