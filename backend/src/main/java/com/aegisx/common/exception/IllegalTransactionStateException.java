@@ -14,6 +14,12 @@ public class IllegalTransactionStateException extends RuntimeException {
         this.currentStatus = currentStatus;
         this.targetStatus = targetStatus;
     }
+    
+    public IllegalTransactionStateException(TransactionStatus currentStatus, TransactionStatus targetStatus, String customReason) {
+        super(String.format("Illegal transaction status transition from '%s' to '%s': %s", currentStatus, targetStatus, customReason));
+        this.currentStatus = currentStatus;
+        this.targetStatus = targetStatus;
+    }
 
     public IllegalTransactionStateException(String message) {
         super(message);

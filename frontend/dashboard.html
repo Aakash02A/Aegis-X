@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Merchant Console — Aegis-X</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23C85A32'><path d='M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5'/></svg>" type="image/svg+xml" />
+
+  <link rel="stylesheet" href="css/tailwind.css" />
+  <link rel="stylesheet" href="css/animations.css" />
+  <link rel="stylesheet" href="css/components.css" />
+  <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body class="bg-paper text-ink flex min-h-screen">
+
+  <!-- Sidebar Component (Amble & Tonsor Style) -->
+  <aside class="w-64 bg-paper-dim border-r border-ink/10 flex flex-col justify-between hidden md:flex shrink-0">
+    <div>
+      <div class="h-18 px-6 flex items-center gap-3 border-b border-ink/10">
+        <div class="w-8 h-8 rounded-full bg-ink text-paper flex items-center justify-center font-serif text-sm font-bold">
+          A
+        </div>
+        <div>
+          <span class="font-serif text-base tracking-tight font-semibold text-ink block">Aegis<span class="text-rust italic">X</span></span>
+          <span class="text-[9px] tracking-widest uppercase font-semibold text-ink-soft">MERCHANT DESK</span>
+        </div>
+      </div>
+
+      <nav class="p-4 space-y-1 font-sans">
+        <a data-roles="MERCHANT" href="dashboard.html" class="flex items-center gap-3 px-3.5 py-2.5 rounded-full text-sm font-medium bg-ink text-paper">
+          <i data-lucide="layout-dashboard" class="w-4 h-4"></i>
+          <span>Merchant Console</span>
+        </a>
+        <a data-roles="COMPLIANCE_OFFICER,ADMIN" href="compliance.html" class="flex items-center gap-3 px-3.5 py-2.5 rounded-full text-sm font-medium text-ink-soft hover:text-ink hover:bg-ink/5 transition-all">
+          <i data-lucide="shield" class="w-4 h-4"></i>
+          <span>Compliance Queue</span>
+        </a>
+        <a data-roles="ADMIN" href="operations.html" class="flex items-center gap-3 px-3.5 py-2.5 rounded-full text-sm font-medium text-ink-soft hover:text-ink hover:bg-ink/5 transition-all">
+          <i data-lucide="activity" class="w-4 h-4"></i>
+          <span>Operations &amp; Health</span>
+        </a>
+        <a data-roles="SETTLEMENT_OPERATOR" href="settlement.html" class="flex items-center gap-3 px-3.5 py-2.5 rounded-full text-sm font-medium text-ink-soft hover:text-ink hover:bg-ink/5 transition-all">
+          <i data-lucide="landmark" class="w-4 h-4"></i>
+          <span>Settlement Desk</span>
+        </a>
+        <a href="index.html" class="flex items-center gap-3 px-3.5 py-2.5 rounded-full text-sm font-medium text-ink-soft hover:text-ink hover:bg-ink/5 transition-all">
+          <i data-lucide="globe" class="w-4 h-4"></i>
+          <span>Public Landing</span>
+        </a>
+      </nav>
+    </div>
+
+    <div class="p-4 border-t border-ink/10">
+      <div class="p-3 rounded-sm bg-white border border-ink/10 flex items-center justify-between">
+        <div class="flex items-center gap-2.5 overflow-hidden">
+          <div class="w-8 h-8 rounded-full bg-ink/10 text-ink font-bold flex items-center justify-center text-xs shrink-0 font-serif">
+            M
+          </div>
+          <div class="truncate">
+            <p id="user-profile-name" class="text-xs font-semibold text-ink truncate">Merchant</p>
+            <p id="user-profile-role" class="text-[10px] text-ink-soft uppercase font-mono-data">EXPORTER</p>
+          </div>
+        </div>
+        <button onclick="window.Auth.logout()" class="text-ink-soft hover:text-rust p-1 transition-colors" title="Logout">
+          <i data-lucide="log-out" class="w-4 h-4"></i>
+        </button>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Main Content Viewport -->
+  <div class="flex-1 flex flex-col min-w-0">
+    
+    <!-- Topbar -->
+    <header class="h-18 bg-paper/90 backdrop-blur border-b border-ink/10 px-6 flex items-center justify-between sticky top-0 z-30">
+      <div class="flex items-center gap-4">
+        <a href="index.html" class="md:hidden flex items-center gap-2">
+          <span class="font-serif text-lg font-bold text-ink">Aegis<span class="text-rust italic">X</span></span>
+        </a>
+        <div class="relative hidden sm:block w-72">
+          <i data-lucide="search" class="w-4 h-4 text-ink-soft absolute left-3 top-1/2 -translate-y-1/2"></i>
+          <input type="text" placeholder="Search transactions, buyers..." class="editorial-input pl-9 text-xs" />
+        </div>
+      </div>
+
+      <div class="flex items-center gap-3">
+        <button id="open-new-tx-modal" class="aegis-btn-rust py-2 px-4 text-xs font-medium">
+          <i data-lucide="plus" class="w-3.5 h-3.5"></i>
+          <span>Create Remittance</span>
+        </button>
+        <a href="compliance.html" class="aegis-btn-outline py-2 px-3 text-xs hidden sm:inline-flex">
+          <i data-lucide="shield" class="w-3.5 h-3.5 text-rust"></i>
+          <span>Compliance</span>
+        </a>
+      </div>
+    </header>
+
+    <main class="p-6 md:p-8 space-y-8 max-w-6xl w-full mx-auto">
+      
+      <!-- Welcome Header -->
+      <div class="flex flex-col sm:flex-row sm:items-baseline justify-between gap-4 border-b border-ink/10 pb-6">
+        <div>
+          <div class="editorial-eyebrow mb-2">Merchant Desk</div>
+          <h1 class="font-serif text-3xl sm:text-4xl font-medium text-ink tracking-tight">Active Remittances</h1>
+          <p class="text-xs text-ink-soft mt-1">Cross-border payment compliance status, OCR extraction queues, and deterministic settlement.</p>
+        </div>
+        <div class="text-xs font-mono-data text-ink-soft flex items-center gap-2">
+          <span class="h-1.5 w-1.5 rounded-full bg-olive-deep"></span>
+          <span>Payment state follows backend events</span>
+        </div>
+      </div>
+
+      <!-- 6 Metrics Bento Cards -->
+      <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4">
+        <div class="editorial-card p-4 bg-white">
+          <span class="text-[10px] text-ink-soft uppercase tracking-wider font-semibold block">Total Ingested</span>
+          <div id="metric-active-tx" class="font-serif text-2xl font-medium text-ink mt-1">—</div>
+        </div>
+
+        <div class="editorial-card p-4 bg-white">
+          <span class="text-[10px] text-ink-soft uppercase tracking-wider font-semibold block">Evidence Req</span>
+          <div id="metric-pending-evidence" class="font-serif text-2xl font-medium text-rust mt-1">—</div>
+        </div>
+
+        <div class="editorial-card p-4 bg-white">
+          <span class="text-[10px] text-ink-soft uppercase tracking-wider font-semibold block">OCR Extracting</span>
+          <div id="metric-ocr-processing" class="font-serif text-2xl font-medium text-ink mt-1">—</div>
+        </div>
+
+        <div class="editorial-card p-4 bg-white">
+          <span class="text-[10px] text-ink-soft uppercase tracking-wider font-semibold block">Settlement Pending</span>
+          <div id="metric-settlement-pending" class="font-serif text-2xl font-medium text-brass mt-1">—</div>
+        </div>
+
+        <div class="editorial-card p-4 bg-white">
+          <span class="text-[10px] text-ink-soft uppercase tracking-wider font-semibold block">Hold Flagged</span>
+          <div id="metric-compliance-holds" class="font-serif text-2xl font-medium text-rust mt-1">—</div>
+        </div>
+
+        <div class="editorial-card p-4 bg-white">
+          <span class="text-[10px] text-ink-soft uppercase tracking-wider font-semibold block">Cleared</span>
+          <div id="metric-approved-tx" class="font-serif text-2xl font-medium text-olive-deep mt-1">—</div>
+        </div>
+      </div>
+
+      <section aria-label="Transaction analytics" class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <div class="editorial-card p-5 bg-white">
+          <h2 class="font-serif text-lg text-ink">Transaction Volume</h2>
+          <div id="chart-transaction-volume" class="mt-4" aria-live="polite"></div>
+        </div>
+        <div class="editorial-card p-5 bg-white">
+          <h2 class="font-serif text-lg text-ink">Approval Rate</h2>
+          <div id="chart-approval-rate" class="mt-4" aria-live="polite"></div>
+        </div>
+        <div class="editorial-card p-5 bg-white">
+          <h2 class="font-serif text-lg text-ink">Processing Time</h2>
+          <div id="chart-processing-time" class="mt-4" aria-live="polite"></div>
+        </div>
+      </section>
+
+      <section class="editorial-card p-6 bg-white" aria-labelledby="recent-activity-heading">
+        <div class="flex items-center justify-between pb-3 border-b border-ink/10">
+          <h2 id="recent-activity-heading" class="font-serif text-xl text-ink">Recent Activity</h2>
+          <span class="text-[10px] uppercase text-ink-soft">Audit events</span>
+        </div>
+        <ol id="recent-audit-feed" class="mt-2" aria-live="polite"></ol>
+      </section>
+
+      <!-- Recent Transactions Table -->
+      <div class="editorial-card p-6 bg-white overflow-hidden">
+        <div class="flex items-center justify-between pb-4 border-b border-ink/10 mb-2">
+          <div>
+            <h2 class="font-serif text-xl font-medium text-ink">Remittance Stream</h2>
+            <p class="text-xs text-ink-soft">Click any transaction to inspect OCR entities, Spring AI analysis, and audit trails.</p>
+          </div>
+        </div>
+
+        <div class="overflow-x-auto">
+          <table class="w-full text-left font-sans text-xs">
+            <thead>
+              <tr class="border-b border-ink/10 text-ink-soft uppercase text-[10px] tracking-wider font-semibold">
+                <th class="py-3 px-2">Tx Identifier</th>
+                <th class="py-3 px-2">Consignee</th>
+                <th class="py-3 px-2">Declared Value</th>
+                <th class="py-3 px-2">Purpose Code</th>
+                <th class="py-3 px-2">Status</th>
+                <th class="py-3 px-2 text-right">Inspect</th>
+              </tr>
+            </thead>
+            <tbody id="recent-tx-tbody" class="divide-y divide-ink/10">
+              <!-- Rendered via js/dashboard.js -->
+            </tbody>
+          </table>
+        </div>
+        <div id="transaction-pagination" class="flex items-center justify-end gap-3 mt-4" aria-label="Transaction pagination"></div>
+      </div>
+    </main>
+  </div>
+
+  <!-- Create Transaction Modal Dialog -->
+  <div id="new-tx-modal-backdrop" class="aegis-modal-backdrop">
+    <div class="aegis-modal-container">
+      <div class="p-5 border-b border-ink/10 flex items-center justify-between bg-paper-dim">
+        <div>
+          <h3 class="font-serif text-xl font-medium text-ink">Initiate Cross-Border Remittance</h3>
+          <p class="text-xs text-ink-soft">Payment status follows verified backend events</p>
+        </div>
+        <button id="close-new-tx-modal" class="text-ink-soft hover:text-ink p-1">
+          <i data-lucide="x" class="w-4 h-4"></i>
+        </button>
+      </div>
+
+      <form id="new-tx-form" class="p-6 space-y-4 font-sans">
+        <div>
+          <label class="block text-xs font-semibold text-ink uppercase tracking-wider mb-1" for="tx-input-buyer">Consignee / Buyer Legal Name</label>
+          <input type="text" id="tx-input-buyer" required placeholder="AeroTech Systems Europe GmbH" class="editorial-input" />
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-semibold text-ink uppercase tracking-wider mb-1" for="tx-input-amount">Amount</label>
+            <input type="number" id="tx-input-amount" required step="0.01" placeholder="145000.00" class="editorial-input font-mono-data" />
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-ink uppercase tracking-wider mb-1" for="tx-input-currency">Currency</label>
+            <select id="tx-input-currency" class="editorial-input bg-white">
+              <option value="INR">INR (₹)</option>
+              <option value="USD">USD ($)</option>
+              <option value="EUR">EUR (€)</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-semibold text-ink uppercase tracking-wider mb-1" for="tx-input-purpose">Purpose Code</label>
+            <input type="text" id="tx-input-purpose" required maxlength="64" placeholder="Enter the regulatory purpose code" class="editorial-input font-mono-data" />
+          </div>
+        </div>
+
+        <div class="pt-2 flex items-center justify-end gap-3">
+          <button type="button" onclick="document.getElementById('new-tx-modal-backdrop').classList.remove('active')" class="text-xs text-ink-soft hover:text-ink">Cancel</button>
+          <button type="submit" class="aegis-btn-ink py-2 px-5 text-xs font-medium">
+            <span>Ingest &amp; Queue Compliance</span>
+            <i data-lucide="arrow-right" class="w-3.5 h-3.5"></i>
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script type="module" src="js/dashboard.js"></script>
+</body>
+</html>

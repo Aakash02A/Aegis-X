@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Operations &amp; Health — Aegis-X</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23C85A32'><path d='M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5'/></svg>" type="image/svg+xml" />
+
+  <link rel="stylesheet" href="css/tailwind.css" />
+  <link rel="stylesheet" href="css/animations.css" />
+  <link rel="stylesheet" href="css/components.css" />
+  <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body class="bg-paper text-ink flex min-h-screen">
+
+  <!-- Sidebar -->
+  <aside class="w-64 bg-paper-dim border-r border-ink/10 flex flex-col justify-between hidden md:flex shrink-0">
+    <div>
+      <div class="h-18 px-6 flex items-center gap-3 border-b border-ink/10">
+        <div class="w-8 h-8 rounded-full bg-ink text-paper flex items-center justify-center font-serif text-sm font-bold">
+          A
+        </div>
+        <div>
+          <span class="font-serif text-base tracking-tight font-semibold text-ink block">Aegis<span class="text-rust italic">X</span></span>
+          <span class="text-[9px] tracking-widest uppercase font-semibold text-ink-soft">OPS MONITOR</span>
+        </div>
+      </div>
+
+      <nav class="p-4 space-y-1 font-sans">
+        <a data-roles="ADMIN" href="operations.html" class="flex items-center gap-3 px-3.5 py-2.5 rounded-full text-sm font-medium bg-ink text-paper">
+          <i data-lucide="activity" class="w-4 h-4"></i>
+          <span>Operations &amp; Health</span>
+        </a>
+        <a data-roles="MERCHANT" href="dashboard.html" class="flex items-center gap-3 px-3.5 py-2.5 rounded-full text-sm font-medium text-ink-soft hover:text-ink hover:bg-ink/5 transition-all">
+          <i data-lucide="layout-dashboard" class="w-4 h-4"></i>
+          <span>Merchant Console</span>
+        </a>
+        <a data-roles="COMPLIANCE_OFFICER,ADMIN" href="compliance.html" class="flex items-center gap-3 px-3.5 py-2.5 rounded-full text-sm font-medium text-ink-soft hover:text-ink hover:bg-ink/5 transition-all">
+          <i data-lucide="shield" class="w-4 h-4"></i>
+          <span>Compliance Queue</span>
+        </a>
+        <a data-roles="SETTLEMENT_OPERATOR,COMPLIANCE_OFFICER" href="settlement.html" class="flex items-center gap-3 px-3.5 py-2.5 rounded-full text-sm font-medium text-ink-soft hover:text-ink hover:bg-ink/5 transition-all">
+          <i data-lucide="landmark" class="w-4 h-4"></i>
+          <span>Settlement Desk</span>
+        </a>
+      </nav>
+    </div>
+
+    <div class="p-4 border-t border-ink/10">
+      <div class="flex items-center gap-2 text-xs text-ink-soft">
+        <span class="w-2 h-2 rounded-full bg-olive-deep animate-pulse"></span>
+        <span>Actuator Polling: 5s</span>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Main Viewport -->
+  <div class="flex-1 flex flex-col min-w-0">
+    <header class="h-18 bg-paper/90 backdrop-blur border-b border-ink/10 px-6 flex items-center justify-between sticky top-0 z-30">
+      <div>
+        <h2 class="font-serif text-lg font-medium text-ink">Platform Telemetry</h2>
+      </div>
+      <div id="platform-status-badge" class="editorial-badge badge-neutral">Health not loaded</div>
+    </header>
+
+    <main class="p-6 md:p-8 space-y-8 max-w-6xl w-full mx-auto">
+      <div class="border-b border-ink/10 pb-6">
+        <div class="editorial-eyebrow mb-2">System Telemetry</div>
+        <h1 class="font-serif text-3xl sm:text-4xl font-medium text-ink tracking-tight">Spring Boot Health &amp; Subsystem Metrics</h1>
+        <p class="text-xs text-ink-soft mt-1">Live metrics from Spring Boot Actuator, Apache Tika, Spring AI, and Webhook dispatchers.</p>
+      </div>
+
+      <section aria-labelledby="health-heading">
+        <h2 id="health-heading" class="font-serif text-xl text-ink mb-3">System health</h2>
+        <div id="health-cards" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4" aria-live="polite"></div>
+      </section>
+
+      <section aria-labelledby="performance-heading">
+        <h2 id="performance-heading" class="font-serif text-xl text-ink mb-3">Performance metrics</h2>
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <div class="editorial-card p-4 bg-white"><span class="text-[10px] uppercase text-ink-soft">OCR p95</span><p id="metric-ocr-p95" class="font-mono-data text-lg text-ink mt-2">Not reported</p></div>
+          <div class="editorial-card p-4 bg-white"><span class="text-[10px] uppercase text-ink-soft">AI p95</span><p id="metric-ai-p95" class="font-mono-data text-lg text-ink mt-2">Not reported</p></div>
+          <div class="editorial-card p-4 bg-white"><span class="text-[10px] uppercase text-ink-soft">API p95</span><p id="metric-api-p95" class="font-mono-data text-lg text-ink mt-2">Not reported</p></div>
+          <div class="editorial-card p-4 bg-white"><span class="text-[10px] uppercase text-ink-soft">Queue depth</span><p id="metric-queue-depth" class="font-mono-data text-lg text-ink mt-2">Not reported</p></div>
+        </div>
+        <div id="performance-details" class="mt-3 text-xs text-ink-soft" aria-live="polite"></div>
+      </section>
+
+      <section aria-labelledby="business-heading">
+        <h2 id="business-heading" class="font-serif text-xl text-ink mb-3">Business metrics</h2>
+        <div class="grid grid-cols-2 lg:grid-cols-5 gap-4">
+          <div class="editorial-card p-4 bg-white"><span class="text-[10px] uppercase text-ink-soft">Transactions</span><p id="business-transactions" class="font-serif text-2xl text-ink mt-2">—</p></div>
+          <div class="editorial-card p-4 bg-white"><span class="text-[10px] uppercase text-ink-soft">Approvals</span><p id="business-approvals" class="font-serif text-2xl text-ink mt-2">—</p></div>
+          <div class="editorial-card p-4 bg-white"><span class="text-[10px] uppercase text-ink-soft">Holds</span><p id="business-holds" class="font-serif text-2xl text-ink mt-2">—</p></div>
+          <div class="editorial-card p-4 bg-white"><span class="text-[10px] uppercase text-ink-soft">Reviews</span><p id="business-reviews" class="font-serif text-2xl text-ink mt-2">—</p></div>
+          <div class="editorial-card p-4 bg-white"><span class="text-[10px] uppercase text-ink-soft">Settlements</span><p id="business-settlements" class="font-serif text-2xl text-ink mt-2">Unavailable from current admin API</p></div>
+        </div>
+      </section>
+
+      <section class="editorial-card p-5 bg-white" aria-labelledby="audit-search-heading">
+        <h2 id="audit-search-heading" class="font-serif text-xl text-ink">Audit lookup</h2>
+        <form id="audit-search-form" class="flex flex-col sm:flex-row gap-3 mt-3">
+          <label class="sr-only" for="audit-transaction-id">Transaction UUID</label>
+          <input id="audit-transaction-id" class="editorial-input flex-1" required placeholder="Transaction UUID" />
+          <button type="submit" class="aegis-btn-ink py-2 px-4 text-xs">Search audit</button>
+        </form>
+        <div id="operations-audit-results" class="mt-5"></div>
+      </section>
+    </main>
+  </div>
+
+  <script type="module" src="js/operations.js"></script>
+</body>
+</html>

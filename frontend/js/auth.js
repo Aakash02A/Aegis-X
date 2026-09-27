@@ -1,167 +1,157 @@
 /**
- * Auth Module
- * Handles login and registration pages
- * 
- * Security Notes:
- * - JWTs are stored in localStorage for MVP (not ideal for production)
- * - Production should use:
- *   1. HttpOnly secure cookies (cannot be accessed by JavaScript)
- *   2. Separate refresh token rotation
- *   3. Token revocation on logout
- * - Current implementation: token expires after duration specified by backend
- * - No refresh token flow: new login required after expiration
+ * Aegis-X Authentication Controller
  */
+import { API } from './api.js';
+import { Toast } from './notifications.js';
 
-class Auth {
-    /**
-     * Render login page
-     */
-    static renderLoginPage() {
-        return `
-            <div class="container d-flex align-items-center justify-content-center vh-100">
-                <div class="card shadow-sm" style="width: 100%; max-width: 400px;">
-                    <div class="card-body p-5">
-                        <h2 class="card-title text-center mb-4">Aegis-X Login</h2>
-                        
-                        <form id="loginForm">
-                            <div class="mb-3">
-                                <label for="email" class="form-label">Email</label>
-                                <input type="email" class="form-control" id="email" required>
-                            </div>
-                            
-                            <div class="mb-3">
-                                <label for="password" class="form-label">Password</label>
-                                <input type="password" class="form-control" id="password" required>
-                            </div>
-                            
-                            <button type="submit" class="btn btn-primary w-100 mb-3">Login</button>
-                        </form>
-                        
-                        <p class="text-center text-muted mb-0">
-                            Don't have an account? 
-                            <a href="#register" class="text-decoration-none">Register</a>
-                        </p>
-                        
-                        <div id="loginError" class="alert alert-danger mt-3" style="display: none;"></div>
-                    </div>
-                </div>
-            </div>
-        `;
+export const Auth = {
+  getUser() {
+    try {
+      const data = localStorage.getItem('aegis_user');
+      return data ? JSON.parse(data) : null;
+    } catch {
+      return null;
+    }
+  },
+
+  setUser(user) {
+    if (user) {
+      localStorage.setItem('aegis_user', JSON.stringify(user));
+    } else {
+      localStorage.removeItem('aegis_user');
+    }
+  },
+
+  isAuthenticated() {
+    return Boolean(API.getAuthToken());
+  },
+
+  async requireUser(allowedRoles = []) {
+    if (!this.isAuthenticated()) {
+      window.location.href = 'login.html';
+      return false;
     }
 
-    /**
-     * Render register page
-     */
-    static renderRegisterPage() {
-        return `
-            <div class="container d-flex align-items-center justify-content-center vh-100">
-                <div class="card shadow-sm" style="width: 100%; max-width: 400px;">
-                    <div class="card-body p-5">
-                        <h2 class="card-title text-center mb-4">Create Account</h2>
-                        
-                        <form id="registerForm">
-                            <div class="mb-3">
-                                <label for="fullName" class="form-label">Full Name</label>
-                                <input type="text" class="form-control" id="fullName" required>
-                            </div>
-                            
-                            <div class="mb-3">
-                                <label for="regEmail" class="form-label">Email</label>
-                                <input type="email" class="form-control" id="regEmail" required>
-                            </div>
-                            
-                            <div class="mb-3">
-                                <label for="regPassword" class="form-label">Password</label>
-                                <input type="password" class="form-control" id="regPassword" required>
-                            </div>
-                            
-                            <button type="submit" class="btn btn-primary w-100 mb-3">Register</button>
-                        </form>
-                        
-                        <p class="text-center text-muted mb-0">
-                            Already have an account? 
-                            <a href="#login" class="text-decoration-none">Login</a>
-                        </p>
-                        
-                        <div id="registerError" class="alert alert-danger mt-3" style="display: none;"></div>
-                    </div>
-                </div>
-            </div>
-        `;
+    try {
+      const user = await API.request('/auth/me');
+      this.setUser({ id: user.id, email: user.email, name: user.fullName, role: user.role });
+    } catch {
+      API.setAuthToken(null);
+      this.setUser(null);
+      window.location.href = 'login.html';
+      return false;
     }
 
-    /**
-     * Handle login form submission
-     */
-    static async handleLogin(email, password) {
-        try {
-            const response = await api.login(email, password);
-            
-            // Transform backend response: { token, userId, email, role, expiresIn, tokenType }
-            // to user object: { id, email, fullName, role }
-            const user = {
-                id: response.userId,
-                email: response.email,
-                fullName: response.email.split('@')[0], // Fallback: use email prefix
-                role: response.role
-            };
-            
-            localStorage.setItem('user', JSON.stringify(user));
-            window.location.hash = '#dashboard';
-            
-        } catch (error) {
-            document.getElementById('loginError').textContent = `Login failed: ${error.message}`;
-            document.getElementById('loginError').style.display = 'block';
-        }
+    const user = this.getUser();
+    if (allowedRoles.length && !allowedRoles.includes(user?.role)) {
+      Toast.warning('Your account does not have access to this workspace.');
+      window.location.href = this.homeForRole(user?.role);
+      return false;
     }
+    return true;
+  },
 
-    /**
-     * Handle register form submission
-     */
-    static async handleRegister(fullName, email, password) {
-        try {
-            const response = await api.register(email, password, fullName);
-            
-            // Transform backend response: { token, userId, email, role, expiresIn, tokenType }
-            // to user object: { id, email, fullName, role }
-            const user = {
-                id: response.userId,
-                email: response.email,
-                fullName: fullName,
-                role: response.role
-            };
-            
-            localStorage.setItem('user', JSON.stringify(user));
-            window.location.hash = '#dashboard';
-            
-        } catch (error) {
-            document.getElementById('registerError').textContent = `Registration failed: ${error.message}`;
-            document.getElementById('registerError').style.display = 'block';
-        }
-    }
+  async login(email, password) {
+    try {
+      const result = await API.request('/auth/login', {
+        method: 'POST',
+        body: JSON.stringify({ email, password })
+      });
 
-    /**
-     * Check if user is authenticated
-     */
-    static isAuthenticated() {
-        return !!localStorage.getItem('authToken') && !!localStorage.getItem('user');
-    }
+      if (result.token) {
+        API.setAuthToken(result.token);
+        this.setUser(result.user || {
+          id: result.userId,
+          email: result.email || email,
+          role: result.role,
+          name: result.fullName || result.email || email
+        });
 
-    /**
-     * Get current user
-     */
-    static getCurrentUser() {
-        const user = localStorage.getItem('user');
-        return user ? JSON.parse(user) : null;
-    }
+        Toast.success(`Welcome back, ${email}!`);
 
-    /**
-     * Logout user
-     */
-    static logout() {
-        localStorage.removeItem('authToken');
-        localStorage.removeItem('user');
-        api.clearAuthToken();
-        window.location.hash = '#login';
+        setTimeout(() => {
+          const role = result.role;
+          if (role === 'COMPLIANCE_OFFICER') {
+            window.location.href = 'compliance.html';
+          } else if (role === 'SETTLEMENT_OPERATOR') {
+            window.location.href = 'settlement.html';
+          } else if (role === 'ADMIN') {
+            window.location.href = 'operations.html';
+          } else {
+            window.location.href = 'dashboard.html';
+          }
+        }, 600);
+        return true;
+      } else {
+        throw new Error('No authentication token received');
+      }
+    } catch (err) {
+      Toast.error(err.message || 'Login failed. Please check your credentials.');
+      return false;
     }
-}
+  },
+
+  async register(userData) {
+    try {
+      await API.request('/auth/register', {
+        method: 'POST',
+        body: JSON.stringify(userData)
+      });
+
+      Toast.success('Account created successfully! Redirecting to login...');
+      
+      // Mandatory Stage 5 rule: Redirect to Login upon registration (do not auto-login)
+      setTimeout(() => {
+        window.location.href = 'login.html?registered=true';
+      }, 1200);
+      return true;
+    } catch (err) {
+      Toast.error(err.message || 'Registration failed. Please try again.');
+      return false;
+    }
+  },
+
+  logout() {
+    API.setAuthToken(null);
+    this.setUser(null);
+    Toast.info('Logged out successfully.');
+    setTimeout(() => {
+      window.location.href = 'login.html';
+    }, 400);
+  },
+
+  guard(allowedRoles = []) {
+    if (!this.isAuthenticated()) {
+      window.location.href = 'login.html';
+      return false;
+    }
+    const user = this.getUser();
+    if (allowedRoles.length > 0 && (!user || !allowedRoles.includes(user.role))) {
+      Toast.warning('Unauthorized for this workspace. Redirecting...');
+      setTimeout(() => {
+        window.location.href = this.homeForRole(user?.role);
+      }, 1000);
+      return false;
+    }
+    return true;
+  },
+
+  homeForRole(role) {
+    if (role === 'COMPLIANCE_OFFICER') return 'compliance.html';
+    if (role === 'SETTLEMENT_OPERATOR') return 'settlement.html';
+    if (role === 'ADMIN') return 'operations.html';
+    return 'dashboard.html';
+  },
+
+  applyRoleNavigation() {
+    const role = this.getUser()?.role;
+    document.querySelectorAll('[data-roles]').forEach(element => {
+      const allowed = element.dataset.roles.split(',').map(value => value.trim());
+      const hidden = !role || !allowed.includes(role);
+      element.hidden = hidden;
+      element.classList.toggle('hidden', hidden);
+    });
+  }
+};
+
+window.Auth = Auth;

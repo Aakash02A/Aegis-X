@@ -1,172 +1,153 @@
-/**
- * Operations Module
- * Prometheus metrics and system monitoring
- */
+/** Live operations and health data from configured backend endpoints. */
+import { API } from './api.js';
+import { Auth } from './auth.js';
+import { Toast } from './notifications.js';
+import { Utils } from './utils.js';
+import { AuditViewer } from './audit.js';
 
-class Operations {
-    /**
-     * Render operations page
-     */
-    static renderOperationsPage() {
-        return `
-            <nav class="navbar navbar-expand-lg navbar-light bg-light border-bottom">
-                <div class="container-fluid">
-                    <a class="navbar-brand fw-bold" href="#dashboard">Aegis-X</a>
-                    <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
-                        <span class="navbar-toggler-icon"></span>
-                    </button>
-                    <div class="collapse navbar-collapse" id="navbarNav">
-                        <ul class="navbar-nav ms-auto">
-                            <li class="nav-item">
-                                <a class="nav-link" href="#dashboard">Dashboard</a>
-                            </li>
-                            <li class="nav-item">
-                                <a class="nav-link" href="#compliance">Compliance</a>
-                            </li>
-                            <li class="nav-item">
-                                <a class="nav-link active" href="#operations">Operations</a>
-                            </li>
-                            <li class="nav-item">
-                                <a class="nav-link" href="#" onclick="Auth.logout(); return false;">Logout</a>
-                            </li>
-                        </ul>
-                    </div>
-                </div>
-            </nav>
+export const OperationsPage = {
+  async init() {
+    if (!await Auth.requireUser(['ADMIN'])) return;
+    Auth.applyRoleNavigation();
+    this.setupAuditSearch();
+    await this.loadMetrics();
+    await this.loadBusinessMetrics();
+    this.refreshTimer = setInterval(() => this.loadMetrics(), 30000);
+  },
 
-            <div class="container-fluid p-4">
-                <div class="row mb-4">
-                    <div class="col-md-12">
-                        <h1>Operations & Metrics</h1>
-                        <p class="text-muted">System health and performance monitoring</p>
-                    </div>
-                </div>
+  async loadMetrics() {
+    const prometheusRequest = API.request('/prometheus').catch(() => API.request('/actuator/prometheus'));
+    const [health, meters, prometheus, performance] = await Promise.allSettled([
+      API.request('/actuator/health'),
+      API.request('/actuator/metrics'),
+      prometheusRequest,
+      API.request('/performance/metrics')
+    ]);
+    this.renderHealth(health.status === 'fulfilled' ? health.value : null);
+    this.renderPerformance(
+      meters.status === 'fulfilled' ? meters.value : null,
+      prometheus.status === 'fulfilled' ? prometheus.value : null,
+      performance.status === 'fulfilled' ? performance.value : null
+    );
+  },
 
-                <div class="row">
-                    <div class="col-md-6">
-                        <div class="card">
-                            <div class="card-header">
-                                <h5 class="mb-0">System Metrics</h5>
-                            </div>
-                            <div class="card-body">
-                                <div id="metricsContent" class="spinner-border"></div>
-                            </div>
-                        </div>
-                    </div>
+  renderHealth(data) {
+    const components = data?.components || {};
+    const statuses = [
+      ['API', data?.status],
+      ['Database', this.findComponentStatus(components, /db|database|datasource/)],
+      ['OCR', this.findComponentStatus(components, /ocr|tika/)],
+      ['AI', this.findComponentStatus(components, /ai|spring.?ai/i)],
+      ['WhatsApp', this.findComponentStatus(components, /whatsapp/)]
+    ];
+    const cards = document.getElementById('health-cards');
+    cards.replaceChildren();
+    statuses.forEach(([name, status]) => {
+      const card = document.createElement('section');
+      card.className = 'editorial-card p-4 bg-white';
+      card.append(
+        Utils.textElement('h3', 'text-[10px] uppercase font-semibold text-ink-soft', name),
+        Utils.textElement('p', `font-mono-data text-lg mt-2 ${status === 'UP' ? 'text-olive-deep' : status === 'DOWN' ? 'text-rust' : 'text-ink'}`, status || 'Not reported')
+      );
+      cards.append(card);
+    });
+    const statusEl = document.getElementById('platform-status-badge');
+    if (statusEl) statusEl.textContent = data?.status || 'Health endpoint unavailable';
+  },
 
-                    <div class="col-md-6">
-                        <div class="card">
-                            <div class="card-header">
-                                <h5 class="mb-0">JVM Metrics</h5>
-                            </div>
-                            <div class="card-body">
-                                <div id="jvmMetrics">
-                                    <p class="text-muted">JVM metrics would be displayed here</p>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
+  findComponentStatus(components, pattern) {
+    const match = Object.entries(components).find(([name]) => pattern.test(name));
+    return match?.[1]?.status || 'Not reported';
+  },
 
-                <div class="row mt-4">
-                    <div class="col-md-12">
-                        <div class="card">
-                            <div class="card-header">
-                                <h5 class="mb-0">Raw Prometheus Metrics</h5>
-                            </div>
-                            <div class="card-body">
-                                <button class="btn btn-sm btn-outline-primary mb-3" onclick="Operations.refreshMetrics()">Refresh</button>
-                                <pre id="rawMetrics" style="max-height: 400px; overflow-y: auto; background: #f8f9fa; padding: 10px; border-radius: 4px;">
-Loading...
-                                </pre>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        `;
+  renderPerformance(meters, prometheus, performance) {
+    const samples = typeof prometheus === 'string' ? prometheus.split(/\r?\n/) : [];
+    const values = { ocr: 'Not exposed', ai: 'Not exposed', api: 'Not exposed', queue: 'Not exposed' };
+    samples.forEach(line => {
+      const match = line.match(/^([\w:.]+)(?:\{([^}]*)\})?\s+([+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?)/);
+      if (!match) return;
+      const [, metricName, labels = '', rawValue] = match;
+      const name = metricName.toLowerCase();
+      const value = Number(rawValue);
+      const isP95 = labels.includes('quantile="0.95"') || /(?:^|_)(?:p95|95th)(?:_|$)/.test(name);
+      if (isP95 && /ocr|tika/.test(name)) values.ocr = this.formatMetricValue(metricName, value);
+      else if (isP95 && /ai/.test(name)) values.ai = this.formatMetricValue(metricName, value);
+      else if (isP95 && /http_server_requests|http\.server\.requests/.test(name)) values.api = this.formatMetricValue(metricName, value);
+      if (/queue.*(?:depth|pending)|(?:depth|pending).*queue/.test(name)) values.queue = String(value);
+    });
+    Object.entries({
+      'metric-ocr-p95': values.ocr,
+      'metric-ai-p95': values.ai,
+      'metric-api-p95': values.api,
+      'metric-queue-depth': values.queue
+    }).forEach(([id, value]) => {
+      const element = document.getElementById(id);
+      if (element) element.textContent = value;
+    });
+
+    const names = meters?.names || [];
+    const observedOperations = Object.entries(performance?.operations || {})
+      .filter(([, metric]) => metric.count > 0)
+      .map(([name, metric]) => `${name}: avg ${metric.avg_duration_ms} ms across ${metric.count} observations`);
+    const details = document.getElementById('performance-details');
+    details.textContent = [
+      names.length ? `${names.length} actuator meters available.` : 'Actuator meter names unavailable.',
+      ...observedOperations
+    ].join(' ');
+  },
+
+  formatMetricValue(metricName, value) {
+    if (metricName.endsWith('_seconds')) return `${(value * 1000).toFixed(2)} ms`;
+    if (metricName.endsWith('_milliseconds')) return `${value.toFixed(2)} ms`;
+    return `${value} exported units`;
+  },
+
+  async loadBusinessMetrics() {
+    try {
+      let page = await API.request('/transactions?page=0&size=100');
+      const transactions = [...(page.content || [])];
+      let pageNumber = 0;
+      while (page.last === false && pageNumber + 1 < page.totalPages) {
+        pageNumber += 1;
+        page = await API.request(`/transactions?page=${pageNumber}&size=100`);
+        transactions.push(...(page.content || []));
+      }
+      this.setBusinessMetric('business-transactions', page.totalElements ?? transactions.length);
+      this.setBusinessMetric('business-approvals', transactions.filter(tx => tx.status === 'APPROVED').length);
+      this.setBusinessMetric('business-holds', transactions.filter(tx => tx.status === 'COMPLIANCE_HOLD').length);
+    } catch {
+      this.setBusinessMetric('business-transactions', 'Unavailable');
+      this.setBusinessMetric('business-approvals', 'Unavailable');
+      this.setBusinessMetric('business-holds', 'Unavailable');
     }
 
-    /**
-     * Load and display metrics
-     */
-    static async loadMetrics() {
-        try {
-            const metricsText = await api.getMetrics();
-            
-            // Parse Prometheus metrics
-            const metrics = this.parseMetrics(metricsText);
-            this.displayMetrics(metrics);
-            
-            // Display raw metrics
-            document.getElementById('rawMetrics').textContent = metricsText.substring(0, 2000) + 
-                (metricsText.length > 2000 ? '\n\n... (truncated) ...' : '');
-        } catch (error) {
-            document.getElementById('metricsContent').innerHTML = 
-                `<div class="alert alert-warning">Error loading metrics: ${error.message}</div>`;
-            document.getElementById('rawMetrics').textContent = 'Failed to load metrics';
-        }
+    try {
+      const queue = await API.request('/v1/compliance/queue?page=0&size=1');
+      this.setBusinessMetric('business-reviews', queue.totalElements ?? queue.content?.length ?? 0);
+    } catch {
+      this.setBusinessMetric('business-reviews', 'Unavailable');
     }
+  },
 
-    /**
-     * Parse Prometheus metrics text
-     */
-    static parseMetrics(metricsText) {
-        const metrics = {};
-        const lines = metricsText.split('\n');
+  setBusinessMetric(id, value) {
+    const element = document.getElementById(id);
+    if (element) element.textContent = String(value);
+  },
 
-        lines.forEach(line => {
-            if (line.startsWith('#') || line.trim() === '') return;
+  setupAuditSearch() {
+    document.getElementById('audit-search-form')?.addEventListener('submit', async event => {
+      event.preventDefault();
+      const transactionId = document.getElementById('audit-transaction-id').value.trim();
+      try {
+        const timeline = await API.request(`/transactions/${encodeURIComponent(transactionId)}/audit`);
+        AuditViewer.render('operations-audit-results', timeline);
+      } catch (error) {
+        Toast.error('Audit lookup failed: ' + error.message);
+      }
+    });
+  }
+};
 
-            const match = line.match(/(\w+(?:_\w+)*)\{?([^}]*)\}?\s+([\d.]+)/);
-            if (match) {
-                const [, name, labels, value] = match;
-                if (!metrics[name]) metrics[name] = [];
-                metrics[name].push({ labels, value: parseFloat(value) });
-            }
-        });
-
-        return metrics;
-    }
-
-    /**
-     * Display parsed metrics
-     */
-    static displayMetrics(metrics) {
-        let html = '<table class="table table-sm"><tbody>';
-
-        // Display selected key metrics
-        const keyMetrics = [
-            'jvm_memory_used_bytes',
-            'jvm_threads_live',
-            'jvm_gc_collection_seconds_count',
-            'http_requests_total',
-            'http_request_duration_seconds_sum'
-        ];
-
-        keyMetrics.forEach(metricName => {
-            if (metrics[metricName]) {
-                const values = metrics[metricName];
-                values.forEach(({ labels, value }) => {
-                    html += `
-                        <tr>
-                            <td><strong>${metricName}</strong></td>
-                            <td>${labels || '-'}</td>
-                            <td>${value.toFixed(2)}</td>
-                        </tr>
-                    `;
-                });
-            }
-        });
-
-        html += '</tbody></table>';
-        document.getElementById('metricsContent').innerHTML = html;
-    }
-
-    /**
-     * Refresh metrics
-     */
-    static async refreshMetrics() {
-        await this.loadMetrics();
-    }
-}
+document.addEventListener('DOMContentLoaded', () => {
+  OperationsPage.init();
+});

@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Settlement Desk — Aegis-X</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23C85A32'><path d='M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5'/></svg>" type="image/svg+xml" />
+
+  <link rel="stylesheet" href="css/tailwind.css" />
+  <link rel="stylesheet" href="css/animations.css" />
+  <link rel="stylesheet" href="css/components.css" />
+  <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body class="bg-paper text-ink flex min-h-screen">
+
+  <!-- Sidebar -->
+  <aside class="w-64 bg-paper-dim border-r border-ink/10 flex flex-col justify-between hidden md:flex shrink-0">
+    <div>
+      <div class="h-18 px-6 flex items-center gap-3 border-b border-ink/10">
+        <div class="w-8 h-8 rounded-full bg-ink text-paper flex items-center justify-center font-serif text-sm font-bold">
+          A
+        </div>
+        <div>
+          <span class="font-serif text-base tracking-tight font-semibold text-ink block">Aegis<span class="text-rust italic">X</span></span>
+          <span class="text-[9px] tracking-widest uppercase font-semibold text-ink-soft">SETTLEMENT</span>
+        </div>
+      </div>
+
+      <nav class="p-4 space-y-1 font-sans">
+        <a data-roles="MERCHANT" href="dashboard.html" class="flex items-center gap-3 px-3.5 py-2.5 rounded-full text-sm font-medium text-ink-soft hover:text-ink hover:bg-ink/5 transition-all">
+          <i data-lucide="layout-dashboard" class="w-4 h-4"></i>
+          <span>Merchant Console</span>
+        </a>
+        <a data-roles="COMPLIANCE_OFFICER" href="compliance.html" class="flex items-center gap-3 px-3.5 py-2.5 rounded-full text-sm font-medium text-ink-soft hover:text-ink hover:bg-ink/5 transition-all">
+          <i data-lucide="shield" class="w-4 h-4"></i>
+          <span>Compliance Queue</span>
+        </a>
+        <a data-roles="SETTLEMENT_OPERATOR,COMPLIANCE_OFFICER" href="settlement.html" class="flex items-center gap-3 px-3.5 py-2.5 rounded-full text-sm font-medium bg-ink text-paper">
+          <i data-lucide="landmark" class="w-4 h-4"></i>
+          <span>Settlement Desk</span>
+        </a>
+        <a data-roles="ADMIN" href="operations.html" class="flex items-center gap-3 px-3.5 py-2.5 rounded-full text-sm font-medium text-ink-soft hover:text-ink hover:bg-ink/5 transition-all">
+          <i data-lucide="activity" class="w-4 h-4"></i>
+          <span>Operations &amp; Health</span>
+        </a>
+      </nav>
+    </div>
+
+    <div class="p-4 border-t border-ink/10">
+      <div class="p-3 rounded-sm bg-white border border-ink/10 flex items-center justify-between">
+        <div class="flex items-center gap-2.5 overflow-hidden">
+          <div class="w-8 h-8 rounded-full bg-brass/10 text-brass font-bold flex items-center justify-center text-xs shrink-0 font-serif">
+            SO
+          </div>
+          <div class="truncate">
+            <p class="text-xs font-semibold text-ink truncate">Settlement Ops</p>
+            <p class="text-[10px] text-ink-soft uppercase font-mono-data">FINANCE</p>
+          </div>
+        </div>
+        <button onclick="window.Auth.logout()" class="text-ink-soft hover:text-rust p-1 transition-colors" title="Logout">
+          <i data-lucide="log-out" class="w-4 h-4"></i>
+        </button>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Main Viewport -->
+  <div class="flex-1 flex flex-col min-w-0">
+    <header class="h-18 bg-paper/90 backdrop-blur border-b border-ink/10 px-6 flex items-center justify-between sticky top-0 z-30">
+      <div class="flex items-center gap-3">
+        <span class="editorial-badge badge-brass">
+          <i data-lucide="landmark" class="w-3.5 h-3.5 inline"></i>
+          Settlement Processing
+        </span>
+      </div>
+      <div class="flex items-center gap-3">
+        <span id="results-count" class="text-xs font-mono-data text-ink-soft">— Records Found</span>
+        <button id="process-reconciliation" class="aegis-btn-ink py-2 px-3 text-xs inline-flex items-center gap-2">
+          <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i> Process Reconciliation
+        </button>
+      </div>
+    </header>
+
+    <main class="p-6 md:p-8 space-y-6 max-w-6xl w-full mx-auto">
+      
+      <!-- Search & Filters -->
+      <div class="editorial-card p-6 bg-white grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
+        <div class="md:col-span-6">
+          <label class="block text-[10px] uppercase font-semibold tracking-wider text-ink-soft mb-1.5">Search Remittance Ref / Beneficiary</label>
+          <div class="relative">
+            <i data-lucide="search" class="w-4 h-4 text-ink-soft absolute left-3.5 top-1/2 -translate-y-1/2"></i>
+            <input type="text" id="settlement-search" placeholder="Search SWIFT / TRN / Beneficiary..." class="editorial-input pl-10" />
+          </div>
+        </div>
+        <div class="md:col-span-3">
+          <label class="block text-[10px] uppercase font-semibold tracking-wider text-ink-soft mb-1.5">Status Filter</label>
+          <select id="filter-status" class="editorial-input">
+            <option value="ALL">All Settlements</option>
+            <option value="PENDING">Pending Setup</option>
+            <option value="PROCESSING">Bank Processing</option>
+            <option value="COMPLETED">Successfully Settled</option>
+            <option value="FAILED">Failed / Rejected</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Table View -->
+      <div class="editorial-card bg-white overflow-hidden overflow-x-auto">
+        <table class="w-full text-left font-sans whitespace-nowrap">
+          <thead>
+            <tr class="bg-paper-dim/50 border-b border-ink/10 text-[10px] uppercase tracking-wider text-ink-soft font-semibold">
+              <th class="py-4 px-6 font-semibold">Settlement ID</th>
+              <th class="py-4 px-2 font-semibold">Processor</th>
+              <th class="py-4 px-2 font-semibold">Amount (Gross)</th>
+              <th class="py-4 px-2 font-semibold">Fees</th>
+              <th class="py-4 px-2 font-semibold">Status</th>
+              <th class="py-4 px-2 font-semibold">Retry / Reconciliation</th>
+              <th class="py-4 px-6 font-semibold text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="settlement-tbody" class="divide-y divide-ink/5">
+            <!-- Populated by JS -->
+          </tbody>
+        </table>
+      </div>
+
+    </main>
+  </div>
+
+  <script type="module" src="js/settlement.js"></script>
+</body>
+</html>

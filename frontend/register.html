@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Register Merchant — Aegis-X Platform</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23C85A32'><path d='M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5'/></svg>" type="image/svg+xml" />
+
+  <link rel="stylesheet" href="css/tailwind.css" />
+  <link rel="stylesheet" href="css/animations.css" />
+  <link rel="stylesheet" href="css/components.css" />
+  <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body class="bg-paper text-ink min-h-screen flex items-center justify-center p-6">
+
+  <!-- Split Screen Card -->
+  <div class="w-full max-w-4xl editorial-card grid grid-cols-1 md:grid-cols-12 min-h-[38rem] shadow-2xl shadow-ink/10 overflow-hidden border border-ink/15 rounded-sm">
+    
+    <!-- Left Column: Rich Dark Ink -->
+    <div class="md:col-span-5 bg-ink text-paper p-8 sm:p-10 flex flex-col justify-between border-r border-paper/10">
+      <div>
+        <a href="index.html" class="flex items-center gap-2.5">
+          <div class="w-8 h-8 rounded-full bg-paper text-ink flex items-center justify-center font-serif text-base font-bold">
+            A
+          </div>
+          <span class="font-serif text-xl tracking-tight font-semibold text-paper">Aegis<span class="text-rust italic font-serif">X</span></span>
+        </a>
+
+        <div class="mt-12 space-y-4">
+          <div class="text-xs uppercase tracking-[0.18em] text-rust font-semibold">— Exporter Registration</div>
+          <h2 class="font-serif text-3xl sm:text-4xl font-medium leading-tight">
+            Register your export enterprise.
+          </h2>
+          <p class="text-xs text-paper/60 leading-relaxed">
+            Connect Razorpay webhooks, enable automated Apache Tika OCR extraction, and clear cross-border compliance in seconds.
+          </p>
+        </div>
+      </div>
+
+      <div class="pt-8 border-t border-paper/15 space-y-3 text-xs text-paper/70">
+        <div class="flex items-center gap-2.5">
+          <i data-lucide="check" class="w-4 h-4 text-brass shrink-0"></i>
+          <span>Automated WhatsApp evidence collection links</span>
+        </div>
+        <div class="flex items-center gap-2.5">
+          <i data-lucide="check" class="w-4 h-4 text-brass shrink-0"></i>
+          <span>Direct Razorpay webhook HMAC verification</span>
+        </div>
+        <div class="flex items-center gap-2.5">
+          <i data-lucide="check" class="w-4 h-4 text-brass shrink-0"></i>
+          <span>Policy evaluation with human review for holds</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right Column: Registration Form -->
+    <div class="md:col-span-7 p-8 sm:p-12 flex flex-col justify-center bg-white">
+      <div class="max-w-md w-full mx-auto space-y-5">
+        <div>
+          <h3 class="font-serif text-3xl font-medium text-ink">Merchant Setup</h3>
+          <p class="text-xs text-ink-soft mt-1">Create a merchant account for your export enterprise.</p>
+        </div>
+
+        <form id="register-form" class="space-y-3.5 font-sans">
+          <div>
+            <label class="block text-xs font-semibold text-ink uppercase tracking-wider mb-1" for="reg-company">Full Name</label>
+            <input type="text" id="reg-company" required maxlength="120" placeholder="Your full name" class="editorial-input" />
+          </div>
+
+          <div>
+            <label class="block text-xs font-semibold text-ink uppercase tracking-wider mb-1" for="reg-email">Work Email</label>
+            <input type="email" id="reg-email" required placeholder="you@company.com" class="editorial-input" />
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label class="block text-xs font-semibold text-ink uppercase tracking-wider mb-1" for="reg-password">Password</label>
+              <input type="password" id="reg-password" required placeholder="••••••••••••" class="editorial-input" />
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-ink uppercase tracking-wider mb-1" for="reg-confirm">Confirm</label>
+              <input type="password" id="reg-confirm" required placeholder="••••••••••••" class="editorial-input" />
+            </div>
+          </div>
+
+          <button type="submit" id="register-submit-btn" class="w-full aegis-btn-ink py-3 text-sm font-medium mt-2">
+            <span>Register &amp; Proceed to Login</span>
+            <i data-lucide="arrow-right" class="w-4 h-4"></i>
+          </button>
+        </form>
+
+        <div class="text-center pt-2 text-xs text-ink-soft">
+          <span>Already have an account?</span>
+          <a href="login.html" class="text-rust hover:underline font-semibold ml-1">Sign In →</a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { Auth } from './js/auth.js';
+    import { Toast } from './js/notifications.js';
+    import { Utils } from './js/utils.js';
+
+    Utils.initIcons();
+
+    document.getElementById('register-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const fullName = document.getElementById('reg-company').value.trim();
+      const email = document.getElementById('reg-email').value.trim();
+      const password = document.getElementById('reg-password').value;
+      const confirm = document.getElementById('reg-confirm').value;
+
+      if (password !== confirm) {
+        Toast.error('Passwords do not match.');
+        return;
+      }
+
+      const btn = document.getElementById('register-submit-btn');
+      btn.disabled = true;
+      btn.innerHTML = '<span>Creating Account...</span>';
+
+      await Auth.register({
+        fullName,
+        email,
+        password
+      });
+
+      btn.disabled = false;
+      btn.innerHTML = '<span>Register &amp; Proceed to Login</span><i data-lucide="arrow-right" class="w-4 h-4"></i>';
+      Utils.initIcons();
+    });
+  </script>
+</body>
+</html>

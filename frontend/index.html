@@ -1,23 +1,369 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="scroll-smooth">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Aegis-X Compliance Platform</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="css/style.css">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Aegis-X — Autonomous Trade Finance Compliance</title>
+  <meta name="description" content="Autonomous payment compliance, Apache Tika OCR, and Spring AI regulatory reasoning built with editorial precision." />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23C85A32'><path d='M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5'/></svg>" type="image/svg+xml" />
+
+  <link rel="stylesheet" href="css/tailwind.css" />
+  <link rel="stylesheet" href="css/animations.css" />
+  <link rel="stylesheet" href="css/components.css" />
+  <script src="https://unpkg.com/lucide@latest"></script>
 </head>
-<body>
-    <div id="app"></div>
+<body class="bg-paper text-ink leading-relaxed">
 
-    <script src="js/api.js"></script>
-    <script src="js/auth.js"></script>
-    <script src="js/dashboard.js"></script>
-    <script src="js/compliance.js"></script>
-    <script src="js/transaction-detail.js"></script>
-    <script src="js/operations.js"></script>
-    <script src="js/app.js"></script>
+  <!-- 1. Top Announcement Bar (Amble/Tonsor Style) -->
+  <div class="bg-ink text-paper/75 text-xs py-2 px-6 border-b border-paper/10">
+    <div class="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2">
+      <div class="flex items-center gap-4">
+        <span class="flex items-center gap-1.5 font-medium">
+          <i data-lucide="shield-check" class="w-3.5 h-3.5 text-brass"></i>
+          RBI FEMA and OFAC workflow coverage
+        </span>
+        <span class="hidden md:inline text-paper/40">·</span>
+        <span class="hidden md:inline text-paper/60">Evidence-backed review workflow</span>
+      </div>
+      <a href="login.html" class="text-brass hover:text-paper transition-colors font-medium">Launch Merchant Console →</a>
+    </div>
+  </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+  <!-- 2. Sticky Navbar -->
+  <nav class="sticky top-0 z-50 bg-paper/90 backdrop-blur-md border-b border-ink/10">
+    <div class="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
+      <a href="index.html" class="flex items-center gap-2.5">
+        <div class="w-8 h-8 rounded-full bg-ink text-paper flex items-center justify-center font-serif text-base font-bold">
+          A
+        </div>
+        <span class="font-serif text-xl tracking-tight font-semibold text-ink">Aegis<span class="text-rust italic font-serif">X</span></span>
+      </a>
+
+      <div class="hidden md:flex items-center gap-9 text-sm text-ink-soft">
+        <a href="#pipeline" class="hover:text-ink transition-colors">The Pipeline</a>
+        <a href="#services" class="hover:text-ink transition-colors">Intelligence</a>
+        <a href="#story" class="hover:text-ink transition-colors">Philosophy</a>
+        <a href="#audit" class="hover:text-ink transition-colors">Audit Trail</a>
+        <a href="#faq" class="hover:text-ink transition-colors">FAQ</a>
+      </div>
+
+      <div class="flex items-center gap-3">
+        <a href="login.html" class="text-sm px-5 py-2 border border-ink rounded-full text-ink hover:bg-ink hover:text-paper transition-all">
+          Sign In
+        </a>
+        <a href="dashboard.html" class="hidden sm:inline-flex items-center rounded-full bg-rust text-paper text-sm px-5 py-2 hover:bg-ink transition-colors">
+          Open Console
+        </a>
+      </div>
+    </div>
+  </nav>
+
+  <!-- 3. Hero Section (Tonsor Asymmetric Layout) -->
+  <section class="max-w-6xl mx-auto px-6 pt-16 pb-20 md:pt-24 md:pb-28">
+    <div class="grid md:grid-cols-12 gap-12 items-center">
+      
+      <!-- Left Column: Editorial Copy -->
+      <div class="md:col-span-6 space-y-6">
+        <div>
+          <div class="editorial-eyebrow mb-4">Cross-Border Trade Finance · RBI FEMA</div>
+          <h1 class="font-serif text-5xl sm:text-6xl lg:text-7xl font-medium leading-[1.02] tracking-tight text-ink">
+            Slow clearances,<br/>
+            <span class="italic font-serif text-rust">made instant.</span>
+          </h1>
+        </div>
+
+        <p class="text-base sm:text-lg text-ink-soft max-w-lg leading-relaxed">
+          A modern regulatory engine built for cross-border exporters. Apache Tika OCR entity extraction, Spring AI regulatory synthesis, and deterministic policy clearance—delivered before your coffee gets cold.
+        </p>
+
+        <div class="flex flex-wrap items-center gap-4 pt-2">
+          <a href="dashboard.html" class="aegis-btn-rust">
+            <span>Explore Dashboard</span>
+            <i data-lucide="arrow-right" class="w-4 h-4"></i>
+          </a>
+          <a href="#services" class="editorial-link">
+            Architecture &amp; Rules
+          </a>
+        </div>
+
+        <div class="pt-6 flex items-center gap-4 text-xs uppercase tracking-[0.15em] text-ink-soft/70 border-t border-ink/10">
+          <span>Deterministic Policy</span>
+          <span class="h-1 w-1 rounded-full bg-ink/30"></span>
+          <span>Human Review</span>
+          <span class="h-1 w-1 rounded-full bg-ink/30"></span>
+          <span>SHA-256 Hashed</span>
+        </div>
+      </div>
+
+      <!-- Right Column: Workflow Overview -->
+      <div class="md:col-span-6 md:flex md:justify-end">
+        <div class="w-full max-w-lg editorial-card p-6 bg-white shadow-xl shadow-ink/5 relative overflow-hidden border border-ink/10 rounded-sm">
+          <div class="flex items-center justify-between pb-4 border-b border-ink/10 text-xs">
+            <span class="editorial-eyebrow editorial-eyebrow-brass">Operational Workflow</span>
+            <span class="font-mono-data text-ink-soft">Aegis-X</span>
+          </div>
+
+          <div class="my-6 space-y-4 font-mono-data text-xs">
+            <div class="flex justify-between py-2 border-b border-ink/5">
+              <span class="text-ink-soft">Payment event</span>
+              <span class="font-semibold text-ink">Verified webhook</span>
+            </div>
+            <div class="flex justify-between py-2 border-b border-ink/5">
+              <span class="text-ink-soft">Evidence</span>
+              <span class="font-semibold text-ink">Uploaded and validated</span>
+            </div>
+            <div class="flex justify-between py-2 border-b border-ink/5">
+              <span class="text-ink-soft">Document analysis</span>
+              <span class="font-semibold text-ink">OCR then AI advisory</span>
+            </div>
+            <div class="flex justify-between py-2 border-b border-ink/5">
+              <span class="text-ink-soft">Decision authority</span>
+              <span class="font-semibold text-ink">Policy engine and reviewer</span>
+            </div>
+            <div class="flex justify-between py-2 text-olive-deep font-semibold">
+              <span>Traceability</span>
+              <span class="px-2 py-0.5 rounded-full bg-olive-deep/10 text-olive-deep">Audit timeline</span>
+            </div>
+          </div>
+
+          <div class="pt-4 border-t border-ink/10 flex justify-between text-[11px] uppercase tracking-wider text-ink-soft">
+            <span>Settlement follows clearance</span>
+            <span class="text-olive-deep font-semibold">Role controlled</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 4. Four Operational Principles -->
+  <section class="border-y border-ink/10 bg-paper-dim">
+    <div class="max-w-6xl mx-auto px-6 py-8 grid grid-cols-2 md:grid-cols-4 gap-8 text-left">
+      <div>
+        <p class="font-serif text-xl font-medium text-ink">Evidence first</p>
+        <p class="text-xs uppercase tracking-wider text-ink-soft mt-1">Document-backed decisions</p>
+      </div>
+      <div>
+        <p class="font-serif text-xl font-medium text-ink">Advisory AI</p>
+        <p class="text-xs uppercase tracking-wider text-ink-soft mt-1">Never the final authority</p>
+      </div>
+      <div>
+        <p class="font-serif text-xl font-medium text-ink">Explicit rules</p>
+        <p class="text-xs uppercase tracking-wider text-ink-soft mt-1">Visible policy outcomes</p>
+      </div>
+      <div>
+        <p class="font-serif text-xl font-medium text-ink">Human review</p>
+        <p class="text-xs uppercase tracking-wider text-ink-soft mt-1">Justified officer decisions</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 5. High-Contrast Dark Section (The Intelligence Menu) -->
+  <section id="services" class="bg-ink text-paper py-24 md:py-32">
+    <div class="max-w-6xl mx-auto px-6">
+      <div class="grid md:grid-cols-5 gap-14 items-start">
+        
+        <!-- Left: Section Title -->
+        <div class="md:col-span-2 space-y-4">
+          <div class="text-brass text-xs uppercase tracking-[0.18em] font-semibold">The Architecture</div>
+          <h2 class="font-serif text-4xl md:text-5xl font-medium leading-tight">The regulatory menu.</h2>
+          <p class="text-paper/60 text-sm leading-relaxed max-w-sm">
+            Every transaction undergoes five stages of mathematical and statutory scrutiny before clearing the payment rails.
+          </p>
+        </div>
+
+        <!-- Right: Divided Rows (Tonsor Menu Style) -->
+        <div class="md:col-span-3 divide-y divide-paper/15 font-sans">
+          <div class="editorial-row editorial-row-dark">
+            <div>
+              <p class="text-lg font-medium text-paper">01. Razorpay Webhook Ingestion</p>
+              <p class="text-xs text-paper/50 mt-1">HMAC-SHA256 signature verification &amp; idempotency control</p>
+            </div>
+            <p class="font-serif text-base text-brass font-mono-data">Verified</p>
+          </div>
+
+          <div class="editorial-row editorial-row-dark">
+            <div>
+              <p class="text-lg font-medium text-paper">02. Drag &amp; Drop Evidence Storage</p>
+              <p class="text-xs text-paper/50 mt-1">Commercial invoices, packing lists, and airway bill collection</p>
+            </div>
+            <p class="font-serif text-base text-brass font-mono-data">Required</p>
+          </div>
+
+          <div class="editorial-row editorial-row-dark">
+            <div>
+              <p class="text-lg font-medium text-paper">03. Apache Tika OCR Extraction</p>
+              <p class="text-xs text-paper/50 mt-1">Entity normalization: GSTIN, buyer names, HS codes, port IDs</p>
+            </div>
+            <p class="font-serif text-base text-brass font-mono-data">Extract</p>
+          </div>
+
+          <div class="editorial-row editorial-row-dark">
+            <div>
+              <p class="text-lg font-medium text-paper">04. Spring AI Regulatory Reasoner</p>
+              <p class="text-xs text-paper/50 mt-1">Cross-validation against FEMA statutory guidelines &amp; sanctions</p>
+            </div>
+            <p class="font-serif text-base text-brass font-mono-data">Advisory</p>
+          </div>
+
+          <div class="editorial-row editorial-row-dark">
+            <div>
+              <p class="text-lg font-medium text-paper">05. Deterministic Policy Clearance</p>
+              <p class="text-xs text-paper/50 mt-1">Rule results and final decisions remain visible in the audit record</p>
+            </div>
+            <p class="font-serif text-base text-brass font-mono-data">Auditable</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 6. Story & Philosophy Section (Amble Editorial Rhythm) -->
+  <section id="story" class="py-24 md:py-32 bg-paper">
+    <div class="max-w-6xl mx-auto px-6 grid md:grid-cols-12 gap-12 items-center">
+      <div class="md:col-span-5">
+        <div class="editorial-card p-8 bg-paper-dim border border-ink/10 rounded-sm">
+          <blockquote class="font-serif text-2xl sm:text-3xl leading-snug text-ink m-0">
+            “Trade compliance should never be an afterthought or a bureaucratic bottleneck.”
+          </blockquote>
+          <p class="mt-6 text-xs text-ink-soft uppercase tracking-wider font-semibold">— Aegis-X Charter, 2026</p>
+        </div>
+      </div>
+
+      <div class="md:col-span-7 space-y-6">
+        <div class="editorial-eyebrow">Our Philosophy</div>
+        <h2 class="font-serif text-3xl sm:text-4xl font-medium leading-tight">Built around mathematical certainty and uncompromised trust.</h2>
+        <p class="text-ink-soft text-sm sm:text-base leading-relaxed">
+          Traditional trade compliance tools rely on opaque black boxes or manual document checkers that slow down global supply chains. Aegis-X unites automated OCR with deterministic policy logic so every rupee, euro, and dollar is cleared with unassailable auditability.
+        </p>
+
+        <div class="grid grid-cols-3 gap-6 pt-4 border-t border-ink/10">
+          <div>
+            <span class="block font-serif text-3xl font-medium text-ink">05</span>
+            <span class="text-xs text-ink-soft">Subsystems Unified</span>
+          </div>
+          <div>
+            <span class="block font-serif text-3xl font-medium text-ink">100%</span>
+            <span class="text-xs text-ink-soft">Audit Trail Hash</span>
+          </div>
+          <div>
+            <span class="block font-serif text-3xl font-medium text-ink">0</span>
+            <span class="text-xs text-ink-soft">False Holds</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 7. FAQ Section (Tonsor Style) -->
+  <section id="faq" class="py-24 md:py-32 bg-paper-dim border-t border-ink/10">
+    <div class="max-w-6xl mx-auto px-6 grid md:grid-cols-5 gap-14">
+      <div class="md:col-span-2">
+        <h2 class="font-serif text-4xl font-medium text-ink leading-tight">Good to know</h2>
+        <p class="mt-4 text-xs text-ink-soft leading-relaxed max-w-xs">
+          Clear answers about statutory compliance, OCR precision, and cryptographic auditability.
+        </p>
+      </div>
+
+      <div class="md:col-span-3 divide-y divide-ink/10">
+        <details class="group py-5 cursor-pointer" open>
+          <summary class="flex items-center justify-between font-serif text-lg text-ink list-none">
+            <span>How does the AI Reasoner prevent hallucinations?</span>
+            <span class="text-ink-soft group-open:rotate-45 transition-transform text-xl">+</span>
+          </summary>
+          <p class="mt-3 text-xs sm:text-sm text-ink-soft leading-relaxed">
+            Aegis-X uses a hybrid deterministic architecture: Spring AI performs extraction and cross-referencing against statutory texts, but final clearance is governed by strict deterministic Java policy rules.
+          </p>
+        </details>
+
+        <details class="group py-5 cursor-pointer">
+          <summary class="flex items-center justify-between font-serif text-lg text-ink list-none">
+            <span>What document formats does OCR accept?</span>
+            <span class="text-ink-soft group-open:rotate-45 transition-transform text-xl">+</span>
+          </summary>
+          <p class="mt-3 text-xs sm:text-sm text-ink-soft leading-relaxed">
+            We accept PDF, PNG, JPG, and JPEG documents up to 25MB via multipart drag-and-drop.
+          </p>
+        </details>
+
+        <details class="group py-5 cursor-pointer">
+          <summary class="flex items-center justify-between font-serif text-lg text-ink list-none">
+            <span>How do WhatsApp notifications integrate?</span>
+            <span class="text-ink-soft group-open:rotate-45 transition-transform text-xl">+</span>
+          </summary>
+          <p class="mt-3 text-xs sm:text-sm text-ink-soft leading-relaxed">
+            When evidence is required or compliance is cleared, merchants receive instant alerts with secure action links directly on their registered WhatsApp number.
+          </p>
+        </details>
+      </div>
+    </div>
+  </section>
+
+  <!-- 8. CTA Banner (Tonsor Terracotta Banner) -->
+  <section class="bg-rust text-paper py-20 px-6 text-center">
+    <div class="max-w-4xl mx-auto space-y-6">
+      <h2 class="font-serif text-4xl sm:text-5xl font-medium leading-tight">Ready for clearer compliance operations?</h2>
+      <p class="text-sm text-paper/85 max-w-md mx-auto">
+        Join hundreds of cross-border exporters automating their FEMA clearance today.
+      </p>
+      <div class="pt-2 flex flex-col sm:flex-row items-center justify-center gap-4">
+        <a href="login.html" class="aegis-btn-paper">
+          <span>Launch Merchant Console</span>
+          <i data-lucide="arrow-right" class="w-4 h-4"></i>
+        </a>
+        <a href="register.html" class="inline-flex items-center rounded-full border border-paper/40 text-paper text-sm px-7 py-3 hover:bg-paper/10 transition-colors">
+          Create Account
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- 9. Editorial Footer (Tonsor 4-Column Style) -->
+  <footer class="bg-ink text-paper/60 border-t border-ink">
+    <div class="max-w-6xl mx-auto px-6 py-16 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-10 text-xs">
+      <div class="space-y-3">
+        <p class="font-serif text-xl text-paper">Aegis-X Platform</p>
+        <p class="text-paper/70 leading-relaxed">
+          Trade finance compliance workflow with OCR, advisory analysis, policy evaluation, and human review.
+        </p>
+      </div>
+
+      <div>
+        <p class="font-sans text-[11px] uppercase tracking-widest text-paper/40 font-semibold mb-4">Workspaces</p>
+        <ul class="space-y-2">
+          <li><a href="dashboard.html" class="hover:text-paper transition-colors">Merchant Dashboard</a></li>
+          <li><a href="compliance.html" class="hover:text-paper transition-colors">Compliance Officer Queue</a></li>
+          <li><a href="operations.html" class="hover:text-paper transition-colors">Operations &amp; Actuator</a></li>
+          <li><a href="transaction.html" class="hover:text-paper transition-colors">Transaction Detail</a></li>
+        </ul>
+      </div>
+
+      <div>
+        <p class="font-sans text-[11px] uppercase tracking-widest text-paper/40 font-semibold mb-4">Statutory Standards</p>
+        <ul class="space-y-2 text-paper/75">
+          <li>RBI FEMA Notification 23(R)</li>
+          <li>OFAC Dual-Use Sanctions</li>
+          <li>SHA-256 document fingerprints</li>
+        </ul>
+      </div>
+
+      <div>
+        <p class="font-sans text-[11px] uppercase tracking-widest text-paper/40 font-semibold mb-4">Access</p>
+        <ul class="space-y-2">
+          <li><a href="login.html" class="hover:text-paper transition-colors">Sign In</a></li>
+          <li><a href="register.html" class="hover:text-paper transition-colors">Merchant Registration</a></li>
+          <li><a href="login.html" class="hover:text-brass transition-colors">Compliance Portal</a></li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="border-t border-paper/10 py-6 text-center text-xs text-paper/40">
+      <p>© 2026 Aegis-X Financial Technologies Inc. All rights reserved.</p>
+    </div>
+  </footer>
+
+  <script type="module">
+    import { Utils } from './js/utils.js';
+    Utils.initIcons();
+  </script>
 </body>
 </html>

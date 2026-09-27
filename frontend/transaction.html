@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Transaction Workspace — Aegis-X</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23C85A32'><path d='M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5'/></svg>" type="image/svg+xml" />
+
+  <link rel="stylesheet" href="css/tailwind.css" />
+  <link rel="stylesheet" href="css/animations.css" />
+  <link rel="stylesheet" href="css/components.css" />
+  <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body class="bg-paper text-ink flex min-h-screen">
+
+  <!-- Sidebar -->
+  <aside class="w-64 bg-paper-dim border-r border-ink/10 flex flex-col justify-between hidden md:flex shrink-0">
+    <div>
+      <div class="h-18 px-6 flex items-center gap-3 border-b border-ink/10">
+        <div class="w-8 h-8 rounded-full bg-ink text-paper flex items-center justify-center font-serif text-sm font-bold">
+          A
+        </div>
+        <div>
+          <span class="font-serif text-base tracking-tight font-semibold text-ink block">Aegis<span class="text-rust italic">X</span></span>
+          <span class="text-[9px] tracking-widest uppercase font-semibold text-ink-soft">WORKSPACE</span>
+        </div>
+      </div>
+
+      <nav class="p-4 space-y-1 font-sans">
+        <a data-roles="MERCHANT" href="dashboard.html" class="flex items-center gap-3 px-3.5 py-2.5 rounded-full text-sm font-medium text-ink-soft hover:text-ink hover:bg-ink/5 transition-all">
+          <i data-lucide="layout-dashboard" class="w-4 h-4"></i>
+          <span>Merchant Console</span>
+        </a>
+        <a data-roles="COMPLIANCE_OFFICER,ADMIN" href="compliance.html" class="flex items-center gap-3 px-3.5 py-2.5 rounded-full text-sm font-medium text-ink-soft hover:text-ink hover:bg-ink/5 transition-all">
+          <i data-lucide="shield" class="w-4 h-4"></i>
+          <span>Compliance Queue</span>
+        </a>
+        <a data-roles="SETTLEMENT_OPERATOR,COMPLIANCE_OFFICER" href="settlement.html" class="flex items-center gap-3 px-3.5 py-2.5 rounded-full text-sm font-medium text-ink-soft hover:text-ink hover:bg-ink/5 transition-all">
+          <i data-lucide="landmark" class="w-4 h-4"></i>
+          <span>Settlement Desk</span>
+        </a>
+        <a data-roles="ADMIN" href="operations.html" class="flex items-center gap-3 px-3.5 py-2.5 rounded-full text-sm font-medium text-ink-soft hover:text-ink hover:bg-ink/5 transition-all">
+          <i data-lucide="activity" class="w-4 h-4"></i>
+          <span>Operations &amp; Metrics</span>
+        </a>
+      </nav>
+    </div>
+
+    <div class="p-4 border-t border-ink/10">
+      <a href="dashboard.html" class="flex items-center gap-2 text-xs text-ink-soft hover:text-ink transition-colors font-medium">
+        <i data-lucide="arrow-left" class="w-4 h-4"></i>
+        <span>Return to Dashboard</span>
+      </a>
+    </div>
+  </aside>
+
+  <!-- Main Viewport -->
+  <div class="flex-1 flex flex-col min-w-0">
+    
+    <!-- Topbar -->
+    <header class="h-18 bg-paper/90 backdrop-blur border-b border-ink/10 px-6 flex items-center justify-between sticky top-0 z-30">
+      <div class="flex items-center gap-4">
+        <a href="dashboard.html" class="md:hidden text-ink-soft hover:text-ink">
+          <i data-lucide="arrow-left" class="w-5 h-5"></i>
+        </a>
+        <div>
+          <div class="flex items-center gap-2">
+            <span class="text-xs text-ink-soft uppercase font-semibold">Remittance Dossier</span>
+            <span id="tx-id-display" class="font-mono-data font-bold text-rust text-xs sm:text-sm">tx_loading...</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-3">
+        <div id="tx-status-badge"></div>
+        <div class="relative">
+          <button id="notifications-toggle" type="button" class="aegis-btn-outline py-1.5 px-3.5 text-xs" aria-expanded="false" aria-controls="transaction-notifications-panel" title="Transaction notifications">
+            <i data-lucide="bell" class="w-3.5 h-3.5"></i>
+            <span class="sr-only">Transaction notifications</span>
+          </button>
+          <section id="transaction-notifications-panel" class="hidden absolute right-0 top-full mt-2 w-80 max-w-[calc(100vw-2rem)] p-4 bg-white border border-ink/15 shadow-xl z-50" aria-label="Transaction notifications">
+            <h2 class="font-serif text-lg text-ink">Notification history</h2>
+            <div id="transaction-notifications" class="mt-3 max-h-80 overflow-y-auto" aria-live="polite"></div>
+          </section>
+        </div>
+        <button id="export-audit" type="button" class="aegis-btn-outline py-1.5 px-3.5 text-xs">
+          <i data-lucide="download" class="w-3.5 h-3.5"></i>
+          <span>Export Audit JSON</span>
+        </button>
+      </div>
+    </header>
+
+    <main class="p-6 md:p-8 space-y-6 max-w-6xl w-full mx-auto">
+      
+      <!-- Master Header Banner (Editorial Tonsor / Amble Blend) -->
+      <div class="editorial-card p-6 bg-white grid grid-cols-1 md:grid-cols-3 gap-6 items-center">
+        <div>
+          <span class="text-[10px] text-ink-soft uppercase tracking-wider block font-semibold">Consignee</span>
+          <p id="tx-buyer-display" class="font-serif text-xl font-medium text-ink mt-0.5 truncate">—</p>
+        </div>
+        <div>
+          <span class="text-[10px] text-ink-soft uppercase tracking-wider block font-semibold">Declared Value</span>
+          <p id="tx-amount-display" class="font-serif text-xl font-medium text-rust font-mono-data mt-0.5">—</p>
+        </div>
+        <div>
+          <span class="text-[10px] text-ink-soft uppercase tracking-wider block font-semibold">Ingestion Timestamp</span>
+          <p id="tx-date-display" class="text-xs text-ink-soft font-mono-data mt-1">—</p>
+        </div>
+      </div>
+
+      <!-- Navigation Tabs (Editorial Underline Style) -->
+      <div class="border-b border-ink/10 flex items-center gap-4 overflow-x-auto text-sm font-sans">
+        <button class="aegis-tab-btn active pb-3 text-ink border-b-2 border-ink font-medium" data-tab="summary">
+          <i data-lucide="file-text" class="w-3.5 h-3.5 inline mr-1"></i> Summary
+        </button>
+        <button class="aegis-tab-btn pb-3 text-ink-soft hover:text-ink transition-colors" data-tab="evidence">
+          <i data-lucide="upload-cloud" class="w-3.5 h-3.5 inline mr-1 text-rust"></i> Evidence Upload
+        </button>
+        <button class="aegis-tab-btn pb-3 text-ink-soft hover:text-ink transition-colors" data-tab="ocr">
+          <i data-lucide="scan-line" class="w-3.5 h-3.5 inline mr-1 text-olive-deep"></i> OCR Extraction
+        </button>
+        <button class="aegis-tab-btn pb-3 text-ink-soft hover:text-ink transition-colors" data-tab="ai">
+          <i data-lucide="sparkles" class="w-3.5 h-3.5 inline mr-1 text-brass"></i> AI Regulatory Reasoner
+        </button>
+        <button class="aegis-tab-btn pb-3 text-ink-soft hover:text-ink transition-colors" data-tab="policy">
+          <i data-lucide="scale" class="w-3.5 h-3.5 inline mr-1 text-olive-deep"></i> Deterministic Policy
+        </button>
+        <button class="aegis-tab-btn pb-3 text-ink-soft hover:text-ink transition-colors" data-tab="audit">
+          <i data-lucide="history" class="w-3.5 h-3.5 inline mr-1 text-ink-soft"></i> Audit Timeline
+        </button>
+        <button class="aegis-tab-btn pb-3 text-ink-soft hover:text-ink transition-colors" data-tab="notes">
+          <i data-lucide="message-circle" class="w-3.5 h-3.5 inline mr-1 text-rust"></i> Review Notes
+        </button>
+      </div>
+
+      <!-- TAB 1: SUMMARY -->
+      <div id="tab-summary" class="tab-content-panel space-y-6">
+        <div class="editorial-card p-6 bg-white">
+          <h3 class="font-serif text-xl font-medium text-ink mb-4">Regulatory Metadata &amp; Declaration</h3>
+          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 text-xs font-sans">
+            <div class="p-3.5 rounded-sm bg-paper-dim border border-ink/10">
+              <span class="text-ink-soft uppercase font-semibold block mb-1">Merchant Identifier</span>
+              <span id="summary-merchant-id" class="text-ink font-mono-data font-semibold">—</span>
+            </div>
+            <div class="p-3.5 rounded-sm bg-paper-dim border border-ink/10">
+              <span class="text-ink-soft uppercase font-semibold block mb-1">Purpose Code</span>
+              <span id="summary-purpose-code" class="text-rust font-mono-data font-semibold">—</span>
+            </div>
+            <div class="p-3.5 rounded-sm bg-paper-dim border border-ink/10">
+              <span class="text-ink-soft uppercase font-semibold block mb-1">Currency</span>
+              <span id="summary-currency" class="text-ink font-semibold">—</span>
+            </div>
+            <div class="p-3.5 rounded-sm bg-paper-dim border border-ink/10">
+              <span class="text-ink-soft uppercase font-semibold block mb-1">Current State</span>
+              <span id="summary-current-state" class="text-ink font-semibold">—</span>
+            </div>
+            <div class="p-3.5 rounded-sm bg-paper-dim border border-ink/10">
+              <span class="text-ink-soft uppercase font-semibold block mb-1">Transaction Reference</span>
+              <span id="summary-reference" class="text-ink font-mono-data font-semibold break-all">—</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB 2: EVIDENCE UPLOAD (Mandatory Drag-and-Drop) -->
+      <div id="tab-evidence" class="tab-content-panel hidden space-y-6">
+        <div class="editorial-card p-6 bg-white">
+          <div class="mb-6">
+            <h3 class="font-serif text-xl font-medium text-ink">Commercial Evidence Upload</h3>
+            <p class="text-xs text-ink-soft">Upload trade invoices, packing lists, or airway bills for Apache Tika OCR extraction.</p>
+          </div>
+
+          <div id="evidence-dropzone" class="editorial-dropzone">
+            <input type="file" id="evidence-file-input" class="hidden" accept=".pdf,.png,.jpg,.jpeg" />
+            <div class="p-4 rounded-full bg-paper text-ink inline-flex mb-3 border border-ink/10">
+              <i data-lucide="upload-cloud" class="w-8 h-8 text-rust"></i>
+            </div>
+            <h4 class="font-serif text-lg font-medium text-ink">Drag &amp; Drop Evidence Document Here</h4>
+            <p class="text-xs text-ink-soft mt-1">or <span class="text-rust underline cursor-pointer">browse your files</span></p>
+            <p class="text-[11px] text-ink-soft mt-3 font-mono-data">Supported: PDF, PNG, JPG, JPEG (Max 25MB)</p>
+          </div>
+
+          <div class="mt-4 max-w-sm">
+            <label for="evidence-document-type" class="block text-xs font-semibold text-ink mb-1.5">Evidence type</label>
+            <select id="evidence-document-type" class="editorial-input bg-white">
+              <option value="COMMERCIAL_INVOICE">Commercial invoice</option>
+              <option value="SHIPPING_BILL">Shipping bill</option>
+              <option value="PACKING_LIST">Packing list</option>
+              <option value="CERTIFICATE_OF_ORIGIN">Certificate of origin</option>
+              <option value="EXPORT_DECLARATION">Export declaration</option>
+            </select>
+          </div>
+
+          <div id="upload-preview" class="mt-4"></div>
+          <div id="evidence-list" class="mt-6" aria-live="polite"></div>
+        </div>
+      </div>
+
+      <!-- TAB 3: OCR EXTRACTION -->
+      <div id="tab-ocr" class="tab-content-panel hidden"></div>
+
+      <!-- TAB 4: AI REASONER -->
+      <div id="tab-ai" class="tab-content-panel hidden"></div>
+
+      <!-- TAB 5: DETERMINISTIC POLICY -->
+      <div id="tab-policy" class="tab-content-panel hidden"></div>
+
+      <!-- TAB 6: AUDIT TIMELINE -->
+      <div id="tab-audit" class="tab-content-panel hidden"></div>
+
+      <!-- TAB 7: REVIEW NOTES -->
+      <div id="tab-notes" class="tab-content-panel hidden space-y-6">
+        <div class="editorial-card p-6 bg-white">
+          <div class="flex items-center justify-between mb-4 pb-3 border-b border-ink/10">
+            <h3 class="font-serif text-xl font-medium text-ink">Compliance Officer Audit Notes</h3>
+            <span class="text-xs text-ink-soft uppercase font-semibold">Permanent Record</span>
+          </div>
+
+          <div id="notes-list" class="space-y-3 mb-6"></div>
+
+          <form id="new-note-form" class="space-y-3 pt-4 border-t border-ink/10 font-sans">
+            <textarea id="note-input" rows="3" required minlength="10" maxlength="5000" placeholder="Add statutory review notes or justification..." class="editorial-input"></textarea>
+            <div class="flex justify-end">
+              <button type="submit" class="aegis-btn-ink py-2 px-5 text-xs font-medium">
+                <i data-lucide="send" class="w-3.5 h-3.5"></i>
+                <span>Post Review Note</span>
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script type="module" src="js/transaction.js"></script>
+</body>
+</html>

@@ -1,0 +1,209 @@
+package com.aegisx.settlement.dto;
+
+import com.aegisx.settlement.entity.PaymentProcessor;
+import jakarta.validation.constraints.*;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+import java.math.BigDecimal;
+import java.util.Map;
+import java.util.UUID;
+
+/**
+ * Request DTO for initiating settlements.
+ * Used when creating new settlement requests.
+ */
+@Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+public class SettlementRequest {
+
+    @NotNull(message = "Transaction ID is required")
+    private UUID transactionId;
+
+    @NotNull(message = "Payment processor is required")
+    private PaymentProcessor paymentProcessor;
+
+    @NotNull(message = "Settlement amount is required")
+    @DecimalMin(value = "0.01", message = "Settlement amount must be positive")
+    @Digits(integer = 13, fraction = 2, message = "Invalid amount format")
+    private BigDecimal settlementAmount;
+
+    @NotBlank(message = "Settlement currency is required")
+    @Size(min = 3, max = 3, message = "Currency code must be 3 characters")
+    @Pattern(regexp = "^[A-Z]{3}$", message = "Currency code must be uppercase ISO format")
+    private String settlementCurrency;
+
+    @DecimalMin(value = "0.000001", message = "Exchange rate must be positive")
+    @Digits(integer = 4, fraction = 6, message = "Invalid exchange rate format")
+    private BigDecimal exchangeRate;
+
+    @DecimalMin(value = "0.00", message = "Processing fees cannot be negative")
+    @Digits(integer = 8, fraction = 2, message = "Invalid fee format")
+    private BigDecimal processingFees;
+
+    private String beneficiaryAccountNumber;
+    private String beneficiaryBankCode;
+    private String beneficiaryName;
+    private String beneficiaryAddress;
+
+    private String remitterAccountNumber;
+    private String remitterBankCode;
+    private String remitterName;
+
+    @Size(max = 200, message = "Payment purpose too long")
+    private String paymentPurpose;
+
+    @Size(max = 500, message = "Settlement instructions too long")
+    private String settlementInstructions;
+
+    private Map<String, Object> additionalData;
+
+    private boolean prioritySettlement;
+    private boolean requiresReconciliation;
+
+    /**
+     * Validates the settlement request.
+     */
+    public void validate() {
+        if (transactionId == null) {
+            throw new IllegalArgumentException("Transaction ID is required");
+        }
+        
+        if (paymentProcessor == null) {
+            throw new IllegalArgumentException("Payment processor is required");
+        }
+        
+        if (settlementAmount == null || settlementAmount.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new IllegalArgumentException("Settlement amount must be positive");
+        }
+        
+        if (settlementCurrency == null || settlementCurrency.length() != 3) {
+            throw new IllegalArgumentException("Valid 3-letter currency code is required");
+        }
+        
+        // Processor-specific validations
+        validateProcessorSpecificRequirements();
+    }
+
+    /**
+     * Validates processor-specific requirements.
+     */
+    private void validateProcessorSpecificRequirements() {
+        switch (paymentProcessor) {
+            case SWIFT -> {
+                if (beneficiaryBankCode == null || beneficiaryBankCode.isEmpty()) {
+                    throw new IllegalArgumentException("Beneficiary bank code is required for SWIFT");
+                }
+                if (beneficiaryAccountNumber == null || beneficiaryAccountNumber.isEmpty()) {
+                    throw new IllegalArgumentException("Beneficiary account number is required for SWIFT");
+                }
+            }
+            case ACH -> {
+                if (beneficiaryAccountNumber == null || beneficiaryAccountNumber.length() < 4) {
+                    throw new IllegalArgumentException("Valid beneficiary account number is required for ACH");
+                }
+                if (beneficiaryBankCode == null || beneficiaryBankCode.length() != 9) {
+                    throw new IllegalArgumentException("Valid 9-digit routing number is required for ACH");
+                }
+            }
+            case VISA_DIRECT, MASTERCARD_SEND -> {
+                if (beneficiaryAccountNumber == null || 
+                    !beneficiaryAccountNumber.matches("^\\d{13,19}$")) {
+                    throw new IllegalArgumentException("Valid card number is required for card networks");
+                }
+            }
+            // Add other processor validations as needed
+        }
+    }
+
+    /**
+     * Returns true if cross-border settlement.
+     */
+    public boolean isCrossBorder() {
+        return paymentProcessor.supportsCrossBorder();
+    }
+
+    /**
+     * Gets estimated settlement time in hours.
+     */
+    public int getEstimatedSettlementHours() {
+        int baseHours = paymentProcessor.getTypicalSettlementHours();
+        return prioritySettlement ? Math.max(1, baseHours / 2) : baseHours;
+    }
+
+    /**
+     * Gets net settlement amount after fees.
+     */
+    public BigDecimal getNetSettlementAmount() {
+        if (processingFees == null) {
+            return settlementAmount;
+        }
+        return settlementAmount.subtract(processingFees);
+    }
+
+    /**
+     * Creates a basic settlement request for testing.
+     */
+    public static SettlementRequest createBasic(UUID transactionId, 
+                                              PaymentProcessor processor, 
+                                              BigDecimal amount, 
+                                              String currency) {
+        return SettlementRequest.builder()
+                .transactionId(transactionId)
+                .paymentProcessor(processor)
+                .settlementAmount(amount)
+                .settlementCurrency(currency)
+                .requiresReconciliation(true)
+                .build();
+    }
+
+    /**
+     * Creates a SWIFT settlement request.
+     */
+    public static SettlementRequest createSwiftSettlement(UUID transactionId,
+                                                        BigDecimal amount,
+                                                        String currency,
+                                                        String beneficiaryAccount,
+                                                        String beneficiaryBank,
+                                                        String beneficiaryName) {
+        return SettlementRequest.builder()
+                .transactionId(transactionId)
+                .paymentProcessor(PaymentProcessor.SWIFT)
+                .settlementAmount(amount)
+                .settlementCurrency(currency)
+                .beneficiaryAccountNumber(beneficiaryAccount)
+                .beneficiaryBankCode(beneficiaryBank)
+                .beneficiaryName(beneficiaryName)
+                .requiresReconciliation(true)
+                .build();
+    }
+
+    /**
+     * Creates a card network settlement request.
+     */
+    public static SettlementRequest createCardSettlement(UUID transactionId,
+                                                       PaymentProcessor processor,
+                                                       BigDecimal amount,
+                                                       String currency,
+                                                       String cardNumber,
+                                                       String cardHolderName) {
+        if (processor != PaymentProcessor.VISA_DIRECT && processor != PaymentProcessor.MASTERCARD_SEND) {
+            throw new IllegalArgumentException("Invalid processor for card settlement");
+        }
+        
+        return SettlementRequest.builder()
+                .transactionId(transactionId)
+                .paymentProcessor(processor)
+                .settlementAmount(amount)
+                .settlementCurrency(currency)
+                .beneficiaryAccountNumber(cardNumber)
+                .beneficiaryName(cardHolderName)
+                .prioritySettlement(true)
+                .requiresReconciliation(false)
+                .build();
+    }
+}

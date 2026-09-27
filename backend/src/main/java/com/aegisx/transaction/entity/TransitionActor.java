@@ -2,16 +2,18 @@ package com.aegisx.transaction.entity;
 
 /**
  * Identifies the initiating actor or subsystem triggering a transaction lifecycle transition.
- * Prepares the domain model for structured audit event logging in future phases.
+ * Used for structured audit event logging and state transition attribution.
  */
 public enum TransitionActor {
     MERCHANT,
     SYSTEM,
-    RAZORPAY,
+    RAZORPAY_GATEWAY,
     DOCUMENT_SERVICE,
-    OCR_PIPELINE,
-    SPRING_AI,
+    OCR_SERVICE,
+    AI_SERVICE,
     POLICY_ENGINE,
     COMPLIANCE_OFFICER,
-    ADMIN
+    ADMIN,
+    EVIDENCE_SERVICE,
+    NOTIFICATION_SERVICE
 }

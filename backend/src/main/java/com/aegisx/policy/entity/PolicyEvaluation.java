@@ -1,76 +1,150 @@
 package com.aegisx.policy.entity;
 
+import com.aegisx.common.entity.BaseEntity;
+import com.aegisx.ai.entity.AIAnalysis;
+import com.aegisx.transaction.entity.Transaction;
 import com.fasterxml.jackson.databind.JsonNode;
-import jakarta.persistence.*;
+import io.hypersistence.utils.hibernate.type.json.JsonType;
+import jakarta.persistence.CascadeType;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
+import jakarta.persistence.OneToMany;
+import jakarta.persistence.Table;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
-import lombok.Data;
+import lombok.Getter;
 import lombok.NoArgsConstructor;
-import org.hibernate.annotations.JdbcTypeCode;
-import org.hibernate.type.SqlTypes;
+import lombok.Setter;
+import org.hibernate.annotations.Type;
 
-import java.math.BigDecimal;
-import java.time.LocalDateTime;
-import java.util.UUID;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
- * PolicyEvaluation entity represents an immutable record of compliance policy decisions.
+ * Policy Evaluation Entity - immutable record of compliance policy decisions.
+ * Implements the policy evaluations specification from TAS Section 6.
  * 
  * Purpose:
- * - Persist the final system decision: APPROVED or COMPLIANCE_HOLD
- * - Store complete rule evaluation audit trail
- * - Enable reproducibility and explainability of every compliance decision
- * - Never overwrite: each evaluation is immutable; only insert operations allowed
- * 
- * Constraints:
- * - final_decision must be APPROVED or COMPLIANCE_HOLD
- * - overall_score reflects aggregated rule results (0-100 or null)
- * - evaluation_json contains full rule results and evidence
- * - processing_duration_ms tracks performance for monitoring
- * - Transaction must exist; ai_analysis may be null but typically populated
+ * - Persist final system decision: APPROVED or HOLD
+ * - Store complete rule evaluation audit trail with violations
+ * - Enable reproducibility and explainability of compliance decisions
+ * - Immutable: only insert operations allowed, no updates
  */
-@Entity
-@Table(name = "policy_evaluations", indexes = {
-    @Index(name = "idx_policy_eval_transaction_id", columnList = "transaction_id"),
-    @Index(name = "idx_policy_eval_created_at", columnList = "created_at DESC"),
-    @Index(name = "idx_policy_eval_final_decision", columnList = "final_decision")
-})
-@Data
+@Getter
+@Setter
+@Builder
 @NoArgsConstructor
 @AllArgsConstructor
-@Builder
-public class PolicyEvaluation {
-    
-    @Id
-    @GeneratedValue(strategy = GenerationType.UUID)
-    private UUID id;
-    
-    @Column(name = "transaction_id", nullable = false)
-    private UUID transactionId;
-    
-    @Column(name = "ai_analysis_id")
-    private UUID aiAnalysisId;
-    
-    @Column(name = "final_decision", nullable = false, length = 50)
+@Entity
+@Table(name = "policy_evaluations")
+public class PolicyEvaluation extends BaseEntity {
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "transaction_id", nullable = false)
+    private Transaction transaction;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "ai_analysis_id")
+    private AIAnalysis aiAnalysis;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "verdict", nullable = false, length = 20)
+    private PolicyVerdict verdict;
+
+    @Column(name = "total_rules_count", nullable = false)
+    private Integer totalRulesCount;
+
+    @Column(name = "passed_rules_count", nullable = false)
+    private Integer passedRulesCount;
+
+    @Column(name = "failed_rules_count", nullable = false)
+    private Integer failedRulesCount;
+
+    @Column(name = "engine_version", nullable = false, length = 20)
+    @Builder.Default
+    private String engineVersion = "1.0.0";
+
+    @Column(name = "evaluated_at", nullable = false)
+    private java.time.LocalDateTime evaluatedAt;
+
+    @OneToMany(mappedBy = "policyEvaluation", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    @Builder.Default
+    private List<PolicyViolation> violations = new ArrayList<>();
+
+    // Legacy fields for backward compatibility
+    @Column(name = "final_decision", length = 50)
     private String finalDecision;
-    
+
     @Column(name = "overall_score")
-    private BigDecimal overallScore;
-    
-    @Column(name = "evaluation_json", nullable = false, columnDefinition = "JSONB")
-    @JdbcTypeCode(SqlTypes.JSON)
+    private java.math.BigDecimal overallScore;
+
+    @Type(JsonType.class)
+    @Column(name = "evaluation_json", columnDefinition = "jsonb")
     private JsonNode evaluationJson;
-    
-    @Column(name = "processing_duration_ms", nullable = false)
+
+    @Column(name = "processing_duration_ms")
     private Long processingDurationMs;
-    
-    @Column(name = "created_at", nullable = false, updatable = false)
-    private LocalDateTime createdAt;
-    
-    @PrePersist
-    protected void onCreate() {
-        if (createdAt == null) {
-            createdAt = LocalDateTime.now();
+
+    /**
+     * Adds a policy violation to this evaluation.
+     */
+    public void addViolation(PolicyViolation violation) {
+        if (violations == null) {
+            violations = new ArrayList<>();
         }
+        violations.add(violation);
+        violation.setPolicyEvaluation(this);
+    }
+
+    /**
+     * Creates a new policy evaluation with the given verdict.
+     */
+    public static PolicyEvaluation createEvaluation(Transaction transaction, AIAnalysis aiAnalysis, 
+                                                    PolicyVerdict verdict, int totalRules, 
+                                                    int passedRules, int failedRules) {
+        return PolicyEvaluation.builder()
+                .transaction(transaction)
+                .aiAnalysis(aiAnalysis)
+                .verdict(verdict)
+                .totalRulesCount(totalRules)
+                .passedRulesCount(passedRules)
+                .failedRulesCount(failedRules)
+                .evaluatedAt(java.time.LocalDateTime.now())
+                .build();
+    }
+
+    /**
+     * Returns true if this evaluation resulted in approval.
+     */
+    public boolean isApproved() {
+        return verdict == PolicyVerdict.APPROVED;
+    }
+
+    /**
+     * Returns true if this evaluation resulted in a hold.
+     */
+    public boolean isHold() {
+        return verdict == PolicyVerdict.HOLD;
+    }
+
+    /**
+     * Gets all critical violations.
+     */
+    public List<PolicyViolation> getCriticalViolations() {
+        return violations.stream()
+                .filter(PolicyViolation::isCritical)
+                .toList();
+    }
+
+    /**
+     * Returns true if there are any critical violations.
+     */
+    public boolean hasCriticalViolations() {
+        return violations.stream().anyMatch(PolicyViolation::isCritical);
     }
 }
