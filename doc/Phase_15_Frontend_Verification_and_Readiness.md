@@ -1,6 +1,6 @@
 # Phase 15 Frontend Verification and Readiness
 
-**Status: Partially implemented; production acceptance is blocked.** The frontend now consumes the verified Spring API contracts for the implemented screens, but no authenticated end-to-end workflow has been demonstrated. The backend was unreachable during this run and its Maven test command stopped during dependency resolution.
+**Status: Frontend source-level verification passed; production acceptance remains blocked.** This report records the Phase 15 verification snapshot. The backend status has since changed: as of 2026-09-27, `./mvnw clean verify` passes (296 tests, 0 failures/errors), and the frontend tests/build pass (82 assertions and Vite production build). No authenticated end-to-end workflow against live PostgreSQL and provider accounts has yet been demonstrated. See [Aegis-X Current Project Status](Aegis_X_Current_Project_Status.md) for the current assessment.
 
 ## 1. API Integration Verification
 
@@ -19,7 +19,7 @@ Shared API handling adds bearer authorization, request correlation IDs, response
 
 The local backend probe at `http://localhost:8080/actuator/health` failed to connect. `backend/mvnw.cmd -f backend/pom.xml test` failed before compilation because Maven could not resolve the cached dependencies `org.apache.commons:commons-imaging:1.0` and `org.springframework.ai:spring-ai-openai-spring-boot-starter:1.0.5`. Therefore source inspection and frontend tests are not evidence of a successful live integration.
 
-Further source inspection found that the review, settlement, and evidence controllers import `ApiResponse` types from `com.aegisx.common.dto` or `com.aegisx.common.response`, but no matching `ApiResponse.java` exists in the current workspace. The frontend unwraps the conventional `{ success, data, message }` shape; this cannot be confirmed against a compilable response DTO until those backend classes are restored. Several requested review filters (notably settlement failure) also are not represented by `ReviewQueueItemResponse`; category coverage should be validated or implemented with backend query support before acceptance.
+At the time of this Phase 15 snapshot, the shared response DTO contract was unresolved. Both `com.aegisx.common.dto.ApiResponse` and `com.aegisx.common.response.ApiResponse` are now present and compile. Several review filters (notably settlement failure) still need backend query/acceptance validation before launch.
 
 ## 2. RBAC Verification
 
@@ -30,7 +30,7 @@ Frontend guards refresh the role from `/api/auth/me`; server-side `@PreAuthorize
 | `MERCHANT` | Dashboard and own transaction workspaces | Own transaction, document, audit, notification, and transaction settlement lookup | Merchant note creation is hidden and forbidden by the notes controller |
 | `COMPLIANCE_OFFICER` | Compliance queue, transaction workspace, settlement read view | Review queue/decisions/history; review notes; settlement status/read and settlement initiation | Retry and reconciliation require a different role |
 | `ADMIN` | Operations, review queue, transaction workspace | Review and transaction operations; operations screens use existing endpoints | Settlement status controller does not grant `ADMIN` |
-| `SETTLEMENT_OPERATOR` | Operator-only settlement controls when role exists | Retry, reconciliation, and settlement processing | **Unavailable in the current backend `Role` enum**, which only defines `MERCHANT`, `COMPLIANCE_OFFICER`, and `ADMIN`; no user can currently receive this role through the present authentication model |
+| `SETTLEMENT_OPERATOR` | Operator-only settlement controls | Retry, reconciliation, and settlement processing | The role is now defined in the backend enum; owner-controlled account provisioning and route-by-route access acceptance are still required |
 
 RBAC remains incomplete for the acceptance criteria until backend role provisioning and settlement authorization are reconciled. The compliance review controller also contains a hardcoded reviewer UUID placeholder; actual review persistence and reviewer attribution require backend validation.
 
@@ -72,13 +72,13 @@ Authenticated workflow screenshots are pending a reachable, seeded backend. Brow
 - [x] Frontend contract suite: 82 assertions passed, including API transport behavior, pagination, and bundled Tailwind checks.
 - [x] Tailwind utilities are compiled locally through PostCSS for production; no Tailwind runtime CDN remains.
 - [x] Upgrade Vite to 6.4.3 and run `npm audit`: zero vulnerabilities reported.
-- [ ] Restore Maven dependency resolution and get the backend compiling/testing.
-- [ ] Fix/verify OCR ownership check: `OcrController` converts `Authentication.getName()` to UUID, while the rest of the authentication flow uses the username/email principal.
-- [ ] Provide a backend-issued settlement-operator role or authorize required settlement actions for an existing role.
+- [x] Restore Maven dependency resolution and get the backend compiling/testing (current `clean verify` passes; real PostgreSQL remains unverified).
+- [x] Fix OCR ownership principal mismatch (ownership now compares the authenticated email subject with the document uploader email).
+- [x] Add the settlement-operator role to the backend role enum; owner account provisioning and settlement access validation remain.
 - [ ] Replace the hardcoded reviewer UUID in compliance review authentication with the authenticated user identity.
 - [ ] Verify actuator/Prometheus exposure, metric names, p95 samples, queue depth, and settlement business metrics against a live backend.
 - [ ] Run registration/login, transaction/evidence/OCR/AI/policy, hold review, settlement, and administrator journeys against live seeded data.
-- [ ] Restore the missing common `ApiResponse` types and verify the exact envelope shape against backend responses.
+- [x] Restore the common `ApiResponse` types; verify the envelope in live browser journeys before launch.
 - [ ] Verify the requested high-risk/OCR-failure/AI-failure/settlement-failure queue filters against backend query behavior.
 - [ ] Capture authenticated workflow screenshots and repeat desktop/mobile visual and console checks with that live backend.
 
