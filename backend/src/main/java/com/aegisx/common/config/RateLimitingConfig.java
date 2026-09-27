@@ -2,6 +2,7 @@ package com.aegisx.common.config;
 
 import io.github.bucket4j.Bucket;
 import io.github.bucket4j.Bucket4j;
+import io.github.bucket4j.Bandwidth;
 import io.github.bucket4j.Refill;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
@@ -95,7 +96,7 @@ public class RateLimitingConfig implements WebMvcConfigurer {
          */
         private Bucket createBucket(int capacity, int seconds) {
             return Bucket4j.builder()
-                .addLimit(Refill.intervally(capacity, Duration.ofSeconds(seconds)))
+                .addLimit(Bandwidth.classic(capacity, Refill.intervally(capacity, Duration.ofSeconds(seconds))))
                 .build();
         }
 

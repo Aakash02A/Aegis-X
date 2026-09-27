@@ -33,7 +33,8 @@ public class OcrConfidenceRule implements PolicyRule {
             return fail("No OCR extraction record found");
         }
         
-        BigDecimal ocrConfidence = context.getDocumentExtraction().getConfidenceScore();
+        Double confidence = context.getDocumentExtraction().getConfidenceScore();
+        BigDecimal ocrConfidence = confidence == null ? null : BigDecimal.valueOf(confidence);
         
         if (ocrConfidence == null) {
             return fail("OCR confidence score is missing");
