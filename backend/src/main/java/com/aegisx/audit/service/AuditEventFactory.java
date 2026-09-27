@@ -69,7 +69,7 @@ public final class AuditEventFactory {
             .module(module)
             .actorId(actorId)
             .actorType(actorType)
-            .correlationId(correlationId)
+            .correlationId(nonBlankCorrelationId(correlationId))
             .previousState(previousState)
             .newState(newState)
             .eventData(eventData)
@@ -107,7 +107,7 @@ public final class AuditEventFactory {
             .module(module)
             .actorId(actorId)
             .actorType(actorType)
-            .correlationId(correlationId)
+            .correlationId(nonBlankCorrelationId(correlationId))
             .previousState(null)
             .newState(null)
             .eventData(eventData)
@@ -149,7 +149,7 @@ public final class AuditEventFactory {
             .module(module)
             .actorId(null)
             .actorType(ActorType.SYSTEM)
-            .correlationId(correlationId)
+            .correlationId(nonBlankCorrelationId(correlationId))
             .previousState(null)
             .newState(null)
             .eventData(eventData)
@@ -190,7 +190,7 @@ public final class AuditEventFactory {
             .module(module)
             .actorId(null)
             .actorType(ActorType.WEBHOOK)
-            .correlationId(correlationId)
+            .correlationId(nonBlankCorrelationId(correlationId))
             .previousState(null)
             .newState(null)
             .eventData(eventData)
@@ -225,7 +225,7 @@ public final class AuditEventFactory {
             .module(module)
             .actorId(userId)
             .actorType(ActorType.USER)
-            .correlationId(correlationId)
+            .correlationId(nonBlankCorrelationId(correlationId))
             .previousState(null)
             .newState(null)
             .eventData(eventData)
@@ -267,7 +267,7 @@ public final class AuditEventFactory {
             .module(AuditModule.AI)
             .actorId(null)
             .actorType(ActorType.AI)
-            .correlationId(correlationId)
+            .correlationId(nonBlankCorrelationId(correlationId))
             .previousState(null)
             .newState(null)
             .eventData(eventData)
@@ -311,7 +311,7 @@ public final class AuditEventFactory {
             .module(AuditModule.POLICY_ENGINE)
             .actorId(null)
             .actorType(ActorType.POLICY_ENGINE)
-            .correlationId(correlationId)
+            .correlationId(nonBlankCorrelationId(correlationId))
             .previousState(previousState)
             .newState(newState)
             .eventData(eventData)
@@ -327,5 +327,11 @@ public final class AuditEventFactory {
      */
     public static ObjectNode createEventDataNode() {
         return nodeFactory.objectNode();
+    }
+
+    private static String nonBlankCorrelationId(String correlationId) {
+        return correlationId == null || correlationId.isBlank()
+                ? UUID.randomUUID().toString()
+                : correlationId;
     }
 }
