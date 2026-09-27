@@ -54,6 +54,7 @@ public class Transaction extends BaseEntity {
     private TransactionStatus status;
     
     @Column(name = "is_terminal", nullable = false)
+    @Builder.Default
     private Boolean isTerminal = false;
 
     @Version

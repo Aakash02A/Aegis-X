@@ -89,6 +89,8 @@ class SettlementServiceTest {
                 .paymentProcessor(PaymentProcessor.SWIFT)
                 .settlementAmount(BigDecimal.valueOf(1000.00))
                 .settlementCurrency("USD")
+                .beneficiaryBankCode("TESTBANK")
+                .beneficiaryAccountNumber("1234567890")
                 .build();
     }
 

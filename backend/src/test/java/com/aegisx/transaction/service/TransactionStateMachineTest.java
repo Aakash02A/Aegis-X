@@ -146,11 +146,11 @@ class TransactionStateMachineTest {
     @DisplayName("Should mark transaction as terminal when transitioning to terminal state")
     void shouldMarkAsTerminalWhenTransitioningToTerminalState() {
         // Transition through valid path to terminal state
-        transaction.applyStatus(TransactionStatus.POLICY_EVALUATION);
-        
-        stateMachine.transition(transaction, TransactionStatus.APPROVED);
-        
-        assertEquals(TransactionStatus.APPROVED, transaction.getStatus());
+        transaction.applyStatus(TransactionStatus.SETTLEMENT_PENDING);
+
+        stateMachine.transition(transaction, TransactionStatus.SETTLED);
+
+        assertEquals(TransactionStatus.SETTLED, transaction.getStatus());
         assertTrue(transaction.isTerminal());
     }
 
@@ -195,7 +195,7 @@ class TransactionStateMachineTest {
         stateMachine.approveFromComplianceHold(transaction, reviewerId, justification);
         
         assertEquals(TransactionStatus.APPROVED, transaction.getStatus());
-        assertTrue(transaction.isTerminal());
+        assertFalse(transaction.isTerminal());
     }
 
     @Test
@@ -220,7 +220,7 @@ class TransactionStateMachineTest {
         assertTrue(nextStates.contains(TransactionStatus.PAYMENT_RECEIVED));
         assertTrue(nextStates.contains(TransactionStatus.PAYMENT_FAILED));
         
-        var terminalNextStates = stateMachine.getValidNextStates(TransactionStatus.APPROVED);
+        var terminalNextStates = stateMachine.getValidNextStates(TransactionStatus.SETTLED);
         assertTrue(terminalNextStates.isEmpty());
     }
 }

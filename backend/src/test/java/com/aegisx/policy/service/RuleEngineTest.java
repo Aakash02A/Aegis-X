@@ -12,17 +12,28 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
+import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.math.BigDecimal;
 import java.util.Arrays;
 import java.util.UUID;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.when;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 @DisplayName("RuleEngine Tests")
 @ExtendWith(MockitoExtension.class)
 class RuleEngineTest {
+
+    @Mock private com.aegisx.policy.rules.DocumentCompletenessRule documentCompletenessRule;
+    @Mock private com.aegisx.policy.rules.BeneficiaryMatchRule beneficiaryMatchRule;
+    @Mock private com.aegisx.policy.rules.AmountConsistencyRule amountConsistencyRule;
+    @Mock private com.aegisx.policy.rules.CurrencyConsistencyRule currencyConsistencyRule;
+    @Mock private com.aegisx.policy.rules.PurposeCodeRule purposeCodeRule;
+    @Mock private com.aegisx.policy.rules.OcrConfidenceRule ocrConfidenceRule;
+    @Mock private com.aegisx.policy.rules.AiConfidenceRule aiConfidenceRule;
     
     @InjectMocks
     private RuleEngine ruleEngine;
@@ -32,6 +43,13 @@ class RuleEngineTest {
     
     @BeforeEach
     void setUp() {
+        org.mockito.Mockito.lenient().when(documentCompletenessRule.evaluate(any())).thenReturn(ruleResult("document completeness", true));
+        org.mockito.Mockito.lenient().when(beneficiaryMatchRule.evaluate(any())).thenReturn(ruleResult("beneficiary match", true));
+        org.mockito.Mockito.lenient().when(amountConsistencyRule.evaluate(any())).thenReturn(ruleResult("amount consistency", true));
+        org.mockito.Mockito.lenient().when(currencyConsistencyRule.evaluate(any())).thenReturn(ruleResult("currency consistency", true));
+        org.mockito.Mockito.lenient().when(purposeCodeRule.evaluate(any())).thenReturn(ruleResult("purpose code", true));
+        org.mockito.Mockito.lenient().when(ocrConfidenceRule.evaluate(any())).thenReturn(ruleResult("OCR confidence", true));
+        org.mockito.Mockito.lenient().when(aiConfidenceRule.evaluate(any())).thenReturn(ruleResult("AI confidence", true));
         transaction = Transaction.builder()
             .referenceNumber("TXN-20260922-ABC123")
             .amount(new BigDecimal("50000.00"))
@@ -86,6 +104,7 @@ class RuleEngineTest {
     @Test
     @DisplayName("Should return COMPLIANCE_HOLD when any rule fails")
     void testSingleRuleFails() {
+        when(documentCompletenessRule.evaluate(any())).thenReturn(ruleResult("document completeness", false));
         RequiredDocument invoice = RequiredDocument.builder()
             .documentType(DocumentType.INVOICE)
             .fulfilled(true)
@@ -118,6 +137,15 @@ class RuleEngineTest {
         
         assertEquals("COMPLIANCE_HOLD", result.getFinalDecision());
         assertTrue(result.getRuleResults().stream().anyMatch(r -> !r.getPassed()));
+    }
+
+    private com.aegisx.policy.rules.RuleEvaluationResult ruleResult(String name, boolean passed) {
+        return com.aegisx.policy.rules.RuleEvaluationResult.builder()
+                .ruleName(name)
+                .passed(passed)
+                .reason(passed ? "Passed" : "Failed")
+                .evidence("test fixture")
+                .build();
     }
     
     @Test

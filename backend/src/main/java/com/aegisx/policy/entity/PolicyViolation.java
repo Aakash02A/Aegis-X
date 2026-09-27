@@ -58,7 +58,7 @@ public class PolicyViolation extends BaseEntity {
     public static PolicyViolation createViolation(PolicyEvaluation evaluation, String ruleId, 
                                                    String ruleName, ViolationSeverity severity, 
                                                    String description, JsonNode context) {
-        return PolicyViolation.builder()
+        PolicyViolation violation = PolicyViolation.builder()
                 .policyEvaluation(evaluation)
                 .ruleId(ruleId)
                 .ruleName(ruleName)
@@ -66,6 +66,10 @@ public class PolicyViolation extends BaseEntity {
                 .description(description)
                 .ruleContext(context)
                 .build();
+        java.time.Instant now = java.time.Instant.now();
+        violation.setCreatedAt(now);
+        violation.setUpdatedAt(now);
+        return violation;
     }
 
     /**

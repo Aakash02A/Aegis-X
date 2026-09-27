@@ -18,7 +18,8 @@ import java.util.UUID;
 @Repository
 public interface TransactionRepository extends JpaRepository<Transaction, UUID> {
 
-    Page<Transaction> findByMerchantId(UUID merchantId, Pageable pageable);
+    @Query("SELECT t FROM Transaction t WHERE t.merchant.id = :merchantId")
+    Page<Transaction> findByMerchantId(@Param("merchantId") UUID merchantId, Pageable pageable);
 
     Page<Transaction> findByStatus(TransactionStatus status, Pageable pageable);
 
@@ -28,7 +29,8 @@ public interface TransactionRepository extends JpaRepository<Transaction, UUID> 
 
     List<Transaction> findByStatusOrderByCreatedAtDesc(TransactionStatus status);
 
-    Optional<Transaction> findByIdAndMerchantId(UUID id, UUID merchantId);
+    @Query("SELECT t FROM Transaction t WHERE t.id = :id AND t.merchant.id = :merchantId")
+    Optional<Transaction> findByIdAndMerchantId(@Param("id") UUID id, @Param("merchantId") UUID merchantId);
 
     Optional<Transaction> findByReferenceNumber(String referenceNumber);
 

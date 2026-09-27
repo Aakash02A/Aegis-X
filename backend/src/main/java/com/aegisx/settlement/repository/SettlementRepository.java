@@ -112,11 +112,11 @@ public interface SettlementRepository extends JpaRepository<Settlement, UUID> {
     /**
      * Gets average settlement duration by processor.
      */
-    @Query("SELECT s.paymentProcessor, " +
-           "AVG(EXTRACT(EPOCH FROM (s.completedAt - s.initiatedAt))/3600) as avgHours " +
-           "FROM Settlement s WHERE s.status = 'COMPLETED' " +
-           "AND s.initiatedAt BETWEEN :startDate AND :endDate " +
-           "GROUP BY s.paymentProcessor")
+    @Query(value = "SELECT payment_processor, " +
+           "AVG(EXTRACT(EPOCH FROM (completed_at - initiated_at))/3600) AS avg_hours " +
+           "FROM settlements WHERE status = 'COMPLETED' " +
+           "AND initiated_at BETWEEN :startDate AND :endDate " +
+           "GROUP BY payment_processor", nativeQuery = true)
     List<Object[]> getAverageSettlementDuration(@Param("startDate") LocalDateTime startDate,
                                                @Param("endDate") LocalDateTime endDate);
 

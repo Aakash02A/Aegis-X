@@ -22,6 +22,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.math.BigDecimal;
@@ -58,8 +59,8 @@ class PolicyEvaluationServiceTest {
     @Mock
     private TransactionStateMachine transactionStateMachine;
     
-    @Mock
-    private ObjectMapper objectMapper;
+    @Spy
+    private ObjectMapper objectMapper = new ObjectMapper();
     
     @InjectMocks
     private PolicyEvaluationService policyEvaluationService;
@@ -79,9 +80,11 @@ class PolicyEvaluationServiceTest {
             .purposeCode("P0101")
             .status(TransactionStatus.AI_ANALYSIS)
             .build();
+        transaction.setId(transactionId);
         
         approvedResult = new PolicyEngineResult();
         approvedResult.setFinalDecision("APPROVED");
+        approvedResult.setRuleResults(java.util.List.of());
         approvedResult.setProcessingDurationMs(150L);
     }
     
@@ -89,9 +92,11 @@ class PolicyEvaluationServiceTest {
     @DisplayName("Should transition to APPROVED when policy engine approves")
     void testEvaluateAndTransitionToApproved() {
         when(transactionRepository.findById(transactionId)).thenReturn(Optional.of(transaction));
+        when(requiredDocumentRepository.findByTransactionId(transactionId)).thenReturn(java.util.List.of());
+        when(documentExtractionRepository.findLatestByTransactionId(transactionId)).thenReturn(Optional.of(new DocumentExtraction()));
+        when(aiAnalysisRepository.findLatestByTransactionId(transactionId)).thenReturn(Optional.of(AIAnalysis.builder().confidenceScore(BigDecimal.ONE).build()));
         when(ruleEngine.evaluate(any())).thenReturn(approvedResult);
         when(policyEvaluationRepository.save(any())).thenAnswer(i -> i.getArgument(0));
-        when(transactionRepository.save(any())).thenReturn(transaction);
         
         PolicyEvaluation result = policyEvaluationService.evaluateTransaction(transactionId);
         
@@ -106,12 +111,15 @@ class PolicyEvaluationServiceTest {
     void testEvaluateAndTransitionToComplianceHold() {
         PolicyEngineResult holdResult = new PolicyEngineResult();
         holdResult.setFinalDecision("COMPLIANCE_HOLD");
+        holdResult.setRuleResults(java.util.List.of());
         holdResult.setProcessingDurationMs(200L);
         
         when(transactionRepository.findById(transactionId)).thenReturn(Optional.of(transaction));
+        when(requiredDocumentRepository.findByTransactionId(transactionId)).thenReturn(java.util.List.of());
+        when(documentExtractionRepository.findLatestByTransactionId(transactionId)).thenReturn(Optional.of(new DocumentExtraction()));
+        when(aiAnalysisRepository.findLatestByTransactionId(transactionId)).thenReturn(Optional.of(AIAnalysis.builder().confidenceScore(BigDecimal.ONE).build()));
         when(ruleEngine.evaluate(any())).thenReturn(holdResult);
         when(policyEvaluationRepository.save(any())).thenAnswer(i -> i.getArgument(0));
-        when(transactionRepository.save(any())).thenReturn(transaction);
         
         PolicyEvaluation result = policyEvaluationService.evaluateTransaction(transactionId);
         
@@ -134,9 +142,11 @@ class PolicyEvaluationServiceTest {
     @DisplayName("Should persist PolicyEvaluation with decision and duration")
     void testPersistPolicyEvaluation() {
         when(transactionRepository.findById(transactionId)).thenReturn(Optional.of(transaction));
+        when(requiredDocumentRepository.findByTransactionId(transactionId)).thenReturn(java.util.List.of());
+        when(documentExtractionRepository.findLatestByTransactionId(transactionId)).thenReturn(Optional.of(new DocumentExtraction()));
+        when(aiAnalysisRepository.findLatestByTransactionId(transactionId)).thenReturn(Optional.of(AIAnalysis.builder().confidenceScore(BigDecimal.ONE).build()));
         when(ruleEngine.evaluate(any())).thenReturn(approvedResult);
         when(policyEvaluationRepository.save(any())).thenAnswer(i -> i.getArgument(0));
-        when(transactionRepository.save(any())).thenReturn(transaction);
         
         policyEvaluationService.evaluateTransaction(transactionId);
         

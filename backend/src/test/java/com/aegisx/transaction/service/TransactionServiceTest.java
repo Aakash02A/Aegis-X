@@ -3,6 +3,7 @@ package com.aegisx.transaction.service;
 import com.aegisx.auth.entity.Role;
 import com.aegisx.auth.entity.User;
 import com.aegisx.auth.repository.UserRepository;
+import com.aegisx.audit.service.AuditService;
 import com.aegisx.common.exception.TransactionNotFoundException;
 import com.aegisx.transaction.dto.CreateTransactionRequest;
 import com.aegisx.transaction.dto.TransactionResponse;
@@ -43,6 +44,9 @@ class TransactionServiceTest {
 
     @Mock
     private UserRepository userRepository;
+
+    @Mock
+    private AuditService auditService;
 
     @Spy
     private TransactionStateMachine transactionStateMachine = new TransactionStateMachine();
