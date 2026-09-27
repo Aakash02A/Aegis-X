@@ -85,7 +85,7 @@ public class PaymentCapturedHandler implements RazorpayEventHandler {
             transactionStateMachine.transition(
                     transaction,
                     TransactionStatus.PAYMENT_RECEIVED,
-                    TransitionActor.RAZORPAY,
+                    TransitionActor.RAZORPAY_GATEWAY,
                     "Razorpay payment captured: " + paymentId
             );
 

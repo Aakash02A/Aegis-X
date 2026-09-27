@@ -119,6 +119,7 @@ public class TransactionMappingService {
     private boolean isActiveState(TransactionStatus status) {
         return status == TransactionStatus.EVIDENCE_PENDING ||
                status == TransactionStatus.POLICY_EVALUATION ||
-               status == TransactionStatus.OCR_COMPLETED;
+               status == TransactionStatus.OCR_PROCESSING ||
+               status == TransactionStatus.AI_ANALYSIS;
     }
 }

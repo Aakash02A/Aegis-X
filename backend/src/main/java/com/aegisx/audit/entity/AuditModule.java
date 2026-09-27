@@ -40,6 +40,9 @@ public enum AuditModule {
      */
     POLICY_ENGINE,
 
+    /** Settlement processing and reconciliation. */
+    SETTLEMENT,
+
     /**
      * WhatsApp Business Cloud API integration
      */
