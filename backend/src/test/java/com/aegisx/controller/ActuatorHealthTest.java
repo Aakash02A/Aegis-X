@@ -42,10 +42,10 @@ class ActuatorHealthTest {
     void sensitiveEndpointsAreNotExposed() throws Exception {
         // Confirm sensitive endpoints /actuator/env, /actuator/beans are rejected with 403 Forbidden
         mockMvc.perform(get("/actuator/env"))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized());
         mockMvc.perform(get("/actuator/beans"))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized());
         mockMvc.perform(get("/actuator/configprops"))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized());
     }
 }

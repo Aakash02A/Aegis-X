@@ -51,6 +51,7 @@ class AuthControllerTest {
         UserResponse response = UserResponse.builder()
                 .fullName("ABC Exports")
                 .email("merchant@example.com")
+                .role(Role.MERCHANT)
                 .createdAt(Instant.now())
                 .build();
 
@@ -148,6 +149,7 @@ class AuthControllerTest {
         UserResponse response = UserResponse.builder()
                 .fullName("ABC Exports")
                 .email("merchant@example.com")
+                .role(Role.MERCHANT)
                 .createdAt(Instant.now())
                 .build();
 
@@ -162,6 +164,6 @@ class AuthControllerTest {
     @Test
     void getCurrentUserReturnsForbiddenOrUnauthorizedWhenAnonymous() throws Exception {
         mockMvc.perform(get("/api/auth/me"))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized());
     }
 }

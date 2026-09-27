@@ -1,6 +1,8 @@
 package com.aegisx.review.controller;
 
 import com.aegisx.auth.entity.User;
+import com.aegisx.auth.security.JwtService;
+import com.aegisx.auth.security.CustomUserDetailsService;
 import com.aegisx.review.dto.ComplianceReviewRequest;
 import com.aegisx.review.dto.ReviewQueueItemResponse;
 import com.aegisx.review.entity.ComplianceReview;
@@ -15,12 +17,14 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.context.annotation.Import;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.http.MediaType;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.web.servlet.MockMvc;
+import com.aegisx.common.config.SecurityConfig;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -36,6 +40,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @WebMvcTest(ComplianceReviewController.class)
+@Import(SecurityConfig.class)
 class ComplianceReviewControllerTest {
 
     @Autowired
@@ -46,6 +51,12 @@ class ComplianceReviewControllerTest {
 
     @MockBean
     private ComplianceReviewService complianceReviewService;
+
+    @MockBean
+    private JwtService jwtService;
+
+    @MockBean
+    private CustomUserDetailsService customUserDetailsService;
 
     private UUID transactionId;
     private UUID reviewerId;
@@ -60,9 +71,9 @@ class ComplianceReviewControllerTest {
         reviewerId = UUID.randomUUID();
         
         reviewer = User.builder()
-                .fullName("compliance-officer")
                 .fullName("Test Compliance Officer")
                 .build();
+        reviewer.setId(reviewerId);
 
         transaction = Transaction.builder()
                 .referenceNumber("TXN-TEST-001")
@@ -72,6 +83,7 @@ class ComplianceReviewControllerTest {
                 .beneficiaryName("Test Beneficiary")
                 .purposeCode("P0101")
                 .build();
+        transaction.setId(transactionId);
 
         review = ComplianceReview.builder()
                 .transaction(transaction)
@@ -81,6 +93,9 @@ class ComplianceReviewControllerTest {
                 .justification("All compliance requirements satisfied")
                 .reviewedAt(LocalDateTime.now())
                 .build();
+        review.setId(UUID.randomUUID());
+        review.setCreatedAt(java.time.Instant.now());
+        review.setUpdatedAt(java.time.Instant.now());
 
         queueItem = ReviewQueueItemResponse.builder()
                 .transactionId(transactionId)
@@ -101,7 +116,7 @@ class ComplianceReviewControllerTest {
     void shouldGetReviewQueueSuccessfully() throws Exception {
         Page<ReviewQueueItemResponse> queuePage = new PageImpl<>(List.of(queueItem), PageRequest.of(0, 20), 1);
         
-        when(complianceReviewService.getReviewQueue(any())).thenReturn(queuePage);
+        when(complianceReviewService.getReviewQueue(any(), any())).thenReturn(queuePage);
 
         mockMvc.perform(get("/api/v1/compliance/queue")
                         .param("page", "0")
@@ -112,7 +127,7 @@ class ComplianceReviewControllerTest {
                 .andExpect(jsonPath("$.data.content[0].referenceNumber").value("TXN-TEST-001"))
                 .andExpect(jsonPath("$.data.content[0].status").value("COMPLIANCE_HOLD"));
 
-        verify(complianceReviewService).getReviewQueue(any());
+        verify(complianceReviewService).getReviewQueue(any(), any());
     }
 
     @Test
