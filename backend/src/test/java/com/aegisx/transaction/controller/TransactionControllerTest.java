@@ -164,6 +164,6 @@ class TransactionControllerTest {
     @Test
     void unauthenticatedAccessReturnsForbidden() throws Exception {
         mockMvc.perform(get("/api/transactions"))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized());
     }
 }
