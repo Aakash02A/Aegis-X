@@ -3,6 +3,7 @@ package com.aegisx.integration.razorpay.service;
 import com.aegisx.integration.razorpay.dto.RazorpayWebhookPayload;
 import com.aegisx.integration.razorpay.entity.WebhookEvent;
 import com.aegisx.integration.razorpay.entity.WebhookProcessingStatus;
+import com.aegisx.audit.service.AuditService;
 import com.aegisx.transaction.entity.Transaction;
 import com.aegisx.transaction.entity.TransactionStatus;
 import com.aegisx.transaction.entity.TransitionActor;
@@ -31,6 +32,9 @@ class PaymentCapturedHandlerTest {
 
     @Mock
     private TransactionRepository transactionRepository;
+
+    @Mock
+    private AuditService auditService;
 
     @Spy
     private TransactionStateMachine transactionStateMachine = new TransactionStateMachine();

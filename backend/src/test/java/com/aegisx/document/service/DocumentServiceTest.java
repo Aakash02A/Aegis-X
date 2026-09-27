@@ -49,10 +49,11 @@ class DocumentServiceTest {
     private DocumentService documentService;
 
     private Transaction transaction;
+    private User merchant;
 
     @BeforeEach
     void setUp() {
-        User merchant = User.builder()
+        merchant = User.builder()
                 .fullName("ABC Exports")
                 .email("merchant@example.com")
                 .passwordHash("hashed")
@@ -86,12 +87,11 @@ class DocumentServiceTest {
     @Test
     void evidenceStatusReflectsCompletedChecklist() {
         when(transactionRepository.findById(transaction.getId())).thenReturn(Optional.of(transaction));
+        when(userRepository.findByEmail("merchant@example.com")).thenReturn(Optional.of(merchant));
         when(requiredDocumentRepository.findByTransactionId(transaction.getId())).thenReturn(List.of(
                 new com.aegisx.document.entity.RequiredDocument(),
                 new com.aegisx.document.entity.RequiredDocument()
         ));
-        when(documentRepository.countByTransactionIdAndDocumentType(any(), any())).thenReturn(1L);
-
         EvidenceStatusResponse response = documentService.getEvidenceStatus(transaction.getId(), "merchant@example.com");
 
         assertNotNull(response);

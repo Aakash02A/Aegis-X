@@ -224,8 +224,8 @@ public class TransactionSearchControllerTest {
 
         mockMvc.perform(
             get("/api/transactions/search")
-                .param("dateFrom", "2026-09-22")
-                .param("dateTo", "2026-09-23")
+                .param("dateFrom", "2020-01-01")
+                .param("dateTo", "2030-01-01")
                 .param("page", "0")
                 .param("size", "20")
         )

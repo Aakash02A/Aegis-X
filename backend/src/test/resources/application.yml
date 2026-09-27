@@ -15,6 +15,14 @@ spring:
         dialect: org.hibernate.dialect.H2Dialect
   flyway:
     enabled: false
+  profiles:
+    active: test
+  ai:
+    openai:
+      api-key: test-key-not-used-for-network-calls
+  # In tests, external notification delivery is not configured.
+  # Empty values allow the integration client to initialize without credentials.
+  # Actual provider credentials are supplied through the developer's environment.
 
 jwt:
   secret: dev-jwt-secret-key-for-aegis-x-application-security-testing-purposes-only
@@ -44,3 +52,12 @@ management:
       enabled: true
     readinessstate:
       enabled: true
+
+aegisx:
+  whatsapp:
+    phone-number-id: test-phone-number-id
+    access-token: test-access-token
+    webhook-verify-token: test-webhook-token
+    app-secret: test-app-secret
+    api-endpoint: https://graph.whatsapp.com/v18.0
+    sandbox-mode: true
