@@ -157,7 +157,7 @@ public class PolicyEvaluationService {
             .overallScore(evaluation.getOverallScore())
             .rules(rulesList)
             .processingDurationMs(evaluation.getProcessingDurationMs())
-            .createdAt(evaluation.getCreatedAt())
+            .createdAt(java.time.LocalDateTime.ofInstant(evaluation.getCreatedAt(), java.time.ZoneOffset.UTC))
             .build();
     }
 }
