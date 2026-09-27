@@ -68,7 +68,7 @@ public class PolicyEvaluationService {
             var requiredDocuments = requiredDocumentRepository.findByTransactionId(transactionId);
             
             // Load latest OCR extraction
-            var documentExtraction = documentExtractionRepository.findLatestByDocumentId(transaction.getDocumentId())
+            var documentExtraction = documentExtractionRepository.findLatestByTransactionId(transactionId)
                 .orElseThrow(() -> new MissingEvidenceException("No OCR extraction found for transaction: " + transactionId));
             
             // Load latest AI analysis
@@ -102,7 +102,7 @@ public class PolicyEvaluationService {
             
             // Persist policy evaluation
             PolicyEvaluation evaluation = PolicyEvaluation.builder()
-                .transactionId(transactionId)
+                .transaction(transaction)
                 .aiAnalysisId(aiAnalysis.getId())
                 .finalDecision(result.getFinalDecision())
                 .overallScore(aiAnalysis.getConfidenceScore())
@@ -152,7 +152,7 @@ public class PolicyEvaluationService {
         
         return PolicyEvaluationResponse.builder()
             .id(evaluation.getId())
-            .transactionId(evaluation.getTransactionId())
+            .transactionId(evaluation.getTransaction().getId())
             .decision(evaluation.getFinalDecision())
             .overallScore(evaluation.getOverallScore())
             .rules(rulesList)

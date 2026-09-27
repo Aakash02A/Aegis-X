@@ -18,6 +18,7 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 import java.math.BigDecimal;
+import java.util.UUID;
 
 @Getter
 @Setter
@@ -51,6 +52,9 @@ public class Transaction extends BaseEntity {
     @Column(name = "status", nullable = false, length = 50)
     @lombok.Setter(lombok.AccessLevel.NONE)
     private TransactionStatus status;
+    
+    @Column(name = "is_terminal", nullable = false)
+    private Boolean isTerminal = false;
 
     @Version
     @Column(name = "version", nullable = false)
@@ -62,5 +66,26 @@ public class Transaction extends BaseEntity {
     public void applyStatus(TransactionStatus newStatus) {
         this.status = newStatus;
     }
+    
+    /**
+     * Marks this transaction as terminal, preventing any further state transitions.
+     * Only called by TransactionStateMachine when transitioning to a terminal state.
+     */
+    public void markAsTerminal() {
+        this.isTerminal = true;
+    }
+    
+    /**
+     * Returns true if this transaction is in a terminal state.
+     */
+    public boolean isTerminal() {
+        return Boolean.TRUE.equals(this.isTerminal);
+    }
+
+    /** Compatibility accessor retained for modules using the earlier transaction contract. */
+    public UUID getMerchantId() { return merchant == null ? null : merchant.getId(); }
+
+    /** Compatibility accessor retained for modules using the earlier transaction contract. */
+    public String getPurpose() { return purposeCode; }
 }
 

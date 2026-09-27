@@ -26,6 +26,11 @@ public class UserService {
     private final JwtService jwtService;
     private final AuthenticationManager authenticationManager;
 
+    @Transactional(readOnly = true)
+    public java.util.Optional<User> getUserById(java.util.UUID userId) {
+        return userRepository.findById(userId);
+    }
+
     @Transactional
     public UserResponse register(RegisterRequest request) {
         if (userRepository.existsByEmail(request.getEmail())) {

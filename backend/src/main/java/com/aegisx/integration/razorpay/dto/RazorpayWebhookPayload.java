@@ -134,6 +134,16 @@ public class RazorpayWebhookPayload {
         return null;
     }
 
+    public BigDecimal getAmount() {
+        return payload != null && payload.getPayment() != null && payload.getPayment().getEntity() != null
+                ? payload.getPayment().getEntity().getAmount() : null;
+    }
+
+    public String getCurrency() {
+        return payload != null && payload.getPayment() != null && payload.getPayment().getEntity() != null
+                ? payload.getPayment().getEntity().getCurrency() : null;
+    }
+
     public String getTransactionReferenceFromNotes() {
         if (payload != null && payload.getPayment() != null && payload.getPayment().getEntity() != null) {
             Map<String, String> notes = payload.getPayment().getEntity().getNotes();

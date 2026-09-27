@@ -47,6 +47,14 @@ public class NotificationService {
     private final NotificationRepository notificationRepository;
     private final RequiredDocumentRepository requiredDocumentRepository;
     private final ObjectMapper objectMapper;
+
+    /** Sends the configured notification template through the existing WhatsApp client. */
+    public void sendWhatsAppMessage(String recipientPhone, String message) {
+        if (!whatsAppClient.isConfigured()) return;
+        ObjectNode parameters = objectMapper.createObjectNode();
+        parameters.put("body", message);
+        whatsAppClient.sendTemplateMessage(recipientPhone, "notification", parameters);
+    }
     
     /**
      * Request missing documents from user via WhatsApp.

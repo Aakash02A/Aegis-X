@@ -34,6 +34,13 @@ public interface DocumentExtractionRepository extends JpaRepository<DocumentExtr
     )
     Optional<DocumentExtraction> findLatestByDocumentId(UUID documentId);
 
+    @Query("SELECT de FROM DocumentExtraction de WHERE de.document.transaction.id = :transactionId ORDER BY de.createdAt DESC")
+    List<DocumentExtraction> findByTransactionId(UUID transactionId);
+
+    default Optional<DocumentExtraction> findLatestByTransactionId(UUID transactionId) {
+        return findByTransactionId(transactionId).stream().findFirst();
+    }
+
     /**
      * Find all extractions using a specific method (e.g., TIKA or TESSERACT).
      * Useful for auditing which extraction method was used across documents.

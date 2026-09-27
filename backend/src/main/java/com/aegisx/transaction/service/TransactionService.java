@@ -123,6 +123,18 @@ public class TransactionService {
         }
     }
 
+    /** Compatibility lookup for modules that consume the entity form of a transaction. */
+    @Transactional(readOnly = true)
+    public java.util.Optional<Transaction> getTransactionById(UUID transactionId) {
+        return transactionRepository.findById(transactionId);
+    }
+
+    /** Compatibility persistence entry point for existing orchestration services. */
+    @Transactional
+    public Transaction updateTransaction(Transaction transaction) {
+        return transactionRepository.save(transaction);
+    }
+
     /**
      * Internal lifecycle transition orchestrator with typed actor.
      */

@@ -80,11 +80,11 @@ public class AIAnalysisController {
                 .orElseThrow(() -> new IllegalArgumentException("Transaction not found: " + transactionId));
             
             // Retrieve latest OCR extraction
-            DocumentExtraction extraction = documentExtractionRepository.findLatestByDocumentId(transaction.getDocumentId())
+            DocumentExtraction extraction = documentExtractionRepository.findLatestByTransactionId(transactionId)
                 .orElseThrow(() -> new IllegalArgumentException("No OCR extraction found for transaction: " + transactionId));
             
             // Retrieve document for OCR data
-            Document document = documentRepository.findById(transaction.getDocumentId())
+            Document document = documentRepository.findByTransactionIdOrderByCreatedAtDesc(transactionId).stream().findFirst()
                 .orElseThrow(() -> new IllegalArgumentException("Document not found"));
             
             // Build analysis input
