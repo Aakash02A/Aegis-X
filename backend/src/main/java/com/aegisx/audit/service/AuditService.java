@@ -6,9 +6,15 @@ import com.aegisx.audit.entity.AuditEventType;
 import com.aegisx.audit.entity.AuditModule;
 import com.aegisx.audit.repository.AuditEventRepository;
 import com.aegisx.transaction.entity.Transaction;
+import com.aegisx.common.filter.CorrelationIdFilter;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.JsonNodeFactory;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.slf4j.MDC;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -76,6 +82,23 @@ import java.util.UUID;
 public class AuditService {
 
     private final AuditEventRepository auditEventRepository;
+
+    @PersistenceContext
+    private EntityManager entityManager;
+
+    /** Compatibility entry point for audit callers that have a transaction identifier. */
+    @Transactional
+    public void logEvent(AuditEventType eventType, AuditModule module, String description, UUID transactionId) {
+        Transaction transaction = entityManager.getReference(Transaction.class, transactionId);
+        ObjectNode data = JsonNodeFactory.instance.objectNode().put("description", description);
+        recordSystemEvent(transaction, eventType, module, null, ActorType.SYSTEM,
+                MDC.get(CorrelationIdFilter.CORRELATION_ID_KEY), data);
+    }
+
+    /** Aggregate read operations have no single transaction row to attach to the audit schema. */
+    public void logEvent(AuditEventType eventType, AuditModule module, String description) {
+        log.info("Audit aggregate event: type={}, module={}, description={}", eventType, module, description);
+    }
 
     /**
      * Record a state transition audit event.
