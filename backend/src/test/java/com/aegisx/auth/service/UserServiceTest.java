@@ -55,7 +55,6 @@ class UserServiceTest {
                 .fullName("ABC Exports")
                 .email("merchant@example.com")
                 .passwordHash("encoded_password")
-                .role(Role.MERCHANT)
                 .build();
         sampleUser.setId(UUID.randomUUID());
         sampleUser.setCreatedAt(Instant.now());
@@ -68,7 +67,6 @@ class UserServiceTest {
                 .fullName("ABC Exports")
                 .email("merchant@example.com")
                 .password("Password@123")
-                .role(Role.MERCHANT)
                 .build();
 
         when(userRepository.existsByEmail("merchant@example.com")).thenReturn(false);
@@ -91,7 +89,6 @@ class UserServiceTest {
                 .fullName("Duplicate User")
                 .email("merchant@example.com")
                 .password("Password@123")
-                .role(Role.MERCHANT)
                 .build();
 
         when(userRepository.existsByEmail("merchant@example.com")).thenReturn(true);

@@ -75,31 +75,25 @@ class AIReasoningIntegrationTest {
         // Create test merchant
         testMerchant = User.builder()
             .email("test-merchant@example.com")
-            .password("hashedPassword")
-            .name("Test Merchant")
+            .fullName("Test Merchant")
             .build();
         testMerchant = userRepository.save(testMerchant);
         
         // Create test document
         testDocument = Document.builder()
-            .merchantId(testMerchant.getId())
-            .fileName("invoice.pdf")
-            .contentType("application/pdf")
+            .uploadedBy(testMerchant)
+            .originalFilename("invoice.pdf")
             .fileSize(50000L)
             .build();
         testDocument = documentRepository.save(testDocument);
         
         // Create test transaction
         testTransaction = Transaction.builder()
-            .merchantId(testMerchant.getId())
-            .documentId(testDocument.getId())
-            .purpose("Export of electronics")
+            .purposeCode("Export of electronics")
             .beneficiaryName("XYZ Imports LLC")
-            .beneficiaryEmail("xyz@example.com")
-            .beneficiaryPhone("+1-555-0100")
             .amount(new BigDecimal("50000.00"))
             .currency("USD")
-            .status(TransactionStatus.OCR_COMPLETED)
+            .status(TransactionStatus.AI_ANALYSIS)
             .build();
         testTransaction = transactionRepository.save(testTransaction);
         
@@ -110,11 +104,11 @@ class AIReasoningIntegrationTest {
         ocrData.put("total_amount", "50000.00");
         
         testExtraction = DocumentExtraction.builder()
-            .documentId(testDocument.getId())
+            .document(testDocument)
             .extractedText("Invoice from ABC Corp to XYZ Imports LLC for $50,000 USD")
             .extractedData(ocrData)
-            .extractionMethod("TIKA")
-            .confidenceScore(new BigDecimal("92.5"))
+            .extractionMethod(DocumentExtraction.ExtractionMethod.TIKA)
+            .confidenceScore(92.5)
             .processingDurationMs(1500L)
             .ocrLanguage("eng")
             .build();
@@ -329,7 +323,7 @@ class AIReasoningIntegrationTest {
     @DisplayName("Transaction should remain in AI_ANALYSIS after analysis completion")
     void testTransactionStaysInAIAnalysisState() {
         // Verify initial state
-        assertEquals(TransactionStatus.OCR_COMPLETED, testTransaction.getStatus());
+        assertEquals(TransactionStatus.AI_ANALYSIS, testTransaction.getStatus());
         
         // Create analysis (doesn't change transaction state)
         var analysisJson = objectMapper.createObjectNode();
@@ -351,6 +345,6 @@ class AIReasoningIntegrationTest {
         // Verify transaction state hasn't changed
         // Phase 10 Policy Engine will transition to POLICY_EVALUATION
         Transaction reloaded = transactionRepository.findById(testTransaction.getId()).get();
-        assertEquals(TransactionStatus.OCR_COMPLETED, reloaded.getStatus());
+        assertEquals(TransactionStatus.AI_ANALYSIS, reloaded.getStatus());
     }
 }

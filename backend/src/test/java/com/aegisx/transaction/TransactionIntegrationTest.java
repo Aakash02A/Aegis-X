@@ -60,7 +60,6 @@ class TransactionIntegrationTest {
                 .fullName("Demo Merchant Ltd")
                 .email(merchantEmail)
                 .password("Password@123")
-                .role(Role.MERCHANT)
                 .build();
         userService.register(registerRequest);
 
@@ -122,7 +121,6 @@ class TransactionIntegrationTest {
                 .fullName("Other Merchant")
                 .email(otherEmail)
                 .password("Password@123")
-                .role(Role.MERCHANT)
                 .build());
         AuthResponse otherAuth = userService.login(LoginRequest.builder().email(otherEmail).password("Password@123").build());
 

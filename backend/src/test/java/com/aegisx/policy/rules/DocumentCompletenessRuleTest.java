@@ -26,12 +26,11 @@ class DocumentCompletenessRuleTest {
         rule = new DocumentCompletenessRule();
         
         Transaction transaction = Transaction.builder()
-            .id(UUID.randomUUID())
             .referenceNumber("TXN-20260922-ABC123")
             .beneficiaryName("XYZ Imports")
             .amount(new BigDecimal("50000.00"))
             .currency("USD")
-            .purpose("P0101")
+            .purposeCode("P0101")
             .status(TransactionStatus.POLICY_EVALUATION)
             .build();
         

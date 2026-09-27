@@ -93,7 +93,7 @@ class ConfidenceNormalizerTest {
         assertFalse(normalizer.isValid(105.0));
         assertFalse(normalizer.isValid(-5.0));
         assertFalse(normalizer.isValid(Double.NaN));
-        assertFalse(normalizer.isValid(null));
+        assertFalse(normalizer.isValid((Double) null));
     }
     
     @Test

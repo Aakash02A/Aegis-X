@@ -46,14 +46,11 @@ class AuthControllerTest {
                 .fullName("ABC Exports")
                 .email("merchant@example.com")
                 .password("Password@123")
-                .role(Role.MERCHANT)
                 .build();
 
         UserResponse response = UserResponse.builder()
-                .id(UUID.randomUUID())
                 .fullName("ABC Exports")
                 .email("merchant@example.com")
-                .role(Role.MERCHANT)
                 .createdAt(Instant.now())
                 .build();
 
@@ -73,7 +70,6 @@ class AuthControllerTest {
                 .fullName("ABC Exports")
                 .email("duplicate@example.com")
                 .password("Password@123")
-                .role(Role.MERCHANT)
                 .build();
 
         when(userService.register(any(RegisterRequest.class)))
@@ -93,7 +89,6 @@ class AuthControllerTest {
                 .fullName("")
                 .email("invalid-email")
                 .password("short")
-                .role(null)
                 .build();
 
         mockMvc.perform(post("/api/auth/register")
@@ -116,7 +111,6 @@ class AuthControllerTest {
                 .tokenType("Bearer")
                 .userId(UUID.randomUUID())
                 .email("merchant@example.com")
-                .role(Role.MERCHANT)
                 .build();
 
         when(userService.login(any(LoginRequest.class))).thenReturn(response);
@@ -152,10 +146,8 @@ class AuthControllerTest {
     @WithMockUser(username = "merchant@example.com", roles = {"MERCHANT"})
     void getCurrentUserReturnsProfileWhenAuthenticated() throws Exception {
         UserResponse response = UserResponse.builder()
-                .id(UUID.randomUUID())
                 .fullName("ABC Exports")
                 .email("merchant@example.com")
-                .role(Role.MERCHANT)
                 .createdAt(Instant.now())
                 .build();
 

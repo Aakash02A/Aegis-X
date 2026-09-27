@@ -92,7 +92,7 @@ class DocumentServiceTest {
         ));
         when(documentRepository.countByTransactionIdAndDocumentType(any(), any())).thenReturn(1L);
 
-        EvidenceStatusResponse response = documentService.getEvidenceStatus(transaction.getId());
+        EvidenceStatusResponse response = documentService.getEvidenceStatus(transaction.getId(), "merchant@example.com");
 
         assertNotNull(response);
         assertEquals(2, response.getTotalRequired());

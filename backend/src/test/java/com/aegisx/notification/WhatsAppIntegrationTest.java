@@ -41,7 +41,6 @@ class WhatsAppIntegrationTest {
     void setUp() {
         transactionId = UUID.randomUUID();
         transaction = Transaction.builder()
-            .id(transactionId)
             .referenceNumber("TXN-20260922-ABC123")
             .beneficiaryName("Test User")
             .amount(new BigDecimal("10000.00"))
@@ -101,7 +100,6 @@ class WhatsAppIntegrationTest {
     void testIdempotencyCheck() {
         String messageId = "wamid.test123";
         NotificationMessage existing = NotificationMessage.builder()
-            .id(UUID.randomUUID())
             .transactionId(transactionId)
             .messageId(messageId)
             .status(DeliveryStatus.SENT)
@@ -120,7 +118,6 @@ class WhatsAppIntegrationTest {
     @DisplayName("Should track delivery status updates")
     void testDeliveryStatusTracking() {
         NotificationMessage msg = NotificationMessage.builder()
-            .id(UUID.randomUUID())
             .transactionId(transactionId)
             .messageId("wamid.test123")
             .status(DeliveryStatus.SENT)

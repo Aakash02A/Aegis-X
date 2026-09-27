@@ -89,7 +89,7 @@ class PaymentCapturedHandlerTest {
         assertEquals("TXN-20260921-A1B2C3", webhookEvent.getTransactionReference());
 
         verify(transactionRepository).save(transaction);
-        verify(transactionStateMachine).transition(transaction, TransactionStatus.PAYMENT_RECEIVED, TransitionActor.RAZORPAY, "Razorpay payment captured: pay_test123");
+        verify(transactionStateMachine).transition(transaction, TransactionStatus.PAYMENT_RECEIVED, TransitionActor.RAZORPAY_GATEWAY, "Razorpay payment captured: pay_test123");
         verify(transactionStateMachine).transition(transaction, TransactionStatus.EVIDENCE_PENDING, TransitionActor.SYSTEM, "Payment confirmed; awaiting merchant compliance evidence");
     }
 

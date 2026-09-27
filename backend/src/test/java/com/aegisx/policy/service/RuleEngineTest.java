@@ -33,9 +33,7 @@ class RuleEngineTest {
     @BeforeEach
     void setUp() {
         transaction = Transaction.builder()
-            .id(UUID.randomUUID())
             .referenceNumber("TXN-20260922-ABC123")
-            .beneficiaryName("XYZ Imports Ltd")
             .amount(new BigDecimal("50000.00"))
             .currency("USD")
             .purposeCode("P0101")
@@ -65,17 +63,10 @@ class RuleEngineTest {
             .build();
         
         DocumentExtraction extraction = DocumentExtraction.builder()
-            .transactionId(transaction.getId())
-            .beneficiaryName("XYZ Imports Ltd")
-            .transactionAmount(new BigDecimal("50000.00"))
-            .currencyCode("USD")
-            .confidence(95.0)
             .build();
         
         AIAnalysis analysis = AIAnalysis.builder()
-            .transactionId(transaction.getId())
-            .complianceScore(88.0)
-            .riskFactors("None identified")
+            .confidenceScore(new BigDecimal("88.0"))
             .build();
         
         RuleContext context = contextBuilder
@@ -84,9 +75,9 @@ class RuleEngineTest {
             .aiAnalysis(analysis)
             .build();
         
-        PolicyEngineResult result = ruleEngine.execute(context);
+        PolicyEngineResult result = ruleEngine.evaluate(context);
         
-        assertEquals("APPROVED", result.getDecision());
+        assertEquals("APPROVED", result.getFinalDecision());
         assertTrue(result.getRuleResults().stream().allMatch(r -> r.getPassed()));
         assertEquals(7, result.getRuleResults().size());
         assertTrue(result.getProcessingDurationMs() >= 0);
@@ -111,17 +102,10 @@ class RuleEngineTest {
             .build();
         
         DocumentExtraction extraction = DocumentExtraction.builder()
-            .transactionId(transaction.getId())
-            .beneficiaryName("XYZ Imports Ltd")
-            .transactionAmount(new BigDecimal("50000.00"))
-            .currencyCode("USD")
-            .confidence(95.0)
             .build();
         
         AIAnalysis analysis = AIAnalysis.builder()
-            .transactionId(transaction.getId())
-            .complianceScore(88.0)
-            .riskFactors("None identified")
+            .confidenceScore(new BigDecimal("88.0"))
             .build();
         
         RuleContext context = contextBuilder
@@ -130,9 +114,9 @@ class RuleEngineTest {
             .aiAnalysis(analysis)
             .build();
         
-        PolicyEngineResult result = ruleEngine.execute(context);
+        PolicyEngineResult result = ruleEngine.evaluate(context);
         
-        assertEquals("COMPLIANCE_HOLD", result.getDecision());
+        assertEquals("COMPLIANCE_HOLD", result.getFinalDecision());
         assertTrue(result.getRuleResults().stream().anyMatch(r -> !r.getPassed()));
     }
     
@@ -155,17 +139,10 @@ class RuleEngineTest {
             .build();
         
         DocumentExtraction extraction = DocumentExtraction.builder()
-            .transactionId(transaction.getId())
-            .beneficiaryName("XYZ Imports Ltd")
-            .transactionAmount(new BigDecimal("50000.00"))
-            .currencyCode("USD")
-            .confidence(95.0)
             .build();
         
         AIAnalysis analysis = AIAnalysis.builder()
-            .transactionId(transaction.getId())
-            .complianceScore(88.0)
-            .riskFactors("None identified")
+            .confidenceScore(new BigDecimal("88.0"))
             .build();
         
         RuleContext context = contextBuilder
@@ -174,7 +151,7 @@ class RuleEngineTest {
             .aiAnalysis(analysis)
             .build();
         
-        PolicyEngineResult result = ruleEngine.execute(context);
+        PolicyEngineResult result = ruleEngine.evaluate(context);
         
         // Verify all rules have names and reasons
         result.getRuleResults().forEach(rule -> {
@@ -204,17 +181,10 @@ class RuleEngineTest {
             .build();
         
         DocumentExtraction extraction = DocumentExtraction.builder()
-            .transactionId(transaction.getId())
-            .beneficiaryName("XYZ Imports Ltd")
-            .transactionAmount(new BigDecimal("50000.00"))
-            .currencyCode("USD")
-            .confidence(95.0)
             .build();
         
         AIAnalysis analysis = AIAnalysis.builder()
-            .transactionId(transaction.getId())
-            .complianceScore(88.0)
-            .riskFactors("None identified")
+            .confidenceScore(new BigDecimal("88.0"))
             .build();
         
         RuleContext context = contextBuilder
@@ -223,7 +193,7 @@ class RuleEngineTest {
             .aiAnalysis(analysis)
             .build();
         
-        PolicyEngineResult result = ruleEngine.execute(context);
+        PolicyEngineResult result = ruleEngine.evaluate(context);
         
         // Processing should complete in reasonable time (< 500ms for MVP)
         assertTrue(result.getProcessingDurationMs() >= 0);

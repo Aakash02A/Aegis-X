@@ -50,7 +50,6 @@ class AuthIntegrationTest {
                 .fullName("ABC Exports Pvt Ltd")
                 .email("abc.exports@example.com")
                 .password("Password@123")
-                .role(Role.MERCHANT)
                 .build();
 
         mockMvc.perform(post("/api/auth/register")

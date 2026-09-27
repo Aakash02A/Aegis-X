@@ -28,7 +28,6 @@ class PurposeCodeRuleTest {
     @DisplayName("Should pass for valid purpose code P0101")
     void testPassForValidCodeP0101() {
         Transaction transaction = Transaction.builder()
-            .id(UUID.randomUUID())
             .referenceNumber("TXN-20260922-ABC123")
             .beneficiaryName("XYZ Imports")
             .amount(new BigDecimal("50000.00"))
@@ -49,7 +48,6 @@ class PurposeCodeRuleTest {
     @DisplayName("Should pass for valid purpose code P0202")
     void testPassForValidCodeP0202() {
         Transaction transaction = Transaction.builder()
-            .id(UUID.randomUUID())
             .referenceNumber("TXN-20260922-ABC123")
             .beneficiaryName("XYZ Imports")
             .amount(new BigDecimal("50000.00"))
@@ -69,7 +67,6 @@ class PurposeCodeRuleTest {
     @DisplayName("Should pass for valid purpose code P0301")
     void testPassForValidCodeP0301() {
         Transaction transaction = Transaction.builder()
-            .id(UUID.randomUUID())
             .referenceNumber("TXN-20260922-ABC123")
             .beneficiaryName("XYZ Imports")
             .amount(new BigDecimal("50000.00"))
@@ -89,7 +86,6 @@ class PurposeCodeRuleTest {
     @DisplayName("Should fail for invalid purpose code")
     void testFailForInvalidCode() {
         Transaction transaction = Transaction.builder()
-            .id(UUID.randomUUID())
             .referenceNumber("TXN-20260922-ABC123")
             .beneficiaryName("XYZ Imports")
             .amount(new BigDecimal("50000.00"))
@@ -110,7 +106,6 @@ class PurposeCodeRuleTest {
     @DisplayName("Should fail for null purpose code")
     void testFailForNullCode() {
         Transaction transaction = Transaction.builder()
-            .id(UUID.randomUUID())
             .referenceNumber("TXN-20260922-ABC123")
             .beneficiaryName("XYZ Imports")
             .amount(new BigDecimal("50000.00"))
@@ -130,7 +125,6 @@ class PurposeCodeRuleTest {
     @DisplayName("Should be case-insensitive for purpose code")
     void testCaseInsensitive() {
         Transaction transaction = Transaction.builder()
-            .id(UUID.randomUUID())
             .referenceNumber("TXN-20260922-ABC123")
             .beneficiaryName("XYZ Imports")
             .amount(new BigDecimal("50000.00"))
