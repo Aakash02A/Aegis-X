@@ -33,11 +33,12 @@ public class SecurityHeadersConfig {
                                      "font-src 'self' https://cdn.jsdelivr.net; " +
                                      "connect-src 'self' https://api.openai.com https://api.razorpay.com https://graph.facebook.com; " +
                                      "frame-ancestors 'none';")
+                .and()
                 
                 // HTTP Strict Transport Security (HSTS)
                 .httpStrictTransportSecurity(hstsConfig -> hstsConfig
                     .maxAgeInSeconds(31536000) // 1 year
-                    .includeSubdomains(true)
+                    .includeSubDomains(true)
                     .preload(true))
                 
                 // X-Frame-Options
@@ -45,14 +46,11 @@ public class SecurityHeadersConfig {
                 
                 // X-Content-Type-Options
                 .contentTypeOptions()
-                
-                // X-XSS-Protection
                 .and()
-                .httpStrictTransportSecurity(hstsConfig -> hstsConfig
-                    .maxAgeInSeconds(31536000))
                 
                 // Referrer Policy
                 .referrerPolicy(ReferrerPolicyHeaderWriter.ReferrerPolicy.STRICT_ORIGIN_WHEN_CROSS_ORIGIN)
+                .and()
                 
                 // Permissions Policy
                 .addHeaderWriter((request, response) -> {
