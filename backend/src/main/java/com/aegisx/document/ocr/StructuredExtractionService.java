@@ -107,8 +107,7 @@ public class StructuredExtractionService {
      */
     private String extractInvoiceNumber(String text) {
         Pattern[] patterns = {
-            Pattern.compile("(?:INV|Invoice|Bill|Invoice No\\.?|Inv\\.?)[\\s#-]*([A-Z0-9/-]+)", Pattern.CASE_INSENSITIVE),
-            Pattern.compile("(?:Invoice Number|Invoice #)\\s*[:=]?\\s*([A-Z0-9/-]+)", Pattern.CASE_INSENSITIVE),
+            Pattern.compile("(?:Invoice\\s+(?:Number|No\\.?)|Invoice\\s*#|Invoice(?=\\s*:)|Inv\\.?(?![a-z])|Bill(?:\\s+(?:Number|No\\.?))?)\\s*[:#=-]*\\s*([A-Z0-9][A-Z0-9/-]*)", Pattern.CASE_INSENSITIVE),
         };
 
         for (Pattern pattern : patterns) {
@@ -139,7 +138,7 @@ public class StructuredExtractionService {
 
         // Pattern to match common date formats
         Pattern datePattern = Pattern.compile(
-            "\\b(\\d{1,4}[/-]\\d{1,2}[/-]\\d{4}|\\d{1,2}\\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\\s+\\d{4})\\b",
+            "\\b(\\d{4}[/-]\\d{1,2}[/-]\\d{1,2}|\\d{1,2}[/-]\\d{1,2}[/-]\\d{4}|\\d{1,2}\\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\\s+\\d{4})\\b",
             Pattern.CASE_INSENSITIVE
         );
 
@@ -230,7 +229,7 @@ public class StructuredExtractionService {
      */
     private String extractBeneficiary(String text) {
         Pattern[] patterns = {
-            Pattern.compile("(?:beneficiary|payee|recipient|to\\s+the\\s+order\\s+of|make\\s+check\\s+payable\\s+to)\\s*[:=]?\\s*([A-Za-z\\s&.,'-]+)", Pattern.CASE_INSENSITIVE),
+            Pattern.compile("(?:beneficiary|payee|recipient|to\\s+the\\s+order\\s+of|make\\s+check\\s+payable\\s+to|to)\\s*[:=]\\s*([A-Za-z][A-Za-z \\t&.,'-]*)", Pattern.CASE_INSENSITIVE),
             Pattern.compile("(?:company|entity|business|firm|corporation)\\s*[:=]?\\s*([A-Za-z\\s&.,'-]+)", Pattern.CASE_INSENSITIVE),
         };
 

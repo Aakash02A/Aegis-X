@@ -57,9 +57,7 @@ public class OcrController {
         }
 
         // Verify merchant owns this document
-        if (!document.getUploadedBy().getId().equals(
-            UUID.fromString(authentication.getName())
-        )) {
+        if (!document.getUploadedBy().getEmail().equals(authentication.getName())) {
             log.warn("Unauthorized access to document: {} by user: {}", 
                 documentId, authentication.getName());
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
@@ -115,9 +113,7 @@ public class OcrController {
         }
 
         // Verify merchant owns this document
-        if (!document.getUploadedBy().getId().equals(
-            UUID.fromString(authentication.getName())
-        )) {
+        if (!document.getUploadedBy().getEmail().equals(authentication.getName())) {
             log.warn("Unauthorized access to document: {} by user: {}", 
                 documentId, authentication.getName());
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build();

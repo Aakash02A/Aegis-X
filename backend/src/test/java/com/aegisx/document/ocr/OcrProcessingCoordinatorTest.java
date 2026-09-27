@@ -2,6 +2,7 @@ package com.aegisx.document.ocr;
 
 import com.aegisx.auth.entity.Role;
 import com.aegisx.auth.entity.User;
+import com.aegisx.auth.repository.UserRepository;
 import com.aegisx.common.exception.OcrProcessingException;
 import com.aegisx.document.entity.Document;
 import com.aegisx.document.entity.DocumentExtraction;
@@ -11,7 +12,9 @@ import com.aegisx.document.repository.DocumentExtractionRepository;
 import com.aegisx.document.repository.DocumentRepository;
 import com.aegisx.transaction.entity.Transaction;
 import com.aegisx.transaction.entity.TransactionStatus;
+import com.aegisx.transaction.repository.TransactionRepository;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.ByteArrayInputStream;
 import java.io.InputStream;
 import java.math.BigDecimal;
@@ -58,6 +61,15 @@ class OcrProcessingCoordinatorTest {
     @Autowired
     private DocumentExtractionRepository extractionRepository;
 
+    @Autowired
+    private UserRepository userRepository;
+
+    @Autowired
+    private TransactionRepository transactionRepository;
+
+    @Autowired
+    private ObjectMapper objectMapper;
+
     private Document testDocument;
     private Transaction testTransaction;
     private User testUser;
@@ -66,12 +78,12 @@ class OcrProcessingCoordinatorTest {
     void setUp() {
         // Create test user
         testUser = User.builder()
-            .email("test@example.com")
+            .email("test-" + UUID.randomUUID() + "@example.com")
             .passwordHash("hashed")
             .fullName("Test User")
             .role(Role.MERCHANT)
             .build();
-        testUser.setId(UUID.randomUUID());
+        testUser = userRepository.save(testUser);
 
         // Create test transaction
         testTransaction = Transaction.builder()
@@ -83,7 +95,7 @@ class OcrProcessingCoordinatorTest {
             .purposeCode("P0001")
             .status(TransactionStatus.EVIDENCE_PENDING)
             .build();
-        testTransaction.setId(UUID.randomUUID());
+        testTransaction = transactionRepository.save(testTransaction);
 
         // Create test document
         testDocument = Document.builder()
@@ -98,7 +110,6 @@ class OcrProcessingCoordinatorTest {
             .uploadedBy(testUser)
             .version(1L)
             .build();
-        testDocument.setId(UUID.randomUUID());
     }
 
     @Test
@@ -111,7 +122,7 @@ class OcrProcessingCoordinatorTest {
         when(tikaTextExtractor.extractText(any())).thenReturn(sampleText);
         when(tikaTextExtractor.isSufficientText(sampleText)).thenReturn(true);
         when(structuredExtractionService.extractStructuredData(sampleText))
-            .thenReturn(mock(JsonNode.class));
+            .thenReturn(objectMapper.createObjectNode());
         when(structuredExtractionService.calculateConfidenceScore(any())).thenReturn(85.0);
 
         // Save document to DB first
@@ -143,7 +154,7 @@ class OcrProcessingCoordinatorTest {
         when(tikaTextExtractor.extractText(any())).thenReturn(sampleText);
         when(tikaTextExtractor.isSufficientText(sampleText)).thenReturn(true);
         when(structuredExtractionService.extractStructuredData(sampleText))
-            .thenReturn(mock(JsonNode.class));
+            .thenReturn(objectMapper.createObjectNode());
         when(structuredExtractionService.calculateConfidenceScore(any())).thenReturn(85.0);
 
         testDocument.setDocumentStatus(DocumentStatus.UPLOADED);
@@ -188,7 +199,7 @@ class OcrProcessingCoordinatorTest {
         String sampleText = "Invoice Number: INV-1024\nAmount: USD 2450.50";
         InputStream inputStream = new ByteArrayInputStream(sampleText.getBytes());
 
-        JsonNode mockJsonNode = mock(JsonNode.class);
+        JsonNode mockJsonNode = objectMapper.createObjectNode().put("invoiceNumber", "INV-1024");
         when(tikaTextExtractor.extractText(any())).thenReturn(sampleText);
         when(tikaTextExtractor.isSufficientText(sampleText)).thenReturn(true);
         when(structuredExtractionService.extractStructuredData(sampleText))
@@ -216,7 +227,7 @@ class OcrProcessingCoordinatorTest {
         String sampleText = "Invoice Number: INV-1024";
         InputStream inputStream = new ByteArrayInputStream(sampleText.getBytes());
 
-        JsonNode mockJsonNode = mock(JsonNode.class);
+        JsonNode mockJsonNode = objectMapper.createObjectNode().put("invoiceNumber", "INV-1024");
         when(tikaTextExtractor.extractText(any())).thenReturn(sampleText);
         when(tikaTextExtractor.isSufficientText(sampleText)).thenReturn(true);
         when(structuredExtractionService.extractStructuredData(sampleText))
@@ -241,7 +252,7 @@ class OcrProcessingCoordinatorTest {
         String sampleText1 = "Invoice Number: INV-1024";
         String sampleText2 = "Invoice Number: INV-1025";
 
-        JsonNode mockJsonNode = mock(JsonNode.class);
+        JsonNode mockJsonNode = objectMapper.createObjectNode().put("invoiceNumber", "INV-1024");
         when(tikaTextExtractor.extractText(any())).thenReturn(sampleText1, sampleText2);
         when(tikaTextExtractor.isSufficientText(any())).thenReturn(true);
         when(structuredExtractionService.extractStructuredData(any()))
@@ -257,8 +268,9 @@ class OcrProcessingCoordinatorTest {
             new ByteArrayInputStream(sampleText1.getBytes())
         );
         
+        savedDocument = documentRepository.findById(savedDocument.getId()).orElseThrow();
         savedDocument.setDocumentStatus(DocumentStatus.UPLOADED);
-        documentRepository.save(savedDocument);
+        savedDocument = documentRepository.save(savedDocument);
         
         DocumentExtraction extraction2 = coordinator.processDocument(
             savedDocument, 

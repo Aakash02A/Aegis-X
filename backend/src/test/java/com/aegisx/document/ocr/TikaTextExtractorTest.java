@@ -43,10 +43,8 @@ class TikaTextExtractorTest {
     void testExtractTextFromEmptyStream() {
         InputStream inputStream = new ByteArrayInputStream(new byte[0]);
 
-        String result = tikaTextExtractor.extractText(inputStream);
-
-        assertNotNull(result);
-        assertEquals("", result);
+        assertThrows(com.aegisx.common.exception.OcrProcessingException.class,
+                () -> tikaTextExtractor.extractText(inputStream));
     }
 
     @Test

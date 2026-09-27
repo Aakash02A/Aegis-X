@@ -50,7 +50,7 @@ public class OcrProcessingCoordinator {
      * @throws OcrProcessingException if processing fails
      * @throws UnsupportedDocumentException if the document format is not supported
      */
-    @Transactional
+    @Transactional(noRollbackFor = OcrProcessingException.class)
     public DocumentExtraction processDocument(Document document, InputStream inputStream) {
         UUID documentId = document.getId();
         log.info("Starting OCR processing for document: {}", documentId);
