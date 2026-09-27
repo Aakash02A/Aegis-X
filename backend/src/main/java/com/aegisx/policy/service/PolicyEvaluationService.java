@@ -103,7 +103,7 @@ public class PolicyEvaluationService {
             // Persist policy evaluation
             PolicyEvaluation evaluation = PolicyEvaluation.builder()
                 .transaction(transaction)
-                .aiAnalysisId(aiAnalysis.getId())
+                .aiAnalysis(aiAnalysis)
                 .finalDecision(result.getFinalDecision())
                 .overallScore(aiAnalysis.getConfidenceScore())
                 .evaluationJson(evaluationJson)
@@ -147,7 +147,7 @@ public class PolicyEvaluationService {
             rules = (com.fasterxml.jackson.databind.node.ArrayNode) evaluation.getEvaluationJson().get("rules");
         }
         
-        var rulesList = objectMapper.convertValue(rules, 
+        java.util.List<com.aegisx.policy.dto.RuleResult> rulesList = objectMapper.convertValue(rules,
             objectMapper.getTypeFactory().constructCollectionType(java.util.List.class, com.aegisx.policy.dto.RuleResult.class));
         
         return PolicyEvaluationResponse.builder()

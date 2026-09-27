@@ -16,6 +16,11 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Optional;
 import java.util.UUID;
+import java.io.File;
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.file.Files;
+import org.springframework.web.multipart.MultipartFile;
 
 /**
  * InboundMessageService processes inbound WhatsApp events.
@@ -133,13 +138,7 @@ public class InboundMessageService {
             DocumentType docType = inferDocumentType(document.getFilename());
             
             // Upload through DocumentService
-            documentService.uploadDocument(
-                transactionId,
-                docType,
-                document.getFilename(),
-                fileBytes,
-                document.getMime_type()
-            );
+            uploadInboundDocument(transactionId, docType, document.getFilename(), fileBytes, document.getMime_type());
             
             log.info("Document ingested successfully: transactionId={}, type={}, filename={}", 
                 transactionId, docType, document.getFilename());
@@ -175,13 +174,8 @@ public class InboundMessageService {
             }
             
             // Upload as invoice image
-            documentService.uploadDocument(
-                transactionId,
-                DocumentType.INVOICE,
-                "invoice_" + System.currentTimeMillis() + ".jpg",
-                fileBytes,
-                image.getMime_type()
-            );
+            uploadInboundDocument(transactionId, DocumentType.INVOICE,
+                    "invoice_" + System.currentTimeMillis() + ".jpg", fileBytes, image.getMime_type());
             
             log.info("Image ingested successfully: transactionId={}", transactionId);
             
@@ -190,6 +184,23 @@ public class InboundMessageService {
         } catch (Exception e) {
             log.error("Error processing image message: {}", e.getMessage(), e);
         }
+    }
+
+    private void uploadInboundDocument(UUID transactionId, DocumentType type, String filename,
+                                       byte[] bytes, String contentType) {
+        Transaction transaction = transactionRepository.findById(transactionId)
+                .orElseThrow(() -> new IllegalArgumentException("Transaction not found: " + transactionId));
+        MultipartFile file = new MultipartFile() {
+            @Override public String getName() { return "file"; }
+            @Override public String getOriginalFilename() { return filename; }
+            @Override public String getContentType() { return contentType; }
+            @Override public boolean isEmpty() { return bytes.length == 0; }
+            @Override public long getSize() { return bytes.length; }
+            @Override public byte[] getBytes() { return bytes.clone(); }
+            @Override public InputStream getInputStream() { return new java.io.ByteArrayInputStream(bytes); }
+            @Override public void transferTo(File dest) throws IOException { Files.write(dest.toPath(), bytes); }
+        };
+        documentService.uploadDocument(transactionId, file, type, transaction.getMerchant().getEmail());
     }
     
     /**
