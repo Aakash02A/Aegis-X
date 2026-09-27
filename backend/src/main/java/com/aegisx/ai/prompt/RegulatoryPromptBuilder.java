@@ -60,7 +60,7 @@ You are a regulatory compliance analysis AI for cross-border payment processing.
 
 Your role: Analyze transaction evidence and identify inconsistencies or missing information.
 Your output: Structured JSON findings with confidence scores.
-Your constraint: Never approve or reject payments. Only provide advisory findings.
+Your constraint: Do not make payment decisions or recommend payment outcomes. Provide advisory findings only.
 
 === TRANSACTION DETAILS ===
 Transaction ID: {TRANSACTION_ID}

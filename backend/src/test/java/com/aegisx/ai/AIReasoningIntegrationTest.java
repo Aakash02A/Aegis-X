@@ -7,6 +7,7 @@ import com.aegisx.ai.service.AIAnalysisService;
 import com.aegisx.auth.entity.User;
 import com.aegisx.auth.repository.UserRepository;
 import com.aegisx.document.entity.Document;
+import com.aegisx.document.entity.DocumentType;
 import com.aegisx.document.entity.DocumentExtraction;
 import com.aegisx.document.repository.DocumentExtractionRepository;
 import com.aegisx.document.repository.DocumentRepository;
@@ -75,20 +76,16 @@ class AIReasoningIntegrationTest {
         // Create test merchant
         testMerchant = User.builder()
             .email("test-merchant@example.com")
+            .passwordHash("test-password-hash")
+            .role(com.aegisx.auth.entity.Role.MERCHANT)
             .fullName("Test Merchant")
             .build();
         testMerchant = userRepository.save(testMerchant);
         
-        // Create test document
-        testDocument = Document.builder()
-            .uploadedBy(testMerchant)
-            .originalFilename("invoice.pdf")
-            .fileSize(50000L)
-            .build();
-        testDocument = documentRepository.save(testDocument);
-        
         // Create test transaction
         testTransaction = Transaction.builder()
+            .referenceNumber("TXN-AI-" + UUID.randomUUID())
+            .merchant(testMerchant)
             .purposeCode("Export of electronics")
             .beneficiaryName("XYZ Imports LLC")
             .amount(new BigDecimal("50000.00"))
@@ -96,6 +93,19 @@ class AIReasoningIntegrationTest {
             .status(TransactionStatus.AI_ANALYSIS)
             .build();
         testTransaction = transactionRepository.save(testTransaction);
+
+        // Create test document linked to its required transaction.
+        testDocument = Document.builder()
+            .transaction(testTransaction)
+            .uploadedBy(testMerchant)
+            .documentType(DocumentType.INVOICE)
+            .originalFilename("invoice.pdf")
+            .storedFilename("invoice.pdf")
+            .mimeType("application/pdf")
+            .fileSize(50000L)
+            .storagePath("/test/invoice.pdf")
+            .build();
+        testDocument = documentRepository.save(testDocument);
         
         // Create test OCR extraction
         var ocrData = objectMapper.createObjectNode();
