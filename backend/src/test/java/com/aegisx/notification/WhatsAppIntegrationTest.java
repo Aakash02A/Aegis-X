@@ -5,7 +5,7 @@ import com.aegisx.notification.dto.DeliveryStatus;
 import com.aegisx.notification.entity.NotificationMessage;
 import com.aegisx.notification.repository.NotificationRepository;
 import com.aegisx.notification.service.NotificationService;
-import com.aegisx.notification.service.WhatsAppWebhookService;
+import com.aegisx.integration.whatsapp.WhatsAppWebhookService;
 import com.aegisx.transaction.entity.Transaction;
 import com.aegisx.transaction.entity.TransactionStatus;
 import org.junit.jupiter.api.BeforeEach;
