@@ -258,7 +258,9 @@ public class DocumentService {
     }
 
     private void updateChecklistStatus(UUID transactionId, DocumentType documentType, Document document) {
-        RequiredDocument required = requiredDocumentRepository.findByTransactionIdAndDocumentType(transactionId, documentType)
+        RequiredDocument required = requiredDocumentRepository.findByTransactionId(transactionId).stream()
+                .filter(item -> item.getDocumentType().getCanonicalType() == documentType.getCanonicalType())
+                .findFirst()
                 .orElse(null);
         if (required != null) {
             required.setFulfilled(true);

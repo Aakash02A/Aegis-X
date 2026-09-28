@@ -66,13 +66,14 @@ public class OcrController {
         try {
             // Trigger OCR processing synchronously
             DocumentExtraction extraction = ocrService.processDocument(documentId);
+            Document processedDocument = documentRepository.findById(documentId).orElse(document);
             
             log.info("OCR processing completed for document: {}", documentId);
 
             return ResponseEntity.accepted().body(
                 OcrProcessingResponse.builder()
                     .documentId(documentId)
-                    .status(document.getDocumentStatus().toString())
+                    .status(processedDocument.getDocumentStatus().toString())
                     .extractionId(extraction.getId())
                     .message("OCR processing completed")
                     .build()

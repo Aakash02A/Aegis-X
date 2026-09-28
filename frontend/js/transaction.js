@@ -35,6 +35,7 @@ export const TransactionPage = {
     this.setupNotes();
     this.setupExport();
     this.setupNotifications();
+    this.setupWorkflowActions();
     await this.loadTransaction();
   },
 
@@ -100,6 +101,39 @@ export const TransactionPage = {
     document.getElementById('summary-currency').textContent = tx.currency || '—';
     document.getElementById('summary-current-state').textContent = tx.status || '—';
     document.getElementById('summary-reference').textContent = tx.referenceNumber || tx.id || '—';
+    document.getElementById('local-payment-actions')?.classList.toggle('hidden', tx.status !== 'CREATED');
+    document.getElementById('document-request-form')?.classList.toggle('hidden', tx.status !== 'EVIDENCE_PENDING');
+  },
+
+  setupWorkflowActions() {
+    document.getElementById('confirm-local-payment')?.addEventListener('click', async () => {
+      try {
+        await API.request(`/transactions/${encodeURIComponent(this.transactionId)}/payment/confirm`, { method: 'POST' });
+        Toast.success('Local test payment confirmed. Evidence collection is ready.');
+        await this.loadAllSubsystems();
+      } catch (error) {
+        Toast.error(`Local payment confirmation failed: ${error.message}`);
+      }
+    });
+
+    document.getElementById('document-request-form')?.addEventListener('submit', async event => {
+      event.preventDefault();
+      const phone = document.getElementById('document-request-phone').value.trim();
+      const result = document.getElementById('document-request-result');
+      result.textContent = '';
+      try {
+        const notification = await API.request(`/transactions/${encodeURIComponent(this.transactionId)}/notifications/document-request`, {
+          method: 'POST',
+          body: JSON.stringify({ recipientPhone: phone })
+        });
+        result.textContent = notification?.status === 'SENT'
+          ? 'WhatsApp request sent.'
+          : `Request recorded with status ${notification?.status || 'unknown'}; check notification history for details.`;
+        await this.loadNotifications();
+      } catch (error) {
+        result.textContent = `Could not request documents: ${error.message}`;
+      }
+    });
   },
 
   async loadAllSubsystems() {

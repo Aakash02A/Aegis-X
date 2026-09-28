@@ -4,6 +4,7 @@ import com.aegisx.audit.entity.AuditEventType;
 import com.aegisx.audit.entity.AuditModule;
 import com.aegisx.audit.entity.ActorType;
 import com.aegisx.audit.service.AuditService;
+import com.aegisx.document.service.DocumentService;
 import com.aegisx.integration.razorpay.dto.RazorpayWebhookPayload;
 import com.aegisx.integration.razorpay.entity.WebhookEvent;
 import com.aegisx.integration.razorpay.entity.WebhookProcessingStatus;
@@ -30,6 +31,7 @@ public class PaymentCapturedHandler implements RazorpayEventHandler {
     private final TransactionRepository transactionRepository;
     private final TransactionStateMachine transactionStateMachine;
     private final AuditService auditService;
+    private final DocumentService documentService;
 
     @Override
     public boolean supports(String eventType) {
@@ -114,6 +116,7 @@ public class PaymentCapturedHandler implements RazorpayEventHandler {
             );
 
             transactionRepository.save(transaction);
+            documentService.initializeChecklist(transaction.getId());
 
             // Record payment received event audit
             ObjectNode paymentData = JsonNodeFactory.instance.objectNode();

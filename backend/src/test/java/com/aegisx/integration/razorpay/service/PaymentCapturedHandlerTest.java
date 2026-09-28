@@ -4,6 +4,7 @@ import com.aegisx.integration.razorpay.dto.RazorpayWebhookPayload;
 import com.aegisx.integration.razorpay.entity.WebhookEvent;
 import com.aegisx.integration.razorpay.entity.WebhookProcessingStatus;
 import com.aegisx.audit.service.AuditService;
+import com.aegisx.document.service.DocumentService;
 import com.aegisx.transaction.entity.Transaction;
 import com.aegisx.transaction.entity.TransactionStatus;
 import com.aegisx.transaction.entity.TransitionActor;
@@ -35,6 +36,9 @@ class PaymentCapturedHandlerTest {
 
     @Mock
     private AuditService auditService;
+
+    @Mock
+    private DocumentService documentService;
 
     @Spy
     private TransactionStateMachine transactionStateMachine = new TransactionStateMachine();
@@ -93,6 +97,7 @@ class PaymentCapturedHandlerTest {
         assertEquals("TXN-20260921-A1B2C3", webhookEvent.getTransactionReference());
 
         verify(transactionRepository).save(transaction);
+        verify(documentService).initializeChecklist(transaction.getId());
         verify(transactionStateMachine).transition(transaction, TransactionStatus.PAYMENT_RECEIVED, TransitionActor.RAZORPAY_GATEWAY, "Razorpay payment captured: pay_test123");
         verify(transactionStateMachine).transition(transaction, TransactionStatus.EVIDENCE_PENDING, TransitionActor.SYSTEM, "Payment confirmed; awaiting merchant compliance evidence");
     }

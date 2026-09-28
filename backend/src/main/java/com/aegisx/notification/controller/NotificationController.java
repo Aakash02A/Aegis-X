@@ -1,13 +1,21 @@
 package com.aegisx.notification.controller;
 
 import com.aegisx.notification.dto.NotificationResponse;
+import com.aegisx.auth.entity.Role;
+import com.aegisx.document.service.DocumentService;
 import com.aegisx.notification.entity.NotificationMessage;
 import com.aegisx.notification.repository.NotificationRepository;
+import com.aegisx.notification.service.NotificationService;
+import com.aegisx.transaction.service.TransactionService;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Pattern;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -32,6 +40,26 @@ import java.util.stream.Collectors;
 public class NotificationController {
     
     private final NotificationRepository notificationRepository;
+    private final NotificationService notificationService;
+    private final TransactionService transactionService;
+    private final DocumentService documentService;
+
+    public record DocumentRequest(@NotBlank @Pattern(regexp = "^[1-9][0-9]{7,14}$") String recipientPhone) {}
+
+    @PostMapping("/{id}/notifications/document-request")
+    @PreAuthorize("hasRole('MERCHANT')")
+    public ResponseEntity<NotificationResponse> requestMissingDocuments(
+            @PathVariable("id") UUID transactionId,
+            @Valid @RequestBody DocumentRequest request,
+            Authentication authentication) {
+        transactionService.getTransaction(transactionId, authentication.getName(), Role.MERCHANT);
+        var transaction = transactionService.getTransactionById(transactionId)
+                .orElseThrow(() -> new IllegalArgumentException("Transaction not found: " + transactionId));
+        documentService.initializeChecklist(transactionId);
+        NotificationMessage message = notificationService.requestMissingDocuments(transaction, request.recipientPhone());
+        if (message == null) return ResponseEntity.noContent().build();
+        return ResponseEntity.ok(toResponse(message));
+    }
     
     /**
      * Get notification history for a transaction.

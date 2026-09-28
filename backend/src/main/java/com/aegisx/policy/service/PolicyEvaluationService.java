@@ -11,6 +11,8 @@ import com.aegisx.policy.repository.PolicyEvaluationRepository;
 import com.aegisx.policy.rules.RuleContext;
 import com.aegisx.transaction.entity.Transaction;
 import com.aegisx.transaction.repository.TransactionRepository;
+import com.aegisx.transaction.entity.TransactionStatus;
+import com.aegisx.transaction.service.TransactionService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -47,6 +49,7 @@ public class PolicyEvaluationService {
     private final RequiredDocumentRepository requiredDocumentRepository;
     private final AIAnalysisRepository aiAnalysisRepository;
     private final ObjectMapper objectMapper;
+    private final TransactionService transactionService;
     
     /**
      * Evaluate policy for a transaction.
@@ -111,6 +114,15 @@ public class PolicyEvaluationService {
                 .build();
             
             PolicyEvaluation saved = policyEvaluationRepository.save(evaluation);
+
+            TransactionStatus nextStatus = switch (result.getFinalDecision()) {
+                case "APPROVED" -> TransactionStatus.APPROVED;
+                case "COMPLIANCE_HOLD" -> TransactionStatus.COMPLIANCE_HOLD;
+                default -> throw new PolicyEvaluationException("Unsupported policy decision: " + result.getFinalDecision());
+            };
+            if (transaction.getStatus() == TransactionStatus.POLICY_EVALUATION) {
+                transactionService.transitionStatus(transactionId, nextStatus, "POLICY_ENGINE", "Policy evaluation decision: " + result.getFinalDecision());
+            }
             
             log.info("Policy evaluation completed for transaction: {} - Decision: {}, Duration: {}ms",
                 transactionId, result.getFinalDecision(), result.getProcessingDurationMs());

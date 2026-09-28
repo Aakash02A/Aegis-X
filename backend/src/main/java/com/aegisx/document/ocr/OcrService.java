@@ -7,6 +7,8 @@ import com.aegisx.document.entity.DocumentExtraction;
 import com.aegisx.document.repository.DocumentExtractionRepository;
 import com.aegisx.document.repository.DocumentRepository;
 import com.aegisx.storage.service.StorageService;
+import com.aegisx.transaction.entity.TransactionStatus;
+import com.aegisx.transaction.service.TransactionService;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.UUID;
@@ -32,6 +34,7 @@ public class OcrService {
     private final DocumentExtractionRepository extractionRepository;
     private final StorageService storageService;
     private final OcrProcessingCoordinator ocrProcessingCoordinator;
+    private final TransactionService transactionService;
 
     /**
      * Initiate OCR processing for a document.
@@ -68,8 +71,18 @@ public class OcrService {
         // Process through OCR pipeline
         try {
             DocumentExtraction extraction = ocrProcessingCoordinator.processDocument(document, fileStream);
+            transactionService.transitionStatus(document.getTransaction().getId(), TransactionStatus.AI_ANALYSIS,
+                    "OCR_SERVICE", "Document OCR extraction completed");
             log.info("OCR processing completed successfully for document {}", documentId);
             return extraction;
+        } catch (RuntimeException e) {
+            try {
+                transactionService.transitionStatus(document.getTransaction().getId(), TransactionStatus.OCR_FAILED,
+                        "OCR_SERVICE", "Document OCR processing failed");
+            } catch (RuntimeException transitionError) {
+                log.debug("Could not mark transaction OCR_FAILED: {}", transitionError.getMessage());
+            }
+            throw e;
         } finally {
             // Clean up stream
             try {

@@ -159,6 +159,20 @@
               <span id="summary-reference" class="text-ink font-mono-data font-semibold break-all">—</span>
             </div>
           </div>
+          <div id="local-payment-actions" class="hidden mt-6 p-4 border border-ink/10 bg-paper-dim">
+            <h4 class="text-sm font-semibold text-ink">Payment · local development</h4>
+            <p class="text-xs text-ink-soft mt-1">Confirm a local test payment to continue to evidence collection. This does not charge a card or call Razorpay.</p>
+            <button id="confirm-local-payment" type="button" class="aegis-btn-rust py-2 px-4 text-xs mt-3">Confirm test payment</button>
+          </div>
+          <form id="document-request-form" class="hidden mt-4 p-4 border border-ink/10 bg-paper-dim">
+            <h4 class="text-sm font-semibold text-ink">Request documents by WhatsApp</h4>
+            <p class="text-xs text-ink-soft mt-1">Enter the recipient number in international format using digits only, including country code.</p>
+            <div class="flex flex-col sm:flex-row gap-2 mt-3">
+              <input id="document-request-phone" type="tel" inputmode="numeric" pattern="[1-9][0-9]{7,14}" minlength="8" maxlength="15" required placeholder="919876543210" class="editorial-input sm:max-w-xs" />
+              <button type="submit" class="aegis-btn-ink py-2 px-4 text-xs">Send document request</button>
+            </div>
+            <p id="document-request-result" class="text-xs text-ink-soft mt-2" aria-live="polite"></p>
+          </form>
         </div>
       </div>
 

@@ -12,6 +12,8 @@ import com.aegisx.document.repository.DocumentExtractionRepository;
 import com.aegisx.document.repository.DocumentRepository;
 import com.aegisx.transaction.entity.Transaction;
 import com.aegisx.transaction.repository.TransactionRepository;
+import com.aegisx.transaction.entity.TransactionStatus;
+import com.aegisx.transaction.service.TransactionService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -60,6 +62,7 @@ public class AIAnalysisController {
     private final DocumentExtractionRepository documentExtractionRepository;
     private final DocumentRepository documentRepository;
     private final ObjectMapper objectMapper;
+    private final TransactionService transactionService;
     
     /**
      * Trigger AI analysis for a completed OCR extraction.
@@ -101,6 +104,10 @@ public class AIAnalysisController {
             
             // Trigger analysis
             AIAnalysis analysis = aiProcessingCoordinator.triggerAnalysis(input);
+            if (transaction.getStatus() == TransactionStatus.AI_ANALYSIS) {
+                transactionService.transitionStatus(transactionId, TransactionStatus.POLICY_EVALUATION,
+                        "AI_SERVICE", "AI analysis completed");
+            }
             
             // Build response
             Map<String, Object> response = new HashMap<>();
