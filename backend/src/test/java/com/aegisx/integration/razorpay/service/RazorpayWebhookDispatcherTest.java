@@ -3,103 +3,76 @@ package com.aegisx.integration.razorpay.service;
 import com.aegisx.integration.razorpay.entity.WebhookEvent;
 import com.aegisx.integration.razorpay.entity.WebhookProcessingStatus;
 import com.aegisx.integration.razorpay.repository.WebhookEventRepository;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
-import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.context.ActiveProfiles;
+import org.springframework.transaction.annotation.Transactional;
 
-import java.util.Collections;
-import java.util.List;
-import java.util.Optional;
+import java.util.UUID;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.*;
+import static org.assertj.core.api.Assertions.assertThat;
 
-@ExtendWith(MockitoExtension.class)
+@SpringBootTest
+@ActiveProfiles("test")
+@Transactional
 class RazorpayWebhookDispatcherTest {
 
-    @Mock
-    private WebhookEventRepository webhookEventRepository;
-
-    @Mock
-    private PaymentCapturedHandler paymentCapturedHandler;
-
-    private UnsupportedEventHandler fallbackHandler;
-    private ObjectMapper objectMapper;
-    private RazorpayWebhookDispatcher dispatcher;
-
-    @BeforeEach
-    void setUp() {
-        fallbackHandler = new UnsupportedEventHandler();
-        objectMapper = new ObjectMapper();
-        List<RazorpayEventHandler> handlers = Collections.singletonList(paymentCapturedHandler);
-
-        dispatcher = new RazorpayWebhookDispatcher(
-                handlers,
-                fallbackHandler,
-                webhookEventRepository,
-                objectMapper
-        );
-    }
+    @Autowired private RazorpayWebhookDispatcher dispatcher;
+    @Autowired private WebhookEventRepository webhookEventRepository;
 
     @Test
-    @DisplayName("Idempotency: duplicate eventId skips handler execution")
-    void testDuplicateEventSkipsExecution() {
-        String rawPayload = "{\"event\":\"payment.captured\",\"payload\":{\"payment\":{\"entity\":{\"id\":\"pay_dup123\"}}}}";
-        WebhookEvent existingEvent = WebhookEvent.builder()
-                .eventId("pay_dup123-payment.captured")
+    @DisplayName("An existing event id remains idempotent and is not dispatched again")
+    void duplicateEventSkipsExecution() {
+        String eventId = "evt_duplicate_" + UUID.randomUUID();
+        webhookEventRepository.saveAndFlush(WebhookEvent.builder()
+                .provider("RAZORPAY")
+                .eventId(eventId)
+                .eventType("payment.captured")
+                .payload("{}")
+                .signatureVerified(true)
                 .processingStatus(WebhookProcessingStatus.PROCESSED)
-                .build();
+                .build());
+        long eventCount = webhookEventRepository.count();
 
-        when(webhookEventRepository.findByEventId("pay_dup123-payment.captured"))
-                .thenReturn(Optional.of(existingEvent));
+        dispatcher.dispatch(capturedPayload("TXN-DOES-NOT-EXIST"), eventId, "WHK-IDEMPOTENT");
 
-        dispatcher.dispatch(rawPayload, "WHK-IDEMPOTENT");
-
-        verify(paymentCapturedHandler, never()).handle(any(), any(), any());
-        verify(webhookEventRepository, never()).save(any());
+        assertThat(webhookEventRepository.count()).isEqualTo(eventCount);
+        assertThat(webhookEventRepository.findByEventId(eventId).orElseThrow().getProcessingStatus())
+                .isEqualTo(WebhookProcessingStatus.PROCESSED);
     }
 
     @Test
-    @DisplayName("Malformed JSON payload records FAILED event and skips dispatch")
-    void testMalformedJsonRecordsFailedEvent() {
-        String malformedJson = "{ invalid json content: 123 ";
+    @DisplayName("Malformed JSON is persisted as a failed event without invoking handlers")
+    void malformedJsonRecordsFailedEvent() {
+        String eventId = "evt_malformed_" + UUID.randomUUID();
 
-        when(webhookEventRepository.save(any(WebhookEvent.class))).thenAnswer(i -> i.getArgument(0));
+        dispatcher.dispatch("{ invalid json content: 123 ", eventId, "WHK-MALFORMED");
 
-        dispatcher.dispatch(malformedJson, "WHK-MALFORMED");
-
-        ArgumentCaptor<WebhookEvent> captor = ArgumentCaptor.forClass(WebhookEvent.class);
-        verify(webhookEventRepository).save(captor.capture());
-
-        WebhookEvent saved = captor.getValue();
-        assertEquals("RAZORPAY", saved.getProvider());
-        assertEquals("UNKNOWN", saved.getEventType());
-        assertEquals(WebhookProcessingStatus.FAILED, saved.getProcessingStatus());
-        verify(paymentCapturedHandler, never()).handle(any(), any(), any());
+        WebhookEvent stored = webhookEventRepository.findByEventId(eventId).orElseThrow();
+        assertThat(stored.getProvider()).isEqualTo("RAZORPAY");
+        assertThat(stored.getEventType()).isEqualTo("UNKNOWN");
+        assertThat(stored.getProcessingStatus()).isEqualTo(WebhookProcessingStatus.FAILED);
     }
 
     @Test
-    @DisplayName("Unsupported event type routes to fallback handler with IGNORED status")
-    void testUnsupportedEventRoutesToFallback() {
-        String rawPayload = "{\"event\":\"refund.created\",\"payload\":{\"payment\":{\"entity\":{\"id\":\"pay_ref123\"}}}}";
+    @DisplayName("Unsupported webhook events are persisted and routed to the real fallback handler")
+    void unsupportedEventRoutesToFallback() {
+        String eventId = "evt_unsupported_" + UUID.randomUUID();
 
-        when(webhookEventRepository.findByEventId("pay_ref123-refund.created"))
-                .thenReturn(Optional.empty());
-        when(webhookEventRepository.save(any(WebhookEvent.class))).thenAnswer(i -> i.getArgument(0));
-        when(paymentCapturedHandler.supports("refund.created")).thenReturn(false);
+        dispatcher.dispatch(
+                "{\"event\":\"refund.created\",\"payload\":{\"payment\":{\"entity\":{\"id\":\"pay_ref123\"}}}}",
+                eventId, "WHK-UNSUPPORTED");
 
-        dispatcher.dispatch(rawPayload, "WHK-UNSUPPORTED");
+        WebhookEvent stored = webhookEventRepository.findByEventId(eventId).orElseThrow();
+        assertThat(stored.getEventType()).isEqualTo("refund.created");
+        assertThat(stored.getProcessingStatus()).isEqualTo(WebhookProcessingStatus.IGNORED);
+    }
 
-        ArgumentCaptor<WebhookEvent> captor = ArgumentCaptor.forClass(WebhookEvent.class);
-        verify(webhookEventRepository, atLeastOnce()).save(captor.capture());
-
-        WebhookEvent lastSaved = captor.getValue();
-        assertEquals(WebhookProcessingStatus.IGNORED, lastSaved.getProcessingStatus());
+    private String capturedPayload(String reference) {
+        return "{\"event\":\"payment.captured\",\"payload\":{\"payment\":{\"entity\":{" +
+                "\"id\":\"pay_" + UUID.randomUUID() + "\",\"amount\":250000,\"currency\":\"USD\"," +
+                "\"notes\":{\"transaction_reference\":\"" + reference + "\"}}}}}";
     }
 }

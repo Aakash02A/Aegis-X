@@ -17,6 +17,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
 import java.util.Optional;
+import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -38,9 +39,16 @@ class AuthIntegrationTest {
     @Autowired
     private UserRepository userRepository;
 
+    /** A per-run address, so the test never depends on (or destroys) another test's rows. */
+    private String email;
+
     @BeforeEach
     void setUp() {
-        userRepository.deleteAll();
+        // This used to call userRepository.deleteAll(). Test classes share a Spring context and its
+        // database, so a transaction created by another class could still reference a merchant and
+        // the delete failed with a foreign-key violation depending on run order. A unique address
+        // gives this test the clean slate it needs without touching anyone else's data.
+        email = "abc.exports." + UUID.randomUUID() + "@example.com";
     }
 
     @Test
@@ -48,7 +56,7 @@ class AuthIntegrationTest {
         // 1. Register User
         RegisterRequest registerReq = RegisterRequest.builder()
                 .fullName("ABC Exports Pvt Ltd")
-                .email("abc.exports@example.com")
+                .email(email)
                 .password("Password@123")
                 .build();
 
@@ -56,17 +64,17 @@ class AuthIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(registerReq)))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.email").value("abc.exports@example.com"))
+                .andExpect(jsonPath("$.email").value(email))
                 .andExpect(jsonPath("$.role").value("MERCHANT"));
 
         // Verify password is encrypted with BCrypt in DB
-        Optional<User> savedUser = userRepository.findByEmail("abc.exports@example.com");
+        Optional<User> savedUser = userRepository.findByEmail(email);
         assertTrue(savedUser.isPresent());
         assertTrue(savedUser.get().getPasswordHash().startsWith("$2a$") || savedUser.get().getPasswordHash().startsWith("$2b$"));
 
         // 2. Login with correct credentials
         LoginRequest loginReq = LoginRequest.builder()
-                .email("abc.exports@example.com")
+                .email(email)
                 .password("Password@123")
                 .build();
 
@@ -87,13 +95,13 @@ class AuthIntegrationTest {
         mockMvc.perform(get("/api/auth/me")
                         .header("Authorization", "Bearer " + jwtToken))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.email").value("abc.exports@example.com"))
+                .andExpect(jsonPath("$.email").value(email))
                 .andExpect(jsonPath("$.fullName").value("ABC Exports Pvt Ltd"))
                 .andExpect(jsonPath("$.role").value("MERCHANT"));
 
         // 4. Attempt login with wrong password
         LoginRequest wrongLoginReq = LoginRequest.builder()
-                .email("abc.exports@example.com")
+                .email(email)
                 .password("WrongPassword123")
                 .build();
 

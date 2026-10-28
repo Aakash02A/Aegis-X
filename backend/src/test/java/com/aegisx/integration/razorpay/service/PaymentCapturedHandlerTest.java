@@ -1,153 +1,107 @@
 package com.aegisx.integration.razorpay.service;
 
-import com.aegisx.integration.razorpay.dto.RazorpayWebhookPayload;
-import com.aegisx.integration.razorpay.entity.WebhookEvent;
+import com.aegisx.auth.entity.Role;
+import com.aegisx.auth.entity.User;
+import com.aegisx.auth.repository.UserRepository;
+import com.aegisx.document.repository.RequiredDocumentRepository;
 import com.aegisx.integration.razorpay.entity.WebhookProcessingStatus;
-import com.aegisx.audit.service.AuditService;
-import com.aegisx.document.service.DocumentService;
+import com.aegisx.integration.razorpay.repository.WebhookEventRepository;
 import com.aegisx.transaction.entity.Transaction;
 import com.aegisx.transaction.entity.TransactionStatus;
-import com.aegisx.transaction.entity.TransitionActor;
 import com.aegisx.transaction.repository.TransactionRepository;
-import com.aegisx.transaction.service.TransactionStateMachine;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
-import org.mockito.Mock;
-import org.mockito.Spy;
-import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.context.ActiveProfiles;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.util.Map;
-import java.util.Optional;
 import java.util.UUID;
 
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.*;
+import static org.assertj.core.api.Assertions.assertThat;
 
-@ExtendWith(MockitoExtension.class)
+@SpringBootTest
+@ActiveProfiles("test")
+@Transactional
 class PaymentCapturedHandlerTest {
 
-    @Mock
-    private TransactionRepository transactionRepository;
+    @Autowired private RazorpayWebhookDispatcher dispatcher;
+    @Autowired private UserRepository userRepository;
+    @Autowired private TransactionRepository transactionRepository;
+    @Autowired private WebhookEventRepository webhookEventRepository;
+    @Autowired private RequiredDocumentRepository requiredDocumentRepository;
 
-    @Mock
-    private AuditService auditService;
+    @Test
+    @DisplayName("A captured payment advances the real transaction and initializes evidence")
+    void capturedPaymentTransitionsTransaction() {
+        Transaction transaction = createTransaction(TransactionStatus.CREATED);
+        String eventId = "evt_captured_" + UUID.randomUUID();
 
-    @Mock
-    private DocumentService documentService;
+        dispatcher.dispatch(capturedPayload(transaction.getReferenceNumber()), eventId, "WHK-TEST01");
 
-    @Spy
-    private TransactionStateMachine transactionStateMachine = new TransactionStateMachine();
+        Transaction updated = transactionRepository.findById(transaction.getId()).orElseThrow();
+        assertThat(updated.getStatus()).isEqualTo(TransactionStatus.EVIDENCE_PENDING);
+        var event = webhookEventRepository.findByEventId(eventId).orElseThrow();
+        assertThat(event.getProcessingStatus()).isEqualTo(WebhookProcessingStatus.PROCESSED);
+        assertThat(event.getPaymentId()).startsWith("pay_");
+        assertThat(event.getTransactionReference()).isEqualTo(transaction.getReferenceNumber());
+        assertThat(requiredDocumentRepository.findByTransactionId(transaction.getId()))
+                .extracting(document -> document.getDocumentType())
+                .containsExactlyInAnyOrder(
+                        com.aegisx.document.entity.DocumentType.INVOICE,
+                        com.aegisx.document.entity.DocumentType.SHIPPING_PROOF,
+                        com.aegisx.document.entity.DocumentType.EXPORT_DECLARATION);
+    }
 
-    @InjectMocks
-    private PaymentCapturedHandler paymentCapturedHandler;
+    @Test
+    @DisplayName("A replay for a transaction already advanced is recorded without another transition")
+    void capturedPaymentForAdvancedTransactionIsIdempotentlyProcessed() {
+        Transaction transaction = createTransaction(TransactionStatus.EVIDENCE_PENDING);
+        String eventId = "evt_replay_" + UUID.randomUUID();
 
-    private Transaction transaction;
-    private WebhookEvent webhookEvent;
+        dispatcher.dispatch(capturedPayload(transaction.getReferenceNumber()), eventId, "WHK-TEST02");
 
-    @BeforeEach
-    void setUp() {
-        transaction = Transaction.builder()
-                .referenceNumber("TXN-20260921-A1B2C3")
+        assertThat(transactionRepository.findById(transaction.getId()).orElseThrow().getStatus())
+                .isEqualTo(TransactionStatus.EVIDENCE_PENDING);
+        assertThat(webhookEventRepository.findByEventId(eventId).orElseThrow().getProcessingStatus())
+                .isEqualTo(WebhookProcessingStatus.PROCESSED);
+        assertThat(requiredDocumentRepository.findByTransactionId(transaction.getId())).isEmpty();
+    }
+
+    @Test
+    @DisplayName("A captured payment for an unknown transaction is durably marked failed")
+    void unknownTransactionIsMarkedFailed() {
+        String eventId = "evt_unknown_" + UUID.randomUUID();
+
+        dispatcher.dispatch(capturedPayload("TXN-UNKNOWN-" + UUID.randomUUID()), eventId, "WHK-TEST03");
+
+        assertThat(webhookEventRepository.findByEventId(eventId).orElseThrow().getProcessingStatus())
+                .isEqualTo(WebhookProcessingStatus.FAILED);
+    }
+
+    private Transaction createTransaction(TransactionStatus status) {
+        User merchant = userRepository.saveAndFlush(User.builder()
+                .email("razorpay-" + UUID.randomUUID() + "@aegisx.test")
+                .passwordHash("not-used-by-this-service")
+                .fullName("Razorpay Test Merchant")
+                .role(Role.MERCHANT)
+                .build());
+        return transactionRepository.saveAndFlush(Transaction.builder()
+                .referenceNumber("TXN-RZP-" + UUID.randomUUID())
+                .merchant(merchant)
                 .amount(new BigDecimal("2500.00"))
                 .currency("USD")
                 .beneficiaryName("Global Exporters")
                 .purposeCode("P0103")
-                .status(TransactionStatus.CREATED)
+                .status(status)
                 .version(0L)
-                .build();
-        transaction.setId(UUID.randomUUID());
-
-        webhookEvent = WebhookEvent.builder()
-                .eventId("pay_test123-payment.captured")
-                .eventType("payment.captured")
-                .processingStatus(WebhookProcessingStatus.RECEIVED)
-                .build();
+                .build());
     }
 
-    @Test
-    @DisplayName("Valid payment.captured advances CREATED -> PAYMENT_RECEIVED -> EVIDENCE_PENDING")
-    void testValidPaymentCapturedTransitionsTransaction() {
-        RazorpayWebhookPayload payload = RazorpayWebhookPayload.builder()
-                .event("payment.captured")
-                .payload(RazorpayWebhookPayload.PayloadContainer.builder()
-                        .payment(RazorpayWebhookPayload.PaymentWrapper.builder()
-                                .entity(RazorpayWebhookPayload.PaymentEntity.builder()
-                                        .id("pay_test123")
-                                        .amount(new BigDecimal("250000"))
-                                        .currency("USD")
-                                        .notes(Map.of("transaction_reference", "TXN-20260921-A1B2C3"))
-                                        .build())
-                                .build())
-                        .build())
-                .build();
-
-        when(transactionRepository.findByReferenceNumber("TXN-20260921-A1B2C3"))
-                .thenReturn(Optional.of(transaction));
-
-        paymentCapturedHandler.handle(payload, webhookEvent, "WHK-TEST01");
-
-        assertEquals(TransactionStatus.EVIDENCE_PENDING, transaction.getStatus());
-        assertEquals(WebhookProcessingStatus.PROCESSED, webhookEvent.getProcessingStatus());
-        assertEquals("pay_test123", webhookEvent.getPaymentId());
-        assertEquals("TXN-20260921-A1B2C3", webhookEvent.getTransactionReference());
-
-        verify(transactionRepository).save(transaction);
-        verify(documentService).initializeChecklist(transaction.getId());
-        verify(transactionStateMachine).transition(transaction, TransactionStatus.PAYMENT_RECEIVED, TransitionActor.RAZORPAY_GATEWAY, "Razorpay payment captured: pay_test123");
-        verify(transactionStateMachine).transition(transaction, TransactionStatus.EVIDENCE_PENDING, TransitionActor.SYSTEM, "Payment confirmed; awaiting merchant compliance evidence");
-    }
-
-    @Test
-    @DisplayName("Payment.captured for already transitioned transaction is marked PROCESSED without error")
-    void testPaymentCapturedForAlreadyAdvancedTransaction() {
-        transaction.applyStatus(TransactionStatus.EVIDENCE_PENDING);
-
-        RazorpayWebhookPayload payload = RazorpayWebhookPayload.builder()
-                .event("payment.captured")
-                .payload(RazorpayWebhookPayload.PayloadContainer.builder()
-                        .payment(RazorpayWebhookPayload.PaymentWrapper.builder()
-                                .entity(RazorpayWebhookPayload.PaymentEntity.builder()
-                                        .id("pay_test123")
-                                        .notes(Map.of("transaction_reference", "TXN-20260921-A1B2C3"))
-                                        .build())
-                                .build())
-                        .build())
-                .build();
-
-        when(transactionRepository.findByReferenceNumber("TXN-20260921-A1B2C3"))
-                .thenReturn(Optional.of(transaction));
-
-        paymentCapturedHandler.handle(payload, webhookEvent, "WHK-TEST02");
-
-        assertEquals(TransactionStatus.EVIDENCE_PENDING, transaction.getStatus());
-        assertEquals(WebhookProcessingStatus.PROCESSED, webhookEvent.getProcessingStatus());
-        verify(transactionRepository, never()).save(any());
-    }
-
-    @Test
-    @DisplayName("Payment.captured for unknown transaction sets FAILED status without throwing")
-    void testUnknownTransactionSetsFailedStatus() {
-        RazorpayWebhookPayload payload = RazorpayWebhookPayload.builder()
-                .event("payment.captured")
-                .payload(RazorpayWebhookPayload.PayloadContainer.builder()
-                        .payment(RazorpayWebhookPayload.PaymentWrapper.builder()
-                                .entity(RazorpayWebhookPayload.PaymentEntity.builder()
-                                        .id("pay_test123")
-                                        .notes(Map.of("transaction_reference", "TXN-UNKNOWN"))
-                                        .build())
-                                .build())
-                        .build())
-                .build();
-
-        when(transactionRepository.findByReferenceNumber("TXN-UNKNOWN"))
-                .thenReturn(Optional.empty());
-
-        assertDoesNotThrow(() -> paymentCapturedHandler.handle(payload, webhookEvent, "WHK-TEST03"));
-        assertEquals(WebhookProcessingStatus.FAILED, webhookEvent.getProcessingStatus());
+    private String capturedPayload(String referenceNumber) {
+        return "{\"event\":\"payment.captured\",\"payload\":{\"payment\":{\"entity\":{" +
+                "\"id\":\"pay_" + UUID.randomUUID() + "\",\"amount\":250000,\"currency\":\"USD\"," +
+                "\"notes\":{\"transaction_reference\":\"" + referenceNumber + "\"}}}}}";
     }
 }

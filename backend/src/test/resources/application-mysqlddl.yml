@@ -1,0 +1,41 @@
+# Profile for the DIAGNOSTIC DDL GENERATOR only (MySqlDdlGenerateTest).
+#
+# It points Spring at a THROWAWAY MySQL schema, turns Flyway off and sets ddl-auto=create, so
+# Hibernate writes the schema it believes the entity model needs. That output is then diffed against
+# the schema Flyway produces from db/migration; the diff is the punch list used to reconcile the
+# two.
+#
+# It deliberately reads a DIFFERENT variable from the read-only MySQL tests (INTEGRITY_MYSQL_DDL_URL
+# rather than INTEGRITY_MYSQL_URL). `ddl-auto=create` DROPS every table it owns, so sharing one
+# variable with the verification suites would let a diagnostic run destroy the schema under a real
+# test. Keeping them separate makes that mistake impossible rather than merely discouraged.
+
+spring:
+  datasource:
+    url: ${INTEGRITY_MYSQL_DDL_URL}
+    username: ${INTEGRITY_MYSQL_USER:root}
+    password: ${INTEGRITY_MYSQL_PASS:}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      connection-init-sql: SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED
+  jpa:
+    hibernate:
+      ddl-auto: create
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.MySQLDialect
+        format_sql: false
+        jdbc.time_zone: UTC
+        type.preferred_uuid_jdbc_type: CHAR
+  flyway:
+    enabled: false
+
+aegisx:
+  integrity:
+    benchmark-output-dir: ${INTEGRITY_BENCHMARK_DIR:target/mysql-ddl-benchmark-results}
+
+logging:
+  level:
+    com.aegisx: INFO
+    org.hibernate.SQL: WARN

@@ -1,131 +1,102 @@
 package com.aegisx.notification;
 
-import com.aegisx.notification.dto.Direction;
+import com.aegisx.integration.whatsapp.WhatsAppWebhookService;
 import com.aegisx.notification.dto.DeliveryStatus;
+import com.aegisx.notification.dto.Direction;
+import com.aegisx.notification.dto.WhatsAppWebhookPayload;
 import com.aegisx.notification.entity.NotificationMessage;
 import com.aegisx.notification.repository.NotificationRepository;
-import com.aegisx.notification.service.NotificationService;
-import com.aegisx.integration.whatsapp.WhatsAppWebhookService;
-import com.aegisx.transaction.entity.Transaction;
-import com.aegisx.transaction.entity.TransactionStatus;
-import org.junit.jupiter.api.BeforeEach;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
-import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.context.ActiveProfiles;
+import org.springframework.transaction.annotation.Transactional;
 
-import java.math.BigDecimal;
-import java.util.Optional;
 import java.util.UUID;
+import java.time.Instant;
 
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.when;
+import static org.assertj.core.api.Assertions.assertThat;
 
-@DisplayName("WhatsApp Integration Tests")
-@ExtendWith(MockitoExtension.class)
+@SpringBootTest
+@ActiveProfiles("test")
+@Transactional
+@DisplayName("WhatsApp integration")
 class WhatsAppIntegrationTest {
-    
-    @Mock
-    private NotificationRepository notificationRepository;
-    
-    @InjectMocks
-    private WhatsAppWebhookService webhookService;
-    
-    private UUID transactionId;
-    private Transaction transaction;
-    
-    @BeforeEach
-    void setUp() {
-        transactionId = UUID.randomUUID();
-        transaction = Transaction.builder()
-            .referenceNumber("TXN-20260922-ABC123")
-            .beneficiaryName("Test User")
-            .amount(new BigDecimal("10000.00"))
-            .currency("USD")
-            .purposeCode("P0101")
-            .status(TransactionStatus.EVIDENCE_PENDING)
-            .build();
-    }
-    
+
+    @Autowired private NotificationRepository notificationRepository;
+    @Autowired private WhatsAppWebhookService webhookService;
+    @Autowired private ObjectMapper objectMapper;
+
     @Test
-    @DisplayName("Should verify webhook token successfully")
+    @DisplayName("verifies the configured webhook token")
     void testWebhookTokenVerification() {
-        String validToken = "test-webhook-token";
-        
-        // Note: webhookService uses @Value injection; in real test would mock via reflection
-        // or use @TestPropertySource. For MVP, this demonstrates the pattern.
-        boolean result = webhookService.verifyWebhookToken(validToken);
-        
-        // Result depends on config; test structure is valid
-        assertNotNull(result);
+        assertThat(webhookService.verifyWebhookToken("test-webhook-token")).isTrue();
+        assertThat(webhookService.verifyWebhookToken("wrong-token")).isFalse();
+        assertThat(webhookService.verifyWebhookToken(null)).isFalse();
     }
-    
+
     @Test
-    @DisplayName("Should classify message event type")
-    void testEventTypeClassification() {
-        // Mock webhook payload would be tested here
-        String eventType = webhookService.classifyEventType(null);
-        assertEquals("UNKNOWN", eventType);
+    @DisplayName("classifies an empty payload as unknown and a real message payload")
+    void testEventTypeClassification() throws Exception {
+        assertThat(webhookService.classifyEventType(null)).isEqualTo("UNKNOWN");
+        WhatsAppWebhookPayload messagePayload = objectMapper.readValue("""
+                {"object":"whatsapp_business_account","entry":[{"changes":[{"value":{
+                  "messages":[{"from":"919820011234","id":"wamid.integration-1","type":"text"}]
+                }}]}]}
+                """, WhatsAppWebhookPayload.class);
+
+        assertThat(webhookService.classifyEventType(messagePayload)).isEqualTo("MESSAGE");
+        assertThat(webhookService.extractSenderPhone(messagePayload)).isEqualTo("919820011234");
+        assertThat(webhookService.extractMessageId(messagePayload)).isEqualTo("wamid.integration-1");
     }
-    
+
     @Test
-    @DisplayName("Should persist notification record")
-    void testNotificationPersistence() {
+    @DisplayName("persists outbound notification and supports message-ID idempotency lookup")
+    void testNotificationPersistenceAndIdempotencyLookup() {
+        UUID transactionId = UUID.randomUUID();
         NotificationMessage notification = NotificationMessage.builder()
-            .transactionId(transactionId)
-            .channel("WHATSAPP")
-            .direction(Direction.OUTBOUND)
-            .recipient("+1234567890")
-            .templateName("document_request")
-            .messageId("wamid.test123")
-            .status(DeliveryStatus.SENT)
-            .build();
-        
-        when(notificationRepository.save(any(NotificationMessage.class)))
-            .thenReturn(notification);
-        
-        NotificationMessage saved = notificationRepository.save(notification);
-        
-        assertNotNull(saved);
-        assertEquals(transactionId, saved.getTransactionId());
-        assertEquals(Direction.OUTBOUND, saved.getDirection());
-        assertEquals(DeliveryStatus.SENT, saved.getStatus());
+                .transactionId(transactionId)
+                .channel("WHATSAPP")
+                .direction(Direction.OUTBOUND)
+                .recipient("+1234567890")
+                .templateName("document_request")
+                .messageId("wamid.integration-" + UUID.randomUUID())
+                .status(DeliveryStatus.SENT)
+                .build();
+        notification.setCreatedAt(Instant.now());
+        notification.setUpdatedAt(Instant.now());
+        notification = notificationRepository.saveAndFlush(notification);
+
+        NotificationMessage saved = notificationRepository.findByMessageId(notification.getMessageId())
+                .orElseThrow();
+
+        assertThat(saved.getId()).isEqualTo(notification.getId());
+        assertThat(saved.getTransactionId()).isEqualTo(transactionId);
+        assertThat(saved.getDirection()).isEqualTo(Direction.OUTBOUND);
+        assertThat(saved.getStatus()).isEqualTo(DeliveryStatus.SENT);
     }
-    
+
     @Test
-    @DisplayName("Should find notification by message ID (idempotency check)")
-    void testIdempotencyCheck() {
-        String messageId = "wamid.test123";
-        NotificationMessage existing = NotificationMessage.builder()
-            .transactionId(transactionId)
-            .messageId(messageId)
-            .status(DeliveryStatus.SENT)
-            .build();
-        
-        when(notificationRepository.findByMessageId(messageId))
-            .thenReturn(Optional.of(existing));
-        
-        Optional<NotificationMessage> found = notificationRepository.findByMessageId(messageId);
-        
-        assertTrue(found.isPresent());
-        assertEquals(messageId, found.get().getMessageId());
-    }
-    
-    @Test
-    @DisplayName("Should track delivery status updates")
+    @DisplayName("persists delivery status updates against the existing notification")
     void testDeliveryStatusTracking() {
-        NotificationMessage msg = NotificationMessage.builder()
-            .transactionId(transactionId)
-            .messageId("wamid.test123")
-            .status(DeliveryStatus.SENT)
-            .build();
-        
-        assertEquals(DeliveryStatus.SENT, msg.getStatus());
-        
-        // Status would be updated via service method
-        // Demonstrates immutability: new record created rather than modified
+        NotificationMessage message = NotificationMessage.builder()
+                .transactionId(UUID.randomUUID())
+                .channel("WHATSAPP")
+                .direction(Direction.OUTBOUND)
+                .recipient("+1234567890")
+                .messageId("wamid.delivery-" + UUID.randomUUID())
+                .status(DeliveryStatus.SENT)
+                .build();
+        message.setCreatedAt(Instant.now());
+        message.setUpdatedAt(Instant.now());
+        message = notificationRepository.saveAndFlush(message);
+        message.setStatus(DeliveryStatus.DELIVERED);
+        message.setUpdatedAt(Instant.now());
+        notificationRepository.saveAndFlush(message);
+
+        assertThat(notificationRepository.findById(message.getId()).orElseThrow().getStatus())
+                .isEqualTo(DeliveryStatus.DELIVERED);
     }
 }

@@ -1,0 +1,50 @@
+# Opt-in profile that points Spring at a real MySQL 8.4 database, lets Flyway build the
+# schema from EMPTY using db/migration, and asks Hibernate to VALIDATE the result.
+#
+# Nothing is auto-created: with ddl-auto=validate the context fails if any entity
+# disagrees with the migrated schema, so a passing run proves the two agree.
+#
+# Enabled only when INTEGRITY_MYSQL_URL is set, so the default (H2) test run is unaffected:
+#
+#   INTEGRITY_MYSQL_URL="jdbc:mysql://localhost:3306/aegisx_mysqlverify?connectionTimeZone=UTC&forceConnectionTimeZoneToSession=true&useSSL=false&allowPublicKeyRetrieval=true" \
+#   INTEGRITY_MYSQL_USER=root INTEGRITY_MYSQL_PASS= \
+#     ./mvnw test -Dtest='MySql*Test'
+#
+# The session is pinned to UTC, which is what makes DEFAULT CURRENT_TIMESTAMP(6) in the
+# migrations mean UTC as a wall-clock UTC instant.
+spring:
+  datasource:
+    url: ${INTEGRITY_MYSQL_URL}
+    username: ${INTEGRITY_MYSQL_USER:root}
+    password: ${INTEGRITY_MYSQL_PASS:}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      connection-init-sql: SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.MySQLDialect
+        format_sql: false
+        jdbc.time_zone: UTC
+        type.preferred_uuid_jdbc_type: CHAR
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+    validate-on-migrate: true
+    locations: classpath:db/migration
+    # The tree starts at the consolidated baseline (version 1) and continues with V28; it is the
+    # only migration directory now that MySQL is the only database.
+    ignore-missing-migrations: false
+
+aegisx:
+  integrity:
+    benchmark-output-dir: ${INTEGRITY_BENCHMARK_DIR:target/mysql-benchmark-results}
+
+logging:
+  level:
+    com.aegisx: INFO
+    org.hibernate.SQL: WARN
+    org.flywaydb: INFO
