@@ -31,7 +31,7 @@ async function req(method, path, { body, headers = {}, raw, token: useToken = tr
 }
 
 const email = `e2e-${Date.now()}@aegis-x.test`;
-const password = 'Passw0rd!23';
+const password = process.env.E2E_USER_PASSWORD || ('Tst_' + Math.random().toString(36).slice(2) + '!Aa1');
 
 try {
   const r = await req('GET', '/actuator/health', { token: false });

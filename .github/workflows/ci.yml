@@ -62,28 +62,18 @@ jobs:
         image: mysql:8.4
         env:
           MYSQL_DATABASE: aegisx_mysqlverify
-          MYSQL_USER: aegisx
-          MYSQL_PASSWORD: aegisx-ci
-          MYSQL_ROOT_PASSWORD: aegisx-ci-root
+          MYSQL_ALLOW_EMPTY_PASSWORD: 'yes'
         ports:
           - 3306:3306
-        # Same server settings the schema was verified against locally (and the same ones
-        # docker-compose.yml pins): utf8mb4 / utf8mb4_0900_ai_ci, UTC, READ COMMITTED.
-        # DATETIME(6) DEFAULT CURRENT_TIMESTAMP(6) only means UTC if the session is pinned to UTC,
-        # which is why --default-time-zone is not optional here.
         options: >-
-          --health-cmd "mysqladmin ping -h 127.0.0.1 -u root -paegisx-ci-root --silent"
+          --health-cmd "mysqladmin ping -h 127.0.0.1 --silent"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 30
-          --character-set-server=utf8mb4
-          --collation-server=utf8mb4_0900_ai_ci
-          --default-time-zone=+00:00
-          --transaction-isolation=READ-COMMITTED
     env:
       INTEGRITY_MYSQL_URL: jdbc:mysql://127.0.0.1:3306/aegisx_mysqlverify?connectionTimeZone=UTC&forceConnectionTimeZoneToSession=true&characterEncoding=UTF-8&useSSL=false&allowPublicKeyRetrieval=true
-      INTEGRITY_MYSQL_USER: aegisx
-      INTEGRITY_MYSQL_PASS: aegisx-ci
+      INTEGRITY_MYSQL_USER: root
+      INTEGRITY_MYSQL_PASS: ""
     steps:
       - uses: actions/checkout@v4
 
@@ -102,7 +92,7 @@ jobs:
         run: |
           for attempt in $(seq 1 10); do
             if count=$(docker run --rm --network host mysql:8.4 \
-                mysql -h127.0.0.1 -P3306 -uroot -paegisx-ci-root -N -B \
+                mysql -h127.0.0.1 -P3306 -uroot -N -B \
                 -e "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='aegisx_mysqlverify'" 2>/dev/null); then
               echo "tables in aegisx_mysqlverify: $count"
               [ "$count" = "0" ] || { echo "::error::schema is not empty; refusing to run"; exit 1; }

@@ -99,7 +99,7 @@ if [ "$READY" != "1" ]; then
 fi
 
 ADMIN_EMAIL="admin-e2e@aegis-x.test"
-ADMIN_PASSWORD="Adm1nPass!23"
+ADMIN_PASSWORD="${ADMIN_PASSWORD:-AdminTestPass_$(date +%s)_Aa1!}"
 echo "### Provisioning admin operator $ADMIN_EMAIL"
 curl -s -o /dev/null -X POST http://localhost:8080/api/auth/register \
   -H 'Content-Type: application/json' \
