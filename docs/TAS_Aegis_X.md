@@ -5,7 +5,7 @@
 > **Date:** 2026-09-20  
 > **Status:** Implementation Ready — Phase 02  
 > **Classification:** Internal Technical Design  
-> **Authoritative SRS Reference:** [SRS_Aegis_X.md](file:///a:/GITHUB/Aegis-X/doc/SRS_Aegis_X.md) (v2.0)
+> **Authoritative SRS Reference:** [SRS_Aegis_X.md](file:///a:/GITHUB/Aegis-X/docs/SRS_Aegis_X.md) (v2.0)
 
 ---
 
@@ -35,7 +35,7 @@
 
 ### 1.1 Purpose and Scope
 
-This Technical Architecture Specification (TAS) defines the implementation-ready software architecture for **Aegis-X**, a cross-border payment compliance and settlement orchestration platform. It translates the functional, regulatory, and non-functional requirements detailed in the [Phase 01 SRS](file:///a:/GITHUB/Aegis-X/doc/SRS_Aegis_X.md) into concrete, testable architectural patterns for a **Java 21 / Spring Boot 3 modular monolith** running against **PostgreSQL 15+**.
+This Technical Architecture Specification (TAS) defines the implementation-ready software architecture for **Aegis-X**, a cross-border payment compliance and settlement orchestration platform. It translates the functional, regulatory, and non-functional requirements detailed in the [Phase 01 SRS](file:///a:/GITHUB/Aegis-X/docs/SRS_Aegis_X.md) into concrete, testable architectural patterns for a **Java 21 / Spring Boot 3 modular monolith** running against **MySQL 8.4 LTS**.
 
 ### 1.2 Core Architectural Principles
 

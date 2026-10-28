@@ -1,144 +1,85 @@
 @echo off
-:: ==============================================================================
-:: Aegis-X Application Launcher for Windows
-:: Starts the complete Aegis-X system (Backend + Frontend + Database)
-:: ==============================================================================
-
-title Aegis-X Launcher
-
-:: Color codes for output
-set GREEN=[32m
-set YELLOW=[33m
-set RED=[31m
-set BLUE=[34m
-set NC=[0m
+setlocal
+title Aegis-X Local Demo
+cd /d "%~dp0"
 
 echo.
-echo %BLUE%==========================================%NC%
-echo %BLUE%  🛡️  Aegis-X Application Launcher  🛡️   %NC%
-echo %BLUE%==========================================%NC%
-echo.
+echo Aegis-X local demo startup
+echo Database: MySQL 8.4 (the only supported database)
+echo =========================
 
-:: Check if Docker is installed and running
-echo %YELLOW%[1/6] Checking Docker installation...%NC%
-docker --version >nul 2>&1
+docker info >nul 2>&1
 if errorlevel 1 (
-    echo %RED%❌ Docker is not installed or not running!%NC%
-    echo %RED%   Please install Docker Desktop and try again.%NC%
-    pause
-    exit /b 1
+  echo Docker Desktop is not running. Start it and run this script again.
+  pause
+  exit /b 1
 )
-echo %GREEN%✅ Docker is available%NC%
-echo.
 
-:: Check if .env file exists
-echo %YELLOW%[2/6] Checking environment configuration...%NC%
+node --version >nul 2>&1
+if errorlevel 1 (
+  echo Node.js is required to start the frontend. Install Node.js and retry.
+  pause
+  exit /b 1
+)
+
 if not exist ".env" (
-    echo %YELLOW%⚠️  .env file not found. Creating from template...%NC%
-    copy ".env.example" ".env" >nul
-    echo %YELLOW%📝 Please edit .env file with your API keys before continuing.%NC%
-    echo %YELLOW%   Required: JWT_SECRET, OPENAI_API_KEY, RAZORPAY_*, WHATSAPP_*%NC%
-    echo.
-    set /p continue="Continue with default values? (y/N): "
-    if /i not "!continue!"=="y" (
-        echo %YELLOW%Opening .env file for editing...%NC%
-        notepad ".env"
-        echo %YELLOW%Press any key after editing .env file...%NC%
-        pause >nul
-    )
+  copy ".env.example" ".env" >nul
+  echo Created .env from .env.example. Review local database and integration values if needed.
 )
-echo %GREEN%✅ Environment configuration ready%NC%
-echo.
 
-:: Stop any existing containers
-echo %YELLOW%[3/6] Stopping existing containers...%NC%
-docker compose down >nul 2>&1
-echo %GREEN%✅ Previous containers stopped%NC%
-echo.
-
-:: Pull latest images and build
-echo %YELLOW%[4/6] Building and starting services...%NC%
-echo %BLUE%This may take a few minutes on first run...%NC%
-docker compose up --build -d
-if errorlevel 1 (
-    echo %RED%❌ Failed to start services!%NC%
-    echo %RED%   Check Docker Desktop and try again.%NC%
+if not exist "frontend\node_modules\vite\bin\vite.js" (
+  echo Installing frontend dependencies from package-lock.json...
+  call npm ci --prefix frontend
+  if errorlevel 1 (
+    echo Frontend dependency installation failed.
     pause
     exit /b 1
-)
-echo %GREEN%✅ Services started successfully%NC%
-echo.
-
-:: Wait for services to be ready
-echo %YELLOW%[5/6] Waiting for services to be ready...%NC%
-set /a counter=0
-:wait_loop
-set /a counter+=1
-if %counter% GTR 30 (
-    echo %RED%❌ Services took too long to start%NC%
-    goto :show_status
+  )
 )
 
-:: Check backend health
-curl -s http://localhost:8080/actuator/health >nul 2>&1
+echo Starting MySQL 8.4 and the development-profile backend...
+docker compose up --build -d app
 if errorlevel 1 (
-    echo %YELLOW%⏳ Waiting for backend... (%counter%/30)%NC%
-    timeout /t 2 >nul
-    goto :wait_loop
+  echo Backend startup failed. Check Docker Desktop and run: docker compose logs mysql app
+  pause
+  exit /b 1
 )
 
-echo %GREEN%✅ All services are ready!%NC%
-echo.
-
-:: Show service status and URLs
-:show_status
-echo %YELLOW%[6/6] Service Status:%NC%
-echo.
-echo %BLUE%🚀 Aegis-X is now running!%NC%
-echo.
-echo %GREEN%📡 Backend API:%NC%      http://localhost:8080
-echo %GREEN%🌐 Frontend:%NC%         http://localhost:3000 (or open frontend/index.html)
-echo %GREEN%🏥 Health Check:%NC%     http://localhost:8080/actuator/health
-echo %GREEN%📚 API Docs:%NC%         http://localhost:8080/swagger-ui.html
-echo %GREEN%🗄️  Database:%NC%        PostgreSQL running on port 5432
-echo.
-
-:: Show container status
-echo %BLUE%Container Status:%NC%
-docker compose ps
-echo.
-
-:: Show logs option
-echo %YELLOW%Available Commands:%NC%
-echo   📊 View logs:           docker compose logs -f
-echo   🔄 Restart services:    docker compose restart  
-echo   🛑 Stop services:       docker compose down
-echo   🔍 Check health:        curl http://localhost:8080/actuator/health
-echo.
-
-:: Open frontend automatically
-set /p open_browser="🌐 Open frontend in browser? (Y/n): "
-if /i not "%open_browser%"=="n" (
-    echo %BLUE%Opening frontend...%NC%
-    start http://localhost:3000 2>nul || start frontend/index.html
+echo Starting the Vite frontend at http://127.0.0.1:3000 ...
+curl -fsS http://127.0.0.1:3000/ >nul 2>&1
+if errorlevel 1 (
+  start "Aegis-X Frontend" /D "%~dp0frontend" cmd /k "npm run dev -- --host 127.0.0.1 --port 3000 --strictPort"
 )
 
-:: Show demo credentials
-echo.
-echo %BLUE%🎯 Demo Credentials:%NC%
-echo   👨‍💼 Merchant:          demo-merchant@aegis-x.com / DemoPass123!
-echo   👮‍♂️ Compliance Officer: compliance@aegis-x.com / CompliancePass123!
-echo.
+echo Waiting for backend health...
+rem MySQL's first boot initialises its data directory, so it gets a generous budget.
+set /a maxAttempts=90
+set /a attempts=0
+:wait_backend
+set /a attempts+=1
+curl -fsS http://localhost:8080/actuator/health >nul 2>&1
+if not errorlevel 1 goto ready
+if %attempts% GEQ %maxAttempts% goto backend_timeout
+timeout /t 2 /nobreak >nul
+goto wait_backend
 
-:: Option to view logs
-set /p view_logs="📊 View live logs? (y/N): "
-if /i "%view_logs%"=="y" (
-    echo %BLUE%Showing live logs (Ctrl+C to exit)...%NC%
-    docker compose logs -f
-) else (
-    echo %GREEN%🎉 Aegis-X is running successfully!%NC%
-    echo %YELLOW%   Press any key to exit launcher...%NC%
-    pause >nul
-)
+:backend_timeout
+echo Backend has not reported healthy yet. Inspect: docker compose logs -f app mysql
+goto open_demo
 
-exit /b 0
+:ready
+echo Backend is healthy.
+
+:open_demo
+echo.
+echo Frontend:  http://127.0.0.1:3000
+echo Backend:   http://localhost:8080
+echo Health:    http://localhost:8080/actuator/health
+echo Database:  localhost:3307, container port 3306 (database aegisx)
+echo.
+echo Register a merchant account from the landing page, then sign in.
+echo Local payment is simulated by the development profile; it does not charge a card.
+start "" http://127.0.0.1:3000/
+echo Stop services with: docker compose down
+pause
+endlocal
