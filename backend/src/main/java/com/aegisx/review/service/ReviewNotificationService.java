@@ -184,12 +184,10 @@ public class ReviewNotificationService {
     }
 
     /**
-     * Gets merchant phone number from transaction.
-     * In a real implementation, this would fetch from user profile.
+     * Returns the merchant's WhatsApp number, or null when the account has none. A missing number
+     * means no message is sent; it must never fall back to a placeholder recipient.
      */
     private String getMerchantPhoneNumber(Transaction transaction) {
-        // For MVP, return a placeholder
-        // In production, this would come from User entity with phone field
-        return "+1234567890"; // Placeholder for MVP
+        return transaction.getMerchant() != null ? transaction.getMerchant().getPhone() : null;
     }
 }

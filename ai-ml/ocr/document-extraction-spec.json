@@ -1,0 +1,55 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "TradeDocumentExtraction",
+  "description": "Standardized JSON extraction schema produced by Apache Tika and Tesseract OCR pipelines",
+  "type": "object",
+  "properties": {
+    "documentType": {
+      "type": "string",
+      "enum": ["INVOICE", "BILL_OF_LADING", "TAX_CERTIFICATE", "PACKING_LIST", "CUSTOMS_DECLARATION"]
+    },
+    "invoiceNumber": { "type": ["string", "null"] },
+    "invoiceDate": { "type": ["string", "null"], "format": "date" },
+    "currency": { "type": ["string", "null"], "pattern": "^[A-Z]{3}$" },
+    "totalAmount": { "type": ["number", "null"] },
+    "taxAmount": { "type": ["number", "null"] },
+    "supplier": {
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "taxId": { "type": "string" },
+        "country": { "type": "string" }
+      }
+    },
+    "buyer": {
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "taxId": { "type": "string" },
+        "country": { "type": "string" }
+      }
+    },
+    "lineItems": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "description": { "type": "string" },
+          "quantity": { "type": "number" },
+          "unitPrice": { "type": "number" },
+          "totalPrice": { "type": "number" }
+        }
+      }
+    },
+    "ocrMetadata": {
+      "type": "object",
+      "properties": {
+        "engine": { "type": "string", "enum": ["TIKA_DIGITAL", "PDFBOX_RASTER_TESSERACT", "FALLBACK"] },
+        "pageCount": { "type": "integer" },
+        "confidenceScore": { "type": "number" }
+      }
+    }
+  },
+  "required": ["documentType", "ocrMetadata"]
+}
+

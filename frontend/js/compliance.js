@@ -76,12 +76,11 @@ export const CompliancePage = {
       tbody.innerHTML = `
         <tr>
           <td colspan="7" class="text-center py-12 text-ink-soft">
-            <i data-lucide="filter-x" class="w-8 h-8 mx-auto mb-2 text-ink-soft"></i>
+            <i class="fa-solid fa-filter-circle-xmark w-8 h-8 mx-auto mb-2 text-ink-soft"></i>
             <p class="font-sans text-xs">No compliance records match the active criteria.</p>
           </td>
         </tr>
       `;
-      Utils.initIcons();
       return;
     }
 
@@ -99,7 +98,6 @@ export const CompliancePage = {
       </tr>
     `).join('');
 
-    Utils.initIcons();
     tbody.querySelectorAll('[data-review-id]').forEach(button => {
       button.addEventListener('click', () => this.openReview(button.dataset.reviewId));
     });

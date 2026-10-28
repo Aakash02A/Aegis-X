@@ -5,9 +5,14 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
 import java.nio.charset.StandardCharsets;
+import java.security.InvalidKeyException;
 import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
+import java.util.Locale;
 
 /**
  * WhatsAppWebhookService handles Meta WhatsApp webhook verification and processing.
@@ -150,22 +155,27 @@ public class WhatsAppWebhookService {
     }
     
     /**
-     * Verify webhook request signature using X-Hub-Signature header.
-     * 
-     * Meta signs webhook POST requests with HMAC-SHA256 using the app secret.
-     * Format: X-Hub-Signature: sha256=<hex_digest>
-     * 
-     * Security: This MUST be enforced for production to prevent injection attacks.
-     * 
-     * @param body Raw request body as JSON string
-     * @param signature X-Hub-Signature header value (format: sha256=...)
-     * @return true if signature valid, false otherwise
+     * Verify a WhatsApp webhook request signature against the raw request body.
+     *
+     * <p>Meta sends {@code X-Hub-Signature-256: sha256=<hex>} on current Cloud API webhooks, and the
+     * digest is <strong>HMAC-SHA256 keyed with the app secret over the raw body bytes</strong> — not
+     * a plain SHA-256 of the body concatenated with the secret. The legacy {@code X-Hub-Signature}
+     * header carries {@code sha1=<hex>}, which is HMAC-SHA1 under the same key, so both schemes are
+     * accepted and each is verified with the algorithm its prefix names. An unknown prefix is
+     * rejected rather than guessed at.
+     *
+     * <p>The body must be the exact bytes received: parsing and re-serialising JSON changes the
+     * bytes and breaks the digest.
+     *
+     * @param body raw request body
+     * @param signature value of {@code X-Hub-Signature-256} (preferred) or {@code X-Hub-Signature}
+     * @return true only if the signature is present, well-formed and matches
      */
     public boolean verifyWebhookSignature(String body, String signature) {
         try {
             // Security: STRICT verification - fail if any required component is missing
             if (signature == null || signature.trim().isEmpty()) {
-                log.warn("Webhook signature verification failed: X-Hub-Signature header missing");
+                log.warn("Webhook signature verification failed: signature header missing");
                 return false;
             }
 
@@ -178,30 +188,48 @@ public class WhatsAppWebhookService {
                 log.warn("Webhook signature verification failed: request body is null");
                 return false;
             }
-            
-            String expectedSignature = computeHmacSignature(body, appSecret);
-            boolean valid = expectedSignature.equals(signature);
-            
-            if (!valid) {
-                log.warn("Webhook signature verification failed: signature mismatch. Expected: {}, Got: {}",
-                    expectedSignature.substring(0, Math.min(10, expectedSignature.length())) + "...",
-                    signature.substring(0, Math.min(10, signature.length())) + "...");
-            } else {
-                log.debug("Webhook signature verified successfully");
+
+            int separator = signature.indexOf('=');
+            if (separator <= 0) {
+                log.warn("Webhook signature verification failed: missing algorithm prefix");
+                return false;
             }
-            
+
+            String algorithm = signature.substring(0, separator).toLowerCase(Locale.ROOT);
+            String macAlgorithm = switch (algorithm) {
+                case "sha256" -> "HmacSHA256";
+                case "sha1" -> "HmacSHA1";
+                default -> null;
+            };
+            if (macAlgorithm == null) {
+                log.warn("Webhook signature verification failed: unsupported algorithm '{}'", algorithm);
+                return false;
+            }
+
+            byte[] expected = hmac(macAlgorithm, body, appSecret);
+            byte[] provided = HexFormat.of().parseHex(signature.substring(separator + 1).trim());
+
+            boolean valid = MessageDigest.isEqual(expected, provided);
+            if (!valid) {
+                log.warn("Webhook signature verification failed: {} mismatch", algorithm);
+            } else {
+                log.debug("Webhook signature verified successfully ({})", algorithm);
+            }
             return valid;
-            
+
+        } catch (IllegalArgumentException e) {
+            log.warn("Webhook signature verification failed: signature is not valid hex");
+            return false;
         } catch (Exception e) {
             log.error("Error verifying webhook signature: {}", e.getMessage(), e);
             return false;
         }
     }
 
-    private String computeHmacSignature(String body, String appSecret) throws Exception {
-        MessageDigest digest = MessageDigest.getInstance("SHA-256");
-        String input = body + appSecret;
-        byte[] hash = digest.digest(input.getBytes(StandardCharsets.UTF_8));
-        return "sha256=" + HexFormat.of().formatHex(hash);
+    private byte[] hmac(String algorithm, String body, String secret)
+            throws NoSuchAlgorithmException, InvalidKeyException {
+        Mac mac = Mac.getInstance(algorithm);
+        mac.init(new SecretKeySpec(secret.getBytes(StandardCharsets.UTF_8), algorithm));
+        return mac.doFinal(body.getBytes(StandardCharsets.UTF_8));
     }
 }

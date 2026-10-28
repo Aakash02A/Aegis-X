@@ -4,7 +4,6 @@ import com.aegisx.common.entity.BaseEntity;
 import com.aegisx.ai.entity.AIAnalysis;
 import com.aegisx.transaction.entity.Transaction;
 import com.fasterxml.jackson.databind.JsonNode;
-import io.hypersistence.utils.hibernate.type.json.JsonType;
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -20,7 +19,8 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
-import org.hibernate.annotations.Type;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -83,8 +83,8 @@ public class PolicyEvaluation extends BaseEntity {
     @Column(name = "overall_score")
     private java.math.BigDecimal overallScore;
 
-    @Type(JsonType.class)
-    @Column(name = "evaluation_json", columnDefinition = "jsonb")
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "evaluation_json")
     private JsonNode evaluationJson;
 
     @Column(name = "processing_duration_ms")

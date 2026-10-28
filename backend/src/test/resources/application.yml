@@ -2,7 +2,15 @@ spring:
   application:
     name: aegisx-test
   datasource:
-    url: jdbc:h2:mem:aegisx_test;DB_CLOSE_DELAY=-1;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE
+    # A distinct in-memory database per Spring application context.
+    #
+    # The suite deliberately builds several contexts (different @TestPropertySource sets), and they
+    # used to share one named H2 database. A context starting with ddl-auto=create-drop then dropped
+    # and recreated tables underneath contexts that were still cached, and cleanup in one class
+    # (for example deleting every user) could violate foreign keys left by another. That made the
+    # suite order-dependent: the same commit passed or failed depending on Surefire's run order.
+    # H2 discards the database when the last connection closes, so this does not leak between runs.
+    url: jdbc:h2:mem:aegisx_test_${random.uuid};DB_CLOSE_DELAY=-1
     driver-class-name: org.h2.Driver
     username: sa
     password: ""
@@ -20,9 +28,7 @@ spring:
   ai:
     openai:
       api-key: test-key-not-used-for-network-calls
-  # In tests, external notification delivery is not configured.
-  # Empty values allow the integration client to initialize without credentials.
-  # Actual provider credentials are supplied through the developer's environment.
+  # Tests stay offline and use no external provider credentials.
 
 jwt:
   secret: dev-jwt-secret-key-for-aegis-x-application-security-testing-purposes-only
@@ -30,6 +36,9 @@ jwt:
 
 server:
   port: 8080
+
+razorpay:
+  webhook-secret: offline-test-webhook-secret
 
 management:
   endpoints:

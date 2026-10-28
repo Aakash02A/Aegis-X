@@ -16,7 +16,19 @@
 
 	<properties>
 		<java.version>21</java.version>
+		<!-- Must stay on the 2.0.x line while Apache Tika is 2.x: see the note on the pdfbox dependency. -->
+		<pdfbox.version>2.0.31</pdfbox.version>
 		<spring-ai.version>1.0.5</spring-ai.version>
+		<!--
+			MySQL 8.4 is the only supported database, and the Spring Boot 3.3.4 BOM pins Flyway 10.10.0,
+			which declares its maximum tested MySQL version as 8.1. Flyway logs "MySQL 8.4 is newer than
+			this version of Flyway and support has not been tested" on every startup as a result. 11.15.0
+			is the first line that declares MySQL up to 9.4, so it removes the warning and the untested-
+			engine risk it signals. Pinned explicitly rather than inherited so the database support level
+			is a deliberate choice; Spring Boot's Flyway auto-configuration is unchanged by this bump and
+			is exercised by the MySql*Test suites and the E2E run against MySQL 8.4.
+		-->
+		<flyway.version>11.15.0</flyway.version>
 	</properties>
 
 	<dependencies>
@@ -35,10 +47,6 @@
 		</dependency>
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
-			<artifactId>spring-boot-starter-thymeleaf</artifactId>
-		</dependency>
-		<dependency>
-			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-validation</artifactId>
 		</dependency>
 		<dependency>
@@ -46,10 +54,14 @@
 			<artifactId>spring-boot-starter-actuator</artifactId>
 		</dependency>
 
-		<!-- Database & Migrations -->
+		<!-- Database & Migrations.
+			MySQL 8.4 is the only supported database. The driver version is the Spring Boot
+			BOM's (8.3.x); flyway-mysql matches the BOM's Flyway 10.10.0. Flyway 10 requires
+			the per-database module for each engine, and no PostgreSQL module is declared.
+		-->
 		<dependency>
-			<groupId>org.postgresql</groupId>
-			<artifactId>postgresql</artifactId>
+			<groupId>com.mysql</groupId>
+			<artifactId>mysql-connector-j</artifactId>
 			<scope>runtime</scope>
 		</dependency>
 		<dependency>
@@ -58,7 +70,7 @@
 		</dependency>
 		<dependency>
 			<groupId>org.flywaydb</groupId>
-			<artifactId>flyway-database-postgresql</artifactId>
+			<artifactId>flyway-mysql</artifactId>
 		</dependency>
 
 		<!-- JWT (JJWT) -->
@@ -99,11 +111,38 @@
 			<version>1.0.0-alpha6</version>
 		</dependency>
 
+		<!--
+			Apache PDFBox is pinned to the 2.0.x line deliberately.
+
+			Apache Tika 2.9.2's PDF parser is compiled against the PDFBox 2.x API. Tess4J 5.9.0 and later
+			switched to PDFBox 3.x, which put two incompatible PDFBox majors on the classpath. PDFBox 3
+			won the resolution, so the class Tika loaded for PDF text extraction was built against
+			PDFBox 2 and failed at runtime with NoSuchMethodError / NoClassDefFoundError. The practical
+			effect was that NO PDF could be read at all, by either the compliance module or the payment
+			integrity module.
+
+			Tess4J is therefore held at 5.8.0, the last release built against PDFBox 2.0.x, and PDFBox
+			itself is declared explicitly so the version is intentional rather than inherited. Tika and
+			Tess4J are only upgraded together, and only after checking both PDFBox requirements.
+		-->
+		<dependency>
+			<groupId>org.apache.pdfbox</groupId>
+			<artifactId>pdfbox</artifactId>
+			<version>${pdfbox.version}</version>
+		</dependency>
+
 		<!-- Tesseract OCR Integration -->
 		<dependency>
 			<groupId>net.sourceforge.tess4j</groupId>
 			<artifactId>tess4j</artifactId>
-			<version>5.10.0</version>
+			<version>5.8.0</version>
+			<exclusions>
+				<!-- PDFBox is supplied above at the version Tika requires. -->
+				<exclusion>
+					<groupId>org.apache.pdfbox</groupId>
+					<artifactId>*</artifactId>
+				</exclusion>
+			</exclusions>
 		</dependency>
 
 		<!-- JSON processing (already included with Spring Boot, but explicit for clarity) -->
@@ -123,6 +162,16 @@
 		<dependency>
 			<groupId>io.micrometer</groupId>
 			<artifactId>micrometer-core</artifactId>
+		</dependency>
+
+		<!--
+			Prometheus registry. Without it Spring Boot registers no Prometheus endpoint, so the
+			/actuator/prometheus route that application.yml exposes and the Operations console reads
+			returns 404. Version is managed by the Spring Boot BOM.
+		-->
+		<dependency>
+			<groupId>io.micrometer</groupId>
+			<artifactId>micrometer-registry-prometheus</artifactId>
 		</dependency>
 
 		<!-- Hibernate Types for JSONB support -->
@@ -172,11 +221,6 @@
 		<dependency>
 			<groupId>org.testcontainers</groupId>
 			<artifactId>junit-jupiter</artifactId>
-			<scope>test</scope>
-		</dependency>
-		<dependency>
-			<groupId>org.testcontainers</groupId>
-			<artifactId>postgresql</artifactId>
 			<scope>test</scope>
 		</dependency>
 	</dependencies>

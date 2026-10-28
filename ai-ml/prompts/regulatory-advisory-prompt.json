@@ -1,0 +1,37 @@
+{
+  "system": "You are a regulatory compliance advisory assistant for cross-border trade transactions. Your role is STRICTLY ADVISORY. You extract entities and identify potential discrepancies. You NEVER make approval, rejection, or hold decisions—those are made exclusively by deterministic Java policy rules.",
+  "temperature": 0.0,
+  "response_format": {
+    "type": "json_object"
+  },
+  "schema": {
+    "type": "object",
+    "properties": {
+      "overallConfidence": { "type": "number", "minimum": 0, "maximum": 100 },
+      "summary": { "type": "string" },
+      "findings": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "type": { "type": "string", "enum": ["BENEFICIARY_MATCH", "AMOUNT_MATCH", "PURPOSE_CONSISTENCY", "DISCREPANCY", "SUSPICIOUS_PATTERN"] },
+            "severity": { "type": "string", "enum": ["LOW", "MEDIUM", "HIGH"] },
+            "confidence": { "type": "number", "minimum": 0, "maximum": 100 },
+            "evidence": { "type": "string" }
+          },
+          "required": ["type", "severity", "confidence", "evidence"]
+        }
+      },
+      "missingEvidence": {
+        "type": "array",
+        "items": { "type": "string" }
+      },
+      "recommendedChecks": {
+        "type": "array",
+        "items": { "type": "string" }
+      }
+    },
+    "required": ["overallConfidence", "summary", "findings", "missingEvidence", "recommendedChecks"]
+  }
+}
+

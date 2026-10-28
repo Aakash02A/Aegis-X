@@ -63,8 +63,8 @@ export const UploadManager = {
       return;
     }
 
-    if (file.size > 25 * 1024 * 1024) {
-      Toast.error('File size exceeds 25MB limit.');
+    if (file.size > 20 * 1024 * 1024) {
+      Toast.error('File size exceeds 20MB limit.');
       return;
     }
 
@@ -80,7 +80,7 @@ export const UploadManager = {
       <div class="editorial-card p-4 bg-paper-dim flex items-center justify-between gap-4 animate-blur-reveal">
         <div class="flex items-center gap-3 overflow-hidden">
           <div class="p-2.5 rounded-full bg-paper text-rust border border-ink/10 shrink-0">
-            <i data-lucide="${isPdf ? 'file-text' : 'image'}" class="w-5 h-5"></i>
+            <i class="${isPdf ? 'fa-solid fa-file-lines' : 'fa-solid fa-image'} w-5 h-5"></i>
           </div>
           <div class="truncate">
             <p class="text-xs font-semibold text-ink truncate">${Utils.escapeHtml(file.name)}</p>
@@ -89,11 +89,11 @@ export const UploadManager = {
         </div>
         <div class="flex items-center gap-2 shrink-0">
           <button id="upload-action-btn" class="aegis-btn-rust py-1.5 px-4 text-xs font-medium">
-            <i data-lucide="upload-cloud" class="w-3.5 h-3.5"></i>
+            <i class="fa-solid fa-cloud-arrow-up w-3.5 h-3.5"></i>
             Upload &amp; Extract
           </button>
           <button id="remove-file-btn" class="p-1.5 text-ink-soft hover:text-rust transition-colors" title="Remove">
-            <i data-lucide="trash-2" class="w-4 h-4"></i>
+            <i class="fa-solid fa-trash-can w-4 h-4"></i>
           </button>
         </div>
       </div>
@@ -109,7 +109,6 @@ export const UploadManager = {
       </div>
     `;
 
-    Utils.initIcons();
 
     document.getElementById('upload-action-btn').addEventListener('click', () => this.executeUpload());
     document.getElementById('remove-file-btn').addEventListener('click', () => {
@@ -161,8 +160,7 @@ export const UploadManager = {
       }
       if (uploadBtn) {
         uploadBtn.disabled = false;
-        uploadBtn.innerHTML = '<i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i> Retry Upload';
-        Utils.initIcons();
+        uploadBtn.innerHTML = '<i class="fa-solid fa-rotate-left w-3.5 h-3.5"></i> Retry Upload';
       }
     }
   }

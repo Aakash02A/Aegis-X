@@ -9,7 +9,7 @@
   <link rel="stylesheet" href="css/tailwind.css" />
   <link rel="stylesheet" href="css/animations.css" />
   <link rel="stylesheet" href="css/components.css" />
-  <script src="https://unpkg.com/lucide@latest"></script>
+  <link rel="stylesheet" href="css/icons.css" />
 </head>
 <body class="bg-paper text-ink min-h-screen flex items-center justify-center p-6">
 
@@ -39,11 +39,11 @@
 
       <div class="pt-8 border-t border-paper/15 space-y-2 text-xs text-paper/60">
         <div class="flex items-center gap-2">
-          <i data-lucide="shield-check" class="w-3.5 h-3.5 text-brass"></i>
+          <i class="fa-solid fa-shield-halved w-3.5 h-3.5 text-brass"></i>
           <span>Session-scoped JWT bearer token</span>
         </div>
         <div class="flex items-center gap-2">
-          <i data-lucide="lock" class="w-3.5 h-3.5 text-rust"></i>
+          <i class="fa-solid fa-lock w-3.5 h-3.5 text-rust"></i>
           <span>RBI FEMA and OFAC workflow controls</span>
         </div>
       </div>
@@ -70,7 +70,7 @@
 
           <button type="submit" id="login-submit-btn" class="w-full aegis-btn-ink py-3 text-sm font-medium mt-2">
             <span>Sign In to Console</span>
-            <i data-lucide="arrow-right" class="w-4 h-4"></i>
+            <i class="fa-solid fa-arrow-right w-4 h-4"></i>
           </button>
         </form>
 
@@ -87,7 +87,6 @@
     import { Toast } from './js/notifications.js';
     import { Utils } from './js/utils.js';
 
-    Utils.initIcons();
 
     const params = new URLSearchParams(window.location.search);
     if (params.get('registered') === 'true') {
@@ -105,8 +104,7 @@
 
       await Auth.login(email, password);
       btn.disabled = false;
-      btn.innerHTML = '<span>Sign In to Console</span><i data-lucide="arrow-right" class="w-4 h-4"></i>';
-      Utils.initIcons();
+      btn.innerHTML = '<span>Sign In to Console</span><i class="fa-solid fa-arrow-right w-4 h-4"></i>';
     });
   </script>
 </body>

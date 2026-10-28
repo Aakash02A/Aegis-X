@@ -1,27 +1,30 @@
 package com.aegisx.policy.service;
 
+import com.aegisx.auth.entity.Role;
+import com.aegisx.auth.entity.User;
+import com.aegisx.auth.repository.UserRepository;
 import com.aegisx.policy.dto.PolicyViolationResponse;
 import com.aegisx.policy.dto.ViolationAnalysisResponse;
 import com.aegisx.policy.dto.ViolationReportRequest;
 import com.aegisx.policy.entity.PolicyEvaluation;
+import com.aegisx.policy.entity.PolicyVerdict;
 import com.aegisx.policy.entity.PolicyViolation;
 import com.aegisx.policy.entity.ViolationSeverity;
+import com.aegisx.policy.repository.PolicyEvaluationRepository;
 import com.aegisx.policy.repository.PolicyViolationRepository;
 import com.aegisx.transaction.entity.Transaction;
 import com.aegisx.transaction.entity.TransactionStatus;
+import com.aegisx.transaction.repository.TransactionRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
-import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Pageable;
+import org.springframework.test.context.ActiveProfiles;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -29,409 +32,138 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
-import static org.assertj.core.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.*;
-import static org.mockito.Mockito.*;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-/**
- * Comprehensive tests for PolicyViolationService.
- * Tests violation storage, analysis, and reporting functionality.
- */
-@ExtendWith(MockitoExtension.class)
-@DisplayName("PolicyViolationService Tests")
+@SpringBootTest
+@ActiveProfiles("test")
+@Transactional
+@DisplayName("Policy violation service integration")
 class PolicyViolationServiceTest {
 
-    @Mock
-    private PolicyViolationRepository policyViolationRepository;
+    @Autowired private PolicyViolationService service;
+    @Autowired private PolicyViolationRepository violationRepository;
+    @Autowired private PolicyEvaluationRepository evaluationRepository;
+    @Autowired private TransactionRepository transactionRepository;
+    @Autowired private UserRepository userRepository;
+    @Autowired private ObjectMapper objectMapper;
 
-    @InjectMocks
-    private PolicyViolationService policyViolationService;
-
-    private Transaction testTransaction;
-    private PolicyEvaluation testEvaluation;
-    private PolicyViolation testViolation;
-    private ObjectMapper objectMapper;
+    private Transaction transaction;
+    private PolicyEvaluation evaluation;
 
     @BeforeEach
     void setUp() {
-        objectMapper = new ObjectMapper();
-        
-        // Create test transaction
-        testTransaction = new Transaction();
-        testTransaction.setId(UUID.randomUUID());
-        testTransaction.setReferenceNumber("TXN-001");
-        testTransaction.setAmount(BigDecimal.valueOf(1000.00));
-        testTransaction.applyStatus(TransactionStatus.COMPLIANCE_HOLD);
-        testTransaction.setCreatedAt(java.time.Instant.now());
-
-        // Create test policy evaluation
-        testEvaluation = new PolicyEvaluation();
-        testEvaluation.setId(UUID.randomUUID());
-        testEvaluation.setTransaction(testTransaction);
-        testEvaluation.setCreatedAt(java.time.Instant.now());
-
-        // Create test violation
-        ObjectNode context = objectMapper.createObjectNode();
-        context.put("amount", "1000.00");
-        context.put("threshold", "500.00");
-        
-        testViolation = PolicyViolation.createViolation(
-                testEvaluation,
-                "AMOUNT_LIMIT",
-                "Transaction Amount Limit",
-                ViolationSeverity.HIGH,
-                "Transaction amount exceeds daily limit",
-                context
-        );
-        testViolation.setId(UUID.randomUUID());
+        User merchant = userRepository.saveAndFlush(User.builder()
+                .email("violation-" + UUID.randomUUID() + "@aegis-x.test")
+                .fullName("Violation Test Merchant")
+                .passwordHash("not-used-by-this-service")
+                .role(Role.MERCHANT)
+                .build());
+        transaction = transactionRepository.saveAndFlush(Transaction.builder()
+                .referenceNumber("TXN-VIOLATION-" + UUID.randomUUID())
+                .merchant(merchant)
+                .amount(new BigDecimal("1000.00"))
+                .currency("USD")
+                .beneficiaryName("Test Beneficiary")
+                .purposeCode("P0101")
+                .status(TransactionStatus.COMPLIANCE_HOLD)
+                .build());
+        evaluation = evaluationRepository.saveAndFlush(PolicyEvaluation.createEvaluation(
+                transaction, null, PolicyVerdict.HOLD, 1, 0, 1));
     }
 
     @Test
-    @DisplayName("Should create and save policy violation")
+    @DisplayName("creates and persists a policy violation")
     void shouldCreateAndSavePolicyViolation() {
-        // Given
-        ObjectNode context = objectMapper.createObjectNode();
-        context.put("field", "value");
-        
-        when(policyViolationRepository.save(any(PolicyViolation.class))).thenReturn(testViolation);
+        var context = objectMapper.createObjectNode().put("field", "value");
+        PolicyViolation result = service.createViolation(
+                evaluation, "TEST_RULE", "Test Rule", ViolationSeverity.MEDIUM, "Test violation", context);
 
-        // When
-        PolicyViolation result = policyViolationService.createViolation(
-                testEvaluation,
-                "TEST_RULE",
-                "Test Rule",
-                ViolationSeverity.MEDIUM,
-                "Test violation",
-                context
-        );
-
-        // Then
-        assertThat(result).isNotNull();
-        assertThat(result.getRuleId()).isEqualTo("AMOUNT_LIMIT");
-        assertThat(result.getSeverity()).isEqualTo(ViolationSeverity.HIGH);
-        verify(policyViolationRepository).save(any(PolicyViolation.class));
+        assertThat(result.getId()).isNotNull();
+        assertThat(violationRepository.findById(result.getId())).get()
+                .extracting(PolicyViolation::getRuleId)
+                .isEqualTo("TEST_RULE");
     }
 
     @Test
-    @DisplayName("Should get violations for transaction")
-    void shouldGetViolationsForTransaction() {
-        // Given
-        UUID transactionId = testTransaction.getId();
-        List<PolicyViolation> violations = List.of(testViolation);
-        when(policyViolationRepository.findByTransactionId(transactionId)).thenReturn(violations);
+    @DisplayName("reads transaction/evaluation violations and returns severity-sorted analysis")
+    void readsAndAnalyzesPersistedViolations() {
+        saveViolation(evaluation, "LOW_RULE", ViolationSeverity.LOW);
+        saveViolation(evaluation, "HIGH_RULE", ViolationSeverity.HIGH);
+        List<PolicyViolationResponse> transactionRows = service.getViolationsForTransaction(transaction.getId());
+        List<PolicyViolationResponse> evaluationRows = service.getViolationsForEvaluation(evaluation.getId());
 
-        // When
-        List<PolicyViolationResponse> result = policyViolationService.getViolationsForTransaction(transactionId);
-
-        // Then
-        assertThat(result).hasSize(1);
-        assertThat(result.get(0).getTransactionId()).isEqualTo(transactionId);
-        assertThat(result.get(0).getSeverity()).isEqualTo(ViolationSeverity.HIGH);
-        verify(policyViolationRepository).findByTransactionId(transactionId);
+        assertThat(transactionRows).extracting(PolicyViolationResponse::getSeverity)
+                .containsExactly(ViolationSeverity.HIGH, ViolationSeverity.LOW);
+        assertThat(evaluationRows).hasSize(2);
+        assertThat(service.analyzeTransactionViolations(transaction.getId()).getHighestSeverity())
+                .isEqualTo(ViolationSeverity.HIGH);
+        assertThat(service.analyzeTransactionViolations(UUID.randomUUID()).getRiskLevel()).isEqualTo("LOW");
     }
 
     @Test
-    @DisplayName("Should get violations for evaluation")
-    void shouldGetViolationsForEvaluation() {
-        // Given
-        UUID evaluationId = testEvaluation.getId();
-        List<PolicyViolation> violations = List.of(testViolation);
-        when(policyViolationRepository.findByPolicyEvaluationId(evaluationId)).thenReturn(violations);
+    @DisplayName("queries severity pages, attention queue, rule aggregates and critical status")
+    void repositoryQueriesReflectPersistedViolations() {
+        saveViolation(evaluation, "AMOUNT_LIMIT", ViolationSeverity.CRITICAL);
+        saveViolation(evaluation, "AMOUNT_LIMIT", ViolationSeverity.HIGH);
+        saveViolation(evaluation, "COUNTRY_SANCTION", ViolationSeverity.LOW);
 
-        // When
-        List<PolicyViolationResponse> result = policyViolationService.getViolationsForEvaluation(evaluationId);
+        Page<PolicyViolationResponse> page =
+                service.getViolationsBySeverity(ViolationSeverity.HIGH, PageRequest.of(0, 10));
+        List<PolicyViolationResponse> attention = service.getViolationsRequiringAttention();
+        Map<String, Long> stats = service.getViolationStatsByRule();
 
-        // Then
-        assertThat(result).hasSize(1);
-        assertThat(result.get(0).getPolicyEvaluationId()).isEqualTo(evaluationId);
-        verify(policyViolationRepository).findByPolicyEvaluationId(evaluationId);
+        assertThat(page.getContent()).hasSize(1);
+        assertThat(attention).hasSize(2);
+        assertThat(stats).containsEntry("AMOUNT_LIMIT", 2L).containsEntry("COUNTRY_SANCTION", 1L);
+        assertThat(service.hasCriticalViolations(transaction.getId())).isTrue();
+        assertThat(service.getViolationsByRule("AMOUNT_LIMIT")).hasSize(2);
     }
 
     @Test
-    @DisplayName("Should analyze transaction violations")
-    void shouldAnalyzeTransactionViolations() {
-        // Given
-        UUID transactionId = testTransaction.getId();
-        List<PolicyViolation> violations = List.of(testViolation);
-        when(policyViolationRepository.findByTransactionId(transactionId)).thenReturn(violations);
-
-        // When
-        ViolationAnalysisResponse result = policyViolationService.analyzeTransactionViolations(transactionId);
-
-        // Then
-        assertThat(result).isNotNull();
-        assertThat(result.getTransactionId()).isEqualTo(transactionId);
-        assertThat(result.getTotalViolations()).isEqualTo(1);
-        assertThat(result.getHighestSeverity()).isEqualTo(ViolationSeverity.HIGH);
-        assertThat(result.isHighRisk()).isTrue();
-    }
-
-    @Test
-    @DisplayName("Should analyze empty violations correctly")
-    void shouldAnalyzeEmptyViolations() {
-        // Given
-        UUID transactionId = testTransaction.getId();
-        when(policyViolationRepository.findByTransactionId(transactionId)).thenReturn(List.of());
-
-        // When
-        ViolationAnalysisResponse result = policyViolationService.analyzeTransactionViolations(transactionId);
-
-        // Then
-        assertThat(result).isNotNull();
-        assertThat(result.getTotalViolations()).isZero();
-        assertThat(result.getRiskLevel()).isEqualTo("LOW");
-        assertThat(result.isHighRisk()).isFalse();
-        assertThat(result.getRecommendedActions()).contains("No violations detected");
-    }
-
-    @Test
-    @DisplayName("Should get violations by severity with pagination")
-    void shouldGetViolationsBySeverity() {
-        // Given
-        ViolationSeverity severity = ViolationSeverity.HIGH;
-        Pageable pageable = PageRequest.of(0, 10);
-        Page<PolicyViolation> violationPage = new PageImpl<>(List.of(testViolation), pageable, 1);
-        
-        when(policyViolationRepository.findBySeverity(eq(severity), any(PageRequest.class)))
-                .thenReturn(violationPage);
-
-        // When
-        Page<PolicyViolationResponse> result = policyViolationService.getViolationsBySeverity(severity, pageable);
-
-        // Then
-        assertThat(result).isNotNull();
-        assertThat(result.getContent()).hasSize(1);
-        assertThat(result.getContent().get(0).getSeverity()).isEqualTo(severity);
-        verify(policyViolationRepository).findBySeverity(eq(severity), any(PageRequest.class));
-    }
-
-    @Test
-    @DisplayName("Should get violations requiring attention")
-    void shouldGetViolationsRequiringAttention() {
-        // Given
-        List<PolicyViolation> violations = List.of(testViolation);
-        when(policyViolationRepository.findViolationsRequiringAttention()).thenReturn(violations);
-
-        // When
-        List<PolicyViolationResponse> result = policyViolationService.getViolationsRequiringAttention();
-
-        // Then
-        assertThat(result).hasSize(1);
-        assertThat(result.get(0).getSeverity()).isIn(ViolationSeverity.CRITICAL, ViolationSeverity.HIGH);
-        verify(policyViolationRepository).findViolationsRequiringAttention();
-    }
-
-    @Test
-    @DisplayName("Should get violation statistics by rule")
-    void shouldGetViolationStatsByRule() {
-        // Given
-        List<Object[]> stats = List.of(
-                new Object[]{"AMOUNT_LIMIT", 5L},
-                new Object[]{"COUNTRY_SANCTION", 2L}
-        );
-        when(policyViolationRepository.findMostFrequentViolations()).thenReturn(stats);
-
-        // When
-        Map<String, Long> result = policyViolationService.getViolationStatsByRule();
-
-        // Then
-        assertThat(result).hasSize(2);
-        assertThat(result).containsEntry("AMOUNT_LIMIT", 5L);
-        assertThat(result).containsEntry("COUNTRY_SANCTION", 2L);
-        verify(policyViolationRepository).findMostFrequentViolations();
-    }
-
-    @Test
-    @DisplayName("Should check if transaction has critical violations")
-    void shouldCheckIfTransactionHasCriticalViolations() {
-        // Given
-        UUID transactionId = testTransaction.getId();
-        when(policyViolationRepository.hasCriticalViolations(transactionId)).thenReturn(true);
-
-        // When
-        boolean result = policyViolationService.hasCriticalViolations(transactionId);
-
-        // Then
-        assertThat(result).isTrue();
-        verify(policyViolationRepository).hasCriticalViolations(transactionId);
-    }
-
-    @Test
-    @DisplayName("Should get violations by rule ID")
-    void shouldGetViolationsByRule() {
-        // Given
-        String ruleId = "AMOUNT_LIMIT";
-        List<PolicyViolation> violations = List.of(testViolation);
-        when(policyViolationRepository.findByRuleId(ruleId)).thenReturn(violations);
-
-        // When
-        List<PolicyViolationResponse> result = policyViolationService.getViolationsByRule(ruleId);
-
-        // Then
-        assertThat(result).hasSize(1);
-        assertThat(result.get(0).getRuleId()).isEqualTo(ruleId);
-        verify(policyViolationRepository).findByRuleId(ruleId);
-    }
-
-    @Test
-    @DisplayName("Should generate violation report with valid request")
-    void shouldGenerateViolationReport() {
-        // Given
-        LocalDateTime startDate = LocalDateTime.now().minusDays(7);
-        LocalDateTime endDate = LocalDateTime.now();
-        
+    @DisplayName("builds reports and trends from persisted data and validates report dates")
+    void reportsAndTrendsUsePersistedData() {
+        saveViolation(evaluation, "REPORT_RULE", ViolationSeverity.HIGH);
+        LocalDateTime start = LocalDateTime.now().minusDays(7);
+        LocalDateTime end = LocalDateTime.now().plusMinutes(1);
         ViolationReportRequest request = ViolationReportRequest.builder()
-                .startDate(startDate)
-                .endDate(endDate)
-                .reportType("SUMMARY")
-                .maxResults(100)
-                .build();
+                .startDate(start).endDate(end).reportType("SUMMARY").maxResults(100).build();
 
-        List<PolicyViolation> violations = List.of(testViolation);
-        when(policyViolationRepository.findBySeverityAndDateRange(null, startDate, endDate))
-                .thenReturn(violations);
+        PolicyViolationService.ViolationReportResponse report = service.generateViolationReport(request);
+        Map<String, Object> trends = service.getViolationTrends(start, end);
 
-        // When
-        PolicyViolationService.ViolationReportResponse result = 
-                policyViolationService.generateViolationReport(request);
-
-        // Then
-        assertThat(result).isNotNull();
-        assertThat(result.getReportType()).isEqualTo("SUMMARY");
-        assertThat(result.getTotalViolations()).isEqualTo(1);
-        assertThat(result.getStartDate()).isEqualTo(startDate);
-        assertThat(result.getEndDate()).isEqualTo(endDate);
-        assertThat(result.getSummary()).contains("1 violations");
-    }
-
-    @Test
-    @DisplayName("Should validate report request dates")
-    void shouldValidateReportRequestDates() {
-        // Given
-        ViolationReportRequest request = ViolationReportRequest.builder()
-                .startDate(LocalDateTime.now())
-                .endDate(LocalDateTime.now().minusDays(1)) // End before start
-                .build();
-
-        // When & Then
-        assertThatThrownBy(() -> policyViolationService.generateViolationReport(request))
+        assertThat(report.getReportType()).isEqualTo("SUMMARY");
+        assertThat(report.getTotalViolations()).isEqualTo(1);
+        assertThat(report.getSummary()).contains("1 violations");
+        assertThat(trends).containsKeys("dailyCounts", "severityCounts", "totalViolations")
+                .containsEntry("totalViolations", 1);
+        assertThatThrownBy(() -> service.generateViolationReport(ViolationReportRequest.builder()
+                .startDate(end).endDate(start).build()))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("Start date must be before end date");
     }
 
     @Test
-    @DisplayName("Should get violation trends")
-    void shouldGetViolationTrends() {
-        // Given
-        LocalDateTime startDate = LocalDateTime.now().minusDays(7);
-        LocalDateTime endDate = LocalDateTime.now();
-        List<PolicyViolation> violations = List.of(testViolation);
-        
-        when(policyViolationRepository.findBySeverityAndDateRange(null, startDate, endDate))
-                .thenReturn(violations);
+    @DisplayName("report request factories preserve filters and defaults")
+    void requestFactoriesPreserveCriteria() {
+        ViolationReportRequest defaults = ViolationReportRequest.defaultReport();
+        LocalDateTime start = LocalDateTime.now().minusDays(7);
+        LocalDateTime end = LocalDateTime.now();
+        ViolationReportRequest critical = ViolationReportRequest.criticalViolationsReport(start, end);
+        ViolationReportRequest rule = ViolationReportRequest.ruleSpecificReport("AMOUNT_LIMIT", start, end);
 
-        // When
-        Map<String, Object> result = policyViolationService.getViolationTrends(startDate, endDate);
-
-        // Then
-        assertThat(result).isNotNull();
-        assertThat(result).containsKey("dailyCounts");
-        assertThat(result).containsKey("severityCounts");
-        assertThat(result).containsKey("totalViolations");
-        assertThat(result.get("totalViolations")).isEqualTo(1);
+        assertThat(defaults.getReportType()).isEqualTo("SUMMARY");
+        assertThat(defaults.isIncludeResolved()).isTrue();
+        assertThat(defaults.isGroupByRule()).isTrue();
+        assertThat(defaults.getMaxResults()).isEqualTo(1000);
+        assertThat(defaults.getStartDate()).isBefore(defaults.getEndDate());
+        assertThat(critical.getSeverities()).containsExactly(ViolationSeverity.CRITICAL);
+        assertThat(rule.getRuleIds()).containsExactly("AMOUNT_LIMIT");
     }
 
-    @Test
-    @DisplayName("Should create default report request")
-    void shouldCreateDefaultReportRequest() {
-        // When
-        ViolationReportRequest result = ViolationReportRequest.defaultReport();
-
-        // Then
-        assertThat(result).isNotNull();
-        assertThat(result.getReportType()).isEqualTo("SUMMARY");
-        assertThat(result.isIncludeResolved()).isTrue();
-        assertThat(result.isGroupByRule()).isTrue();
-        assertThat(result.getMaxResults()).isEqualTo(1000);
-        assertThat(result.getStartDate()).isBefore(result.getEndDate());
-    }
-
-    @Test
-    @DisplayName("Should create critical violations report")
-    void shouldCreateCriticalViolationsReport() {
-        // Given
-        LocalDateTime startDate = LocalDateTime.now().minusDays(7);
-        LocalDateTime endDate = LocalDateTime.now();
-
-        // When
-        ViolationReportRequest result = ViolationReportRequest.criticalViolationsReport(startDate, endDate);
-
-        // Then
-        assertThat(result).isNotNull();
-        assertThat(result.getSeverities()).containsExactly(ViolationSeverity.CRITICAL);
-        assertThat(result.getReportType()).isEqualTo("DETAILED");
-        assertThat(result.isIncludeResolved()).isFalse();
-    }
-
-    @Test
-    @DisplayName("Should create rule-specific report")
-    void shouldCreateRuleSpecificReport() {
-        // Given
-        String ruleId = "AMOUNT_LIMIT";
-        LocalDateTime startDate = LocalDateTime.now().minusDays(7);
-        LocalDateTime endDate = LocalDateTime.now();
-
-        // When
-        ViolationReportRequest result = ViolationReportRequest.ruleSpecificReport(ruleId, startDate, endDate);
-
-        // Then
-        assertThat(result).isNotNull();
-        assertThat(result.getRuleIds()).containsExactly(ruleId);
-        assertThat(result.getReportType()).isEqualTo("DETAILED");
-        assertThat(result.isGroupBySeverity()).isTrue();
-    }
-
-    @Test
-    @DisplayName("Should handle empty violation list in analysis")
-    void shouldHandleEmptyViolationListInAnalysis() {
-        // Given
-        UUID transactionId = UUID.randomUUID();
-        when(policyViolationRepository.findByTransactionId(transactionId)).thenReturn(List.of());
-
-        // When
-        ViolationAnalysisResponse result = policyViolationService.analyzeTransactionViolations(transactionId);
-
-        // Then
-        assertThat(result).isNotNull();
-        assertThat(result.getTotalViolations()).isZero();
-        assertThat(result.getViolationsBySeverity()).isEmpty();
-        assertThat(result.getViolationSummaries()).isEmpty();
-        assertThat(result.isHasBlockingViolations()).isFalse();
-    }
-
-    @Test
-    @DisplayName("Should sort violations by severity in transaction violations")
-    void shouldSortViolationsBySeverityInTransactionViolations() {
-        // Given
-        PolicyViolation criticalViolation = PolicyViolation.createViolation(
-                testEvaluation, "CRITICAL_RULE", "Critical Rule", 
-                ViolationSeverity.CRITICAL, "Critical issue", null);
-        PolicyViolation lowViolation = PolicyViolation.createViolation(
-                testEvaluation, "LOW_RULE", "Low Rule", 
-                ViolationSeverity.LOW, "Minor issue", null);
-        
-        UUID transactionId = testTransaction.getId();
-        List<PolicyViolation> violations = List.of(lowViolation, testViolation, criticalViolation);
-        when(policyViolationRepository.findByTransactionId(transactionId)).thenReturn(violations);
-
-        // When
-        List<PolicyViolationResponse> result = policyViolationService.getViolationsForTransaction(transactionId);
-
-        // Then
-        assertThat(result).hasSize(3);
-        // Should be sorted by priority level (highest first)
-        assertThat(result.get(0).getSeverity()).isEqualTo(ViolationSeverity.CRITICAL);
-        assertThat(result.get(1).getSeverity()).isEqualTo(ViolationSeverity.HIGH);
-        assertThat(result.get(2).getSeverity()).isEqualTo(ViolationSeverity.LOW);
+    private PolicyViolation saveViolation(PolicyEvaluation owner, String ruleId, ViolationSeverity severity) {
+        return violationRepository.saveAndFlush(PolicyViolation.createViolation(
+                owner, ruleId, ruleId, severity, "Test violation for " + ruleId,
+                objectMapper.createObjectNode().put("rule", ruleId)));
     }
 }

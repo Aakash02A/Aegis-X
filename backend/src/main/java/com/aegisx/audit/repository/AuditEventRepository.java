@@ -6,6 +6,7 @@ import com.aegisx.audit.entity.AuditModule;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -20,7 +21,7 @@ import java.util.UUID;
  * Audit events are append-only and immutable.
  */
 @Repository
-public interface AuditEventRepository extends JpaRepository<AuditEvent, UUID> {
+public interface AuditEventRepository extends JpaRepository<AuditEvent, UUID>, JpaSpecificationExecutor<AuditEvent> {
 
     /**
      * Get all audit events for a transaction in chronological order.

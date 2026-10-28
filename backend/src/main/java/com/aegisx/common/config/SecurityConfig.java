@@ -27,6 +27,26 @@ import org.springframework.security.web.header.writers.ReferrerPolicyHeaderWrite
 @RequiredArgsConstructor
 public class SecurityConfig {
 
+    /**
+     * Content-Security-Policy applied to responses served by this application.
+     *
+     * <p>Script, style and font sources are restricted to {@code 'self'}. The policy used to allow
+     * {@code https://cdn.jsdelivr.net} as well, a leftover from when Font Awesome and the webfonts
+     * were loaded from that CDN: it has allowed an arbitrary third-party payload to run in the page
+     * for no benefit since both were self-hosted. Keeping the origin out of the policy is what makes
+     * the commodity-XSS defence meaningful.</p>
+     *
+     * <p>{@code 'unsafe-inline}' remains for now because the HTML pages carry inline bootstrap
+     * scripts; removing it requires nonce plumbing on every page and is tracked as remaining work.
+     * The {@code connect-src} entries are the provider endpoints used from the browser and are kept
+     * deliberately.</p>
+     */
+    static final String CONTENT_SECURITY_POLICY =
+            "default-src 'self'; script-src 'self' 'unsafe-inline'; " +
+            "style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self'; " +
+            "connect-src 'self' https://api.openai.com https://api.razorpay.com https://graph.facebook.com; " +
+            "frame-ancestors 'none'";
+
     private final JwtAuthenticationFilter jwtAuthFilter;
     private final CustomUserDetailsService userDetailsService;
 
@@ -36,11 +56,7 @@ public class SecurityConfig {
             .csrf(AbstractHttpConfigurer::disable)
             .cors(cors -> {})
             .headers(headers -> headers
-                .contentSecurityPolicy(csp -> csp.policyDirectives(
-                    "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; " +
-                    "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' data: https:; " +
-                    "font-src 'self' https://cdn.jsdelivr.net; connect-src 'self' https://api.openai.com " +
-                    "https://api.razorpay.com https://graph.facebook.com; frame-ancestors 'none'"))
+                .contentSecurityPolicy(csp -> csp.policyDirectives(CONTENT_SECURITY_POLICY))
                 .httpStrictTransportSecurity(hsts -> hsts.maxAgeInSeconds(31536000).includeSubDomains(true).preload(true))
                 .frameOptions(frame -> frame.deny())
                 .contentTypeOptions(org.springframework.security.config.Customizer.withDefaults())
@@ -53,6 +69,9 @@ public class SecurityConfig {
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/api/auth/register", "/api/auth/login").permitAll()
                 .requestMatchers("/api/webhooks/**").permitAll()
+                // Payment-integrity webhooks are authenticated by HMAC signature over the raw body,
+                // not by a bearer token, because the provider cannot present one.
+                .requestMatchers("/api/integrity/webhooks/**").permitAll()
                 .requestMatchers("/api/health", "/api/health/**").permitAll()
                 .requestMatchers("/actuator/health", "/actuator/health/**").permitAll()
 

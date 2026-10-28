@@ -26,7 +26,11 @@ class ProfileConfigurationTest {
         Properties props = loadYaml("application-dev.yml");
         assertEquals("update", props.getProperty("spring.jpa.hibernate.ddl-auto"));
         assertEquals("true", props.getProperty("spring.jpa.show-sql"));
-        assertTrue(props.getProperty("spring.datasource.url").contains("5432/aegisx"));
+        String url = props.getProperty("spring.datasource.url");
+        // The default dev datasource must be the MySQL instance, not another engine's
+        // (the assertion used to pin PostgreSQL's jdbc:postgresql URL on port 5432).
+        assertTrue(url.startsWith("${DB_URL:jdbc:mysql://"), url);
+        assertTrue(url.contains(":3306/aegisx"), url);
     }
 
     @Test

@@ -4,6 +4,7 @@ import com.aegisx.ai.dto.AIAnalysisResponse;
 import com.aegisx.ai.entity.AIAnalysis;
 import com.aegisx.ai.prompt.RegulatoryPromptBuilder;
 import com.aegisx.ai.repository.AIAnalysisRepository;
+import com.aegisx.common.config.BlankOpenAiKeyEnvironmentPostProcessor;
 import com.aegisx.common.exception.AIAnalysisException;
 import com.aegisx.common.exception.InvalidAIResponseException;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -52,6 +53,14 @@ public class AIAnalysisService {
     
     @Value("${aegisx.ai.model-name:gpt-4o}")
     private String modelName;
+
+    /**
+     * The key Spring AI was configured with. {@link com.aegisx.common.config.BlankOpenAiKeyEnvironmentPostProcessor}
+     * substitutes {@link com.aegisx.common.config.BlankOpenAiKeyEnvironmentPostProcessor#NOT_CONFIGURED_KEY}
+     * when the environment supplies none, so a missing key surfaces here instead of at startup.
+     */
+    @Value("${spring.ai.openai.api-key:}")
+    private String openAiApiKey;
     
     /**
      * Perform regulatory analysis on a transaction's OCR extraction.
@@ -62,6 +71,13 @@ public class AIAnalysisService {
      */
     @Transactional
     public AIAnalysis performAnalysis(AIAnalysisInput input) {
+        if (openAiApiKey == null || openAiApiKey.isBlank()
+            || BlankOpenAiKeyEnvironmentPostProcessor.NOT_CONFIGURED_KEY.equals(openAiApiKey)) {
+            throw new AIAnalysisException(
+                "OpenAI API key is not configured. Set OPENAI_API_KEY to enable AI advisory analysis; "
+                    + "the rest of the pipeline is unaffected.");
+        }
+
         long startTime = System.currentTimeMillis();
         
         try {

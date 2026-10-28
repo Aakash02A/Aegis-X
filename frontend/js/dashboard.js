@@ -15,6 +15,8 @@ export const DashboardPage = {
 
     this.renderUserProfile();
     this.setupNewTransactionModal();
+    this.setupDashboardNavigation();
+    this.setupSearch();
     await this.loadDashboardData();
   },
 
@@ -50,6 +52,22 @@ export const DashboardPage = {
       }
     } catch (err) {
       Toast.error('Failed to load dashboard data: ' + err.message);
+      const tbody = document.getElementById('recent-tx-tbody');
+      if (tbody) {
+        const cell = Utils.textElement('td', 'text-center py-12 text-ink-soft', 'Transactions could not be loaded. Check that the backend and database are running, then retry.');
+        cell.colSpan = 6;
+        const row = document.createElement('tr');
+        row.append(cell);
+        tbody.replaceChildren(row);
+        const retry = document.createElement('button');
+        retry.type = 'button';
+        retry.className = 'aegis-btn-outline py-1.5 px-3 text-xs';
+        retry.textContent = 'Retry';
+        retry.addEventListener('click', () => this.loadDashboardData());
+        document.getElementById('transaction-pagination')?.replaceChildren(retry);
+      }
+      this.renderTransactionCharts([]);
+      this.renderProcessingChart(null);
     }
   },
 
@@ -102,6 +120,11 @@ export const DashboardPage = {
       date.setDate(date.getDate() - (6 - index));
       return date.toISOString().slice(0, 10);
     });
+    if (!transactions.length) {
+      volumeContainer.replaceChildren(Utils.textElement('p', 'text-sm text-ink-soft', 'Transaction volume will appear after your first remittance.'));
+      approvalContainer.replaceChildren(Utils.textElement('p', 'text-sm text-ink-soft', 'Approval metrics will appear after a policy decision.'));
+      return;
+    }
     const counts = dates.map(date => transactions.filter(transaction =>
       transaction.createdAt && new Date(transaction.createdAt).toISOString().slice(0, 10) === date
     ).length);
@@ -207,20 +230,22 @@ export const DashboardPage = {
     if (!tbody) return;
     this.transactionPage = this.transactionPage || 0;
     const pageSize = 20;
-    const pageCount = Math.max(1, Math.ceil(transactions.length / pageSize));
+    const query = (this.searchQuery || '').trim().toLocaleLowerCase();
+    const matchingTransactions = query ? transactions.filter(transaction => [
+      transaction.referenceNumber, transaction.id, transaction.beneficiaryName, transaction.purposeCode, transaction.status
+    ].some(value => String(value || '').toLocaleLowerCase().includes(query))) : transactions;
+    const pageCount = Math.max(1, Math.ceil(matchingTransactions.length / pageSize));
     this.transactionPage = Math.min(this.transactionPage, pageCount - 1);
-    const visibleTransactions = transactions.slice(this.transactionPage * pageSize, (this.transactionPage + 1) * pageSize);
+    const visibleTransactions = matchingTransactions.slice(this.transactionPage * pageSize, (this.transactionPage + 1) * pageSize);
 
-    if (transactions.length === 0) {
-      tbody.innerHTML = `
-        <tr>
-          <td colspan="6" class="text-center py-12 text-ink-soft">
-            <i data-lucide="inbox" class="w-8 h-8 mx-auto mb-2 text-slate-500"></i>
-            <p>No transactions found. Click "Create Transaction" to initiate cross-border compliance.</p>
-          </td>
-        </tr>
-      `;
-      Utils.initIcons();
+    if (matchingTransactions.length === 0) {
+      const message = query ? 'No transactions match your search. Try a different name, reference, or purpose code.' : 'No transactions yet. Create a remittance to begin the review workflow.';
+      const cell = Utils.textElement('td', 'text-center py-12 text-ink-soft', message);
+      cell.colSpan = 6;
+      const row = document.createElement('tr');
+      row.append(cell);
+      tbody.replaceChildren(row);
+      this.renderTransactionPagination(pageCount, matchingTransactions.length);
       return;
     }
 
@@ -239,12 +264,15 @@ export const DashboardPage = {
       </tr>
     `).join('');
 
-    Utils.initIcons();
+    this.renderTransactionPagination(pageCount, matchingTransactions.length);
+  },
+
+  renderTransactionPagination(pageCount, total) {
     const pagination = document.getElementById('transaction-pagination');
     if (pagination) {
       pagination.replaceChildren();
       pagination.append(
-        Utils.textElement('span', 'text-xs text-ink-soft', `${this.transactionPage + 1} / ${pageCount} · ${transactions.length} transactions`)
+        Utils.textElement('span', 'text-xs text-ink-soft', `${this.transactionPage + 1} / ${pageCount} · ${total} ${total === 1 ? 'transaction' : 'transactions'}`)
       );
       const previous = document.createElement('button');
       previous.type = 'button';
@@ -268,34 +296,72 @@ export const DashboardPage = {
     }
   },
 
+  setupDashboardNavigation() {
+    document.querySelector('[data-dashboard-action="create"]')?.addEventListener('click', () => {
+      document.getElementById('open-new-tx-modal')?.click();
+    });
+    document.querySelector('[data-dashboard-action="logout"]')?.addEventListener('click', () => Auth.logout());
+  },
+
+  setupSearch() {
+    document.getElementById('dashboard-search')?.addEventListener('input', event => {
+      this.searchQuery = event.target.value;
+      this.transactionPage = 0;
+      this.renderTransactionsTable(this.transactions || []);
+    });
+  },
+
   setupNewTransactionModal() {
     const openBtn = document.getElementById('open-new-tx-modal');
     const closeBtn = document.getElementById('close-new-tx-modal');
+    const cancelBtn = document.getElementById('cancel-new-tx-modal');
     const backdrop = document.getElementById('new-tx-modal-backdrop');
     const form = document.getElementById('new-tx-form');
 
     if (!backdrop) return;
 
-    const openModal = () => backdrop.classList.add('active');
-    const closeModal = () => backdrop.classList.remove('active');
+    const openModal = () => {
+      backdrop.classList.add('active');
+      document.body.classList.add('modal-open');
+      document.getElementById('tx-input-buyer')?.focus();
+    };
+    const closeModal = () => {
+      backdrop.classList.remove('active');
+      document.body.classList.remove('modal-open');
+      openBtn?.focus();
+    };
 
     if (openBtn) openBtn.addEventListener('click', openModal);
     if (closeBtn) closeBtn.addEventListener('click', closeModal);
+    if (cancelBtn) cancelBtn.addEventListener('click', closeModal);
 
     backdrop.addEventListener('click', (e) => {
       if (e.target === backdrop) closeModal();
+    });
+    document.addEventListener('keydown', event => {
+      if (event.key === 'Escape' && backdrop.classList.contains('active')) closeModal();
     });
 
     if (form) {
       form.addEventListener('submit', async (e) => {
         e.preventDefault();
+        const submitButton = form.querySelector('button[type="submit"]');
         const payload = {
-          beneficiaryName: document.getElementById('tx-input-buyer').value,
+          beneficiaryName: document.getElementById('tx-input-buyer').value.trim(),
           amount: parseFloat(document.getElementById('tx-input-amount').value),
           currency: document.getElementById('tx-input-currency').value,
           purposeCode: document.getElementById('tx-input-purpose').value.trim()
         };
 
+        if (!payload.beneficiaryName || !payload.purposeCode || !Number.isFinite(payload.amount) || payload.amount <= 0) {
+          Toast.error('Enter a beneficiary, positive amount, and purpose code.');
+          return;
+        }
+
+        if (submitButton) {
+          submitButton.disabled = true;
+          submitButton.textContent = 'Creating transaction…';
+        }
         try {
           const newTx = await API.request('/transactions', {
             method: 'POST',
@@ -309,6 +375,11 @@ export const DashboardPage = {
           }, 700);
         } catch (err) {
           Toast.error('Failed to create transaction: ' + err.message);
+        } finally {
+          if (submitButton) {
+            submitButton.disabled = false;
+            submitButton.innerHTML = '<span>Ingest &amp; Queue Compliance</span><i class="fa-solid fa-arrow-right w-3.5 h-3.5"></i>';
+          }
         }
       });
     }

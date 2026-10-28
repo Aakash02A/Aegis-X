@@ -92,7 +92,6 @@ export const TransactionPage = {
     document.getElementById('tx-amount-display').textContent = Utils.formatCurrency(tx.amount, tx.currency);
     document.getElementById('tx-buyer-display').textContent = tx.beneficiaryName || '—';
     document.getElementById('tx-date-display').textContent = Utils.formatDateTime(tx.createdAt);
-    Utils.initIcons();
   },
 
   renderSummary(tx) {

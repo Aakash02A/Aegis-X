@@ -1,0 +1,190 @@
+name: CI
+
+# Three things have to stay true for this repository, and each gets its own job:
+#
+#   backend-h2     the engine-independent suite, fast feedback on plain `mvn test` (H2)
+#   backend-mysql  the suites that only mean anything against MySQL 8.4 with the real schema,
+#                  the CHECK constraints and the generated-column unique index
+#   frontend       a real `vite build` followed by the frontend checks, so the checks see a
+#                  fresh build instead of a stale `frontend/dist/`
+#
+# The MySQL job exists because H2 enforces neither the CHECK constraints nor the partial unique
+# indexes; the V27 `exception_type` defect was invisible there and 500-ed every evidence finding on
+# the real engine. A green H2 run is not evidence about MySQL.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend-h2:
+    name: Backend - engine-independent suite (H2)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+          cache-dependency-path: backend/pom.xml
+
+      - name: Run tests
+        working-directory: backend
+        run: ./mvnw -B test
+
+      - name: Upload surefire reports
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: surefire-h2
+          path: backend/target/surefire-reports/
+          if-no-files-found: ignore
+
+  backend-mysql:
+    name: Backend - MySQL 8.4 suites
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_DATABASE: aegisx_mysqlverify
+          MYSQL_ALLOW_EMPTY_PASSWORD: 'yes'
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd "mysqladmin ping -h 127.0.0.1 --silent"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 30
+    env:
+      INTEGRITY_MYSQL_URL: jdbc:mysql://127.0.0.1:3306/aegisx_mysqlverify?connectionTimeZone=UTC&forceConnectionTimeZoneToSession=true&characterEncoding=UTF-8&useSSL=false&allowPublicKeyRetrieval=true
+      INTEGRITY_MYSQL_USER: root
+      INTEGRITY_MYSQL_PASS: ""
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+          cache-dependency-path: backend/pom.xml
+
+      # The suites let Flyway build the schema from empty, and `baseline-on-migrate: true` would
+      # happily baseline a schema that already had tables in it -- then skip the migrations and
+      # fail later for a confusing reason. Assert emptiness up front instead.
+      - name: Fail early if the verification schema is not empty
+        run: |
+          for attempt in $(seq 1 10); do
+            if count=$(docker run --rm --network host mysql:8.4 \
+                mysql -h127.0.0.1 -P3306 -uroot -N -B \
+                -e "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='aegisx_mysqlverify'" 2>/dev/null); then
+              echo "tables in aegisx_mysqlverify: $count"
+              [ "$count" = "0" ] || { echo "::error::schema is not empty; refusing to run"; exit 1; }
+              exit 0
+            fi
+            sleep 3
+          done
+          echo "::error::could not query the MySQL service container"
+          exit 1
+
+      - name: Run MySQL-gated suites
+        working-directory: backend
+        # MySqlDdlGenerateTest is intentionally excluded by its missing INTEGRITY_MYSQL_DDL_URL:
+        # it is a diagnostic that runs ddl-auto=create and drops the tables it owns.
+        run: ./mvnw -B test -Dtest='MySql*Test'
+
+      # A skipped test exits 0. Without this check, losing INTEGRITY_MYSQL_URL would turn the
+      # whole job into a green no-op -- the same silent-pass failure mode the e2e harness had.
+      - name: Assert the MySQL suites actually executed
+        working-directory: backend
+        run: |
+          python3 - <<'PY'
+          import glob, sys, xml.etree.ElementTree as ET
+
+          total = skipped = failed = 0
+          skipped_classes = set()
+          executed_classes = set()
+          # Only the gated suites: a stale report from an earlier `mvn test` must not make this look
+          # like the MySQL job ran anything it did not.
+          for path in glob.glob('target/surefire-reports/TEST-*MySql*.xml'):
+              root = ET.parse(path).getroot()
+              total += int(root.get('tests', 0))
+              failed += int(root.get('failures', 0)) + int(root.get('errors', 0))
+              for case in root.iter('testcase'):
+                  cls = case.get('classname', '')
+                  if case.find('skipped') is not None:
+                      skipped += 1
+                      skipped_classes.add(cls)
+                  else:
+                      executed_classes.add(cls)
+
+          executed = total - skipped
+          print(f'tests={total} executed={executed} skipped={skipped} failed={failed}')
+          print('executed classes: ' + ', '.join(sorted(executed_classes)))
+          print('skipped classes:  ' + ', '.join(sorted(skipped_classes)))
+
+          ok = True
+          if failed:
+              print('::error::MySQL suites reported failures')
+              ok = False
+          if executed == 0:
+              print('::error::no MySQL test executed -- is INTEGRITY_MYSQL_URL set?')
+              ok = False
+          unexpected = {c for c in skipped_classes if not c.endswith('MySqlDdlGenerateTest')}
+          if unexpected:
+              print('::error::unexpected skipped classes: ' + ', '.join(sorted(unexpected)))
+              ok = False
+          sys.exit(0 if ok else 1)
+          PY
+
+      - name: Upload surefire reports
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: surefire-mysql
+          path: backend/target/surefire-reports/
+          if-no-files-found: ignore
+
+  frontend:
+    name: Frontend - build and checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci
+
+      # Build first: `npm test` inspects the built output, so running it against a stale or absent
+      # dist/ would test the wrong artifact.
+      - name: Build
+        working-directory: frontend
+        run: npm run build
+
+      - name: Run frontend checks
+        working-directory: frontend
+        run: npm test

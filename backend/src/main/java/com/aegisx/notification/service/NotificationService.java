@@ -16,6 +16,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
@@ -48,12 +49,18 @@ public class NotificationService {
     private final RequiredDocumentRepository requiredDocumentRepository;
     private final ObjectMapper objectMapper;
 
+    @Value("${aegisx.whatsapp.notification-template:notification}")
+    private String notificationTemplate;
+
+    @Value("${aegisx.whatsapp.document-request-template:document_request}")
+    private String documentRequestTemplate;
+
     /** Sends the configured notification template through the existing WhatsApp client. */
     public void sendWhatsAppMessage(String recipientPhone, String message) {
         if (!whatsAppClient.isConfigured()) return;
         ObjectNode parameters = objectMapper.createObjectNode();
         parameters.put("body", message);
-        whatsAppClient.sendTemplateMessage(recipientPhone, "notification", parameters);
+        whatsAppClient.sendTemplateMessage(recipientPhone, notificationTemplate, parameters);
     }
     
     /**
@@ -93,7 +100,7 @@ public class NotificationService {
             if (whatsAppClient.isConfigured()) {
                 messageId = whatsAppClient.sendTemplateMessage(
                     recipientPhone,
-                    "document_request",
+                    documentRequestTemplate,
                     templateParams
                 );
             }
@@ -104,7 +111,7 @@ public class NotificationService {
                 .channel("WHATSAPP")
                 .direction(Direction.OUTBOUND)
                 .recipient(recipientPhone)
-                .templateName("document_request")
+                .templateName(documentRequestTemplate)
                 .messageId(messageId)
                 .status(messageId != null ? DeliveryStatus.SENT : DeliveryStatus.FAILED)
                 .failureReason(messageId == null ? "WhatsApp not configured or send failed" : null)
@@ -128,7 +135,7 @@ public class NotificationService {
                 .channel("WHATSAPP")
                 .direction(Direction.OUTBOUND)
                 .recipient(recipientPhone)
-                .templateName("document_request")
+                .templateName(documentRequestTemplate)
                 .status(DeliveryStatus.FAILED)
                 .failureReason("Exception: " + e.getMessage())
                 .updatedAt(Instant.now())

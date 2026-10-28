@@ -3,202 +3,147 @@ package com.aegisx.transaction.service;
 import com.aegisx.auth.entity.Role;
 import com.aegisx.auth.entity.User;
 import com.aegisx.auth.repository.UserRepository;
-import com.aegisx.audit.service.AuditService;
+import com.aegisx.auth.service.UserService;
+import com.aegisx.auth.dto.RegisterRequest;
 import com.aegisx.common.exception.TransactionNotFoundException;
 import com.aegisx.transaction.dto.CreateTransactionRequest;
 import com.aegisx.transaction.dto.TransactionResponse;
-import com.aegisx.transaction.entity.Transaction;
 import com.aegisx.transaction.entity.TransactionStatus;
 import com.aegisx.transaction.repository.TransactionRepository;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
-import org.mockito.InjectMocks;
-import org.mockito.Mock;
-import org.mockito.Spy;
-import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Pageable;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.test.context.ActiveProfiles;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.time.Clock;
-import java.time.Instant;
-import java.time.ZoneOffset;
-import java.util.Collections;
-import java.util.Optional;
 import java.util.UUID;
 
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
-@ExtendWith(MockitoExtension.class)
+@SpringBootTest
+@ActiveProfiles("test")
+@Transactional
 class TransactionServiceTest {
 
-    @Mock
-    private TransactionRepository transactionRepository;
-
-    @Mock
-    private UserRepository userRepository;
-
-    @Mock
-    private AuditService auditService;
-
-    @Spy
-    private TransactionStateMachine transactionStateMachine = new TransactionStateMachine();
-
-    @Spy
-    private Clock clock = Clock.fixed(Instant.parse("2026-09-21T10:00:00Z"), ZoneOffset.UTC);
-
-    @InjectMocks
+    @Autowired
     private TransactionService transactionService;
 
-    private User merchantUser;
-    private User otherMerchantUser;
-    private Transaction transaction;
-    private UUID transactionId;
+    @Autowired
+    private UserService userService;
+
+    @Autowired
+    private UserRepository userRepository;
+
+    @Autowired
+    private TransactionRepository transactionRepository;
+
+    @Autowired
+    private PasswordEncoder passwordEncoder;
+
+    private String merchantEmail;
+    private String otherMerchantEmail;
 
     @BeforeEach
     void setUp() {
-        merchantUser = User.builder()
-                .fullName("Test Merchant")
-                .email("merchant@example.com")
-                .role(Role.MERCHANT)
-                .build();
-        merchantUser.setId(UUID.randomUUID());
-
-        otherMerchantUser = User.builder()
-                .fullName("Other Merchant")
-                .email("other@example.com")
-                .role(Role.MERCHANT)
-                .build();
-        otherMerchantUser.setId(UUID.randomUUID());
-
-        transactionId = UUID.randomUUID();
-        transaction = Transaction.builder()
-                .referenceNumber("TXN-20260921-A1B2C3")
-                .merchant(merchantUser)
-                .amount(new BigDecimal("1500.00"))
-                .currency("USD")
-                .beneficiaryName("Global Supplies LLC")
-                .purposeCode("P0103")
-                .status(TransactionStatus.CREATED)
-                .version(0L)
-                .build();
-        transaction.setId(transactionId);
+        merchantEmail = "merchant-" + UUID.randomUUID() + "@example.com";
+        otherMerchantEmail = "other-" + UUID.randomUUID() + "@example.com";
+        userService.register(registerRequest("Test Merchant", merchantEmail));
+        userService.register(registerRequest("Other Merchant", otherMerchantEmail));
     }
 
     @Test
-    @DisplayName("Create transaction normalizes currency and purpose code and saves with CREATED status")
-    void testCreateTransaction() {
-        CreateTransactionRequest request = CreateTransactionRequest.builder()
-                .amount(new BigDecimal("2500.50"))
-                .currency("usd")
-                .beneficiaryName("XYZ Logistics")
-                .purposeCode("p0108")
-                .build();
+    void createTransactionNormalizesCurrencyAndPurposeCodeAndPersistsCreatedState() {
+        TransactionResponse response = createTransaction("usd", "p0108");
 
-        when(userRepository.findByEmail("merchant@example.com")).thenReturn(Optional.of(merchantUser));
-        when(transactionRepository.save(any(Transaction.class))).thenAnswer(invocation -> {
-            Transaction t = invocation.getArgument(0);
-            t.setId(UUID.randomUUID());
-            return t;
-        });
-
-        TransactionResponse response = transactionService.createTransaction(request, "merchant@example.com");
-
-        assertNotNull(response);
-        assertNotNull(response.getId());
-        assertTrue(response.getReferenceNumber().startsWith("TXN-20260921-"));
         assertEquals("USD", response.getCurrency());
         assertEquals("P0108", response.getPurposeCode());
         assertEquals(TransactionStatus.CREATED, response.getStatus());
-
-        ArgumentCaptor<Transaction> captor = ArgumentCaptor.forClass(Transaction.class);
-        verify(transactionRepository).save(captor.capture());
-        Transaction captured = captor.getValue();
-        assertEquals("USD", captured.getCurrency());
-        assertEquals("P0108", captured.getPurposeCode());
+        assertTrue(response.getReferenceNumber().matches("TXN-\\d{8}-[A-Z0-9]+"));
+        assertEquals("USD", transactionRepository.findById(response.getId()).orElseThrow().getCurrency());
     }
 
     @Test
-    @DisplayName("Get transaction returns transaction for authorized merchant")
-    void testGetTransactionMerchantSuccess() {
-        when(userRepository.findByEmail("merchant@example.com")).thenReturn(Optional.of(merchantUser));
-        when(transactionRepository.findByIdAndMerchantId(transactionId, merchantUser.getId()))
-                .thenReturn(Optional.of(transaction));
+    void getTransactionReturnsTransactionForOwningMerchant() {
+        TransactionResponse created = createTransaction("USD", "P0103");
 
-        TransactionResponse response = transactionService.getTransaction(transactionId, "merchant@example.com", Role.MERCHANT);
+        TransactionResponse response = transactionService.getTransaction(
+                created.getId(), merchantEmail, Role.MERCHANT);
 
-        assertNotNull(response);
-        assertEquals(transactionId, response.getId());
-        assertEquals("TXN-20260921-A1B2C3", response.getReferenceNumber());
+        assertEquals(created.getId(), response.getId());
+        assertEquals(created.getReferenceNumber(), response.getReferenceNumber());
     }
 
     @Test
-    @DisplayName("Get transaction throws TransactionNotFoundException when merchant attempts accessing another merchant's transaction")
-    void testGetTransactionMerchantForbidden() {
-        when(userRepository.findByEmail("other@example.com")).thenReturn(Optional.of(otherMerchantUser));
-        when(transactionRepository.findByIdAndMerchantId(transactionId, otherMerchantUser.getId()))
-                .thenReturn(Optional.empty());
+    void merchantCannotReadAnotherMerchantsTransaction() {
+        TransactionResponse created = createTransaction("USD", "P0103");
 
-        assertThrows(TransactionNotFoundException.class, () ->
-                transactionService.getTransaction(transactionId, "other@example.com", Role.MERCHANT));
+        assertThrows(TransactionNotFoundException.class, () -> transactionService.getTransaction(
+                created.getId(), otherMerchantEmail, Role.MERCHANT));
     }
 
     @Test
-    @DisplayName("Get transaction succeeds for COMPLIANCE_OFFICER regardless of merchant ownership")
-    void testGetTransactionComplianceOfficerSuccess() {
-        User complianceOfficer = User.builder()
-                .fullName("Compliance Admin")
-                .email("compliance@example.com")
+    void complianceOfficerCanReadTransactionAcrossMerchantOwnership() {
+        TransactionResponse created = createTransaction("USD", "P0103");
+        String complianceEmail = "compliance-" + UUID.randomUUID() + "@example.com";
+        userRepository.save(User.builder()
+                .fullName("Compliance Officer")
+                .email(complianceEmail)
+                .passwordHash(passwordEncoder.encode("Password@123"))
                 .role(Role.COMPLIANCE_OFFICER)
-                .build();
-        complianceOfficer.setId(UUID.randomUUID());
+                .build());
 
-        when(userRepository.findByEmail("compliance@example.com")).thenReturn(Optional.of(complianceOfficer));
-        when(transactionRepository.findById(transactionId)).thenReturn(Optional.of(transaction));
+        TransactionResponse response = transactionService.getTransaction(
+                created.getId(), complianceEmail, Role.COMPLIANCE_OFFICER);
 
-        TransactionResponse response = transactionService.getTransaction(transactionId, "compliance@example.com", Role.COMPLIANCE_OFFICER);
-
-        assertNotNull(response);
-        assertEquals(transactionId, response.getId());
+        assertEquals(created.getId(), response.getId());
     }
 
     @Test
-    @DisplayName("List transactions filters by merchantId for MERCHANT role")
-    void testListTransactionsForMerchant() {
-        Pageable pageable = PageRequest.of(0, 10);
-        Page<Transaction> page = new PageImpl<>(Collections.singletonList(transaction), pageable, 1);
+    void listTransactionsIsScopedToMerchant() {
+        createTransaction("USD", "P0103");
 
-        when(userRepository.findByEmail("merchant@example.com")).thenReturn(Optional.of(merchantUser));
-        when(transactionRepository.findByMerchantId(merchantUser.getId(), pageable)).thenReturn(page);
-
-        Page<TransactionResponse> result = transactionService.listTransactions("merchant@example.com", Role.MERCHANT, pageable);
+        Page<TransactionResponse> result = transactionService.listTransactions(
+                merchantEmail, Role.MERCHANT, PageRequest.of(0, 10));
 
         assertEquals(1, result.getTotalElements());
-        assertEquals(transactionId, result.getContent().get(0).getId());
+        assertEquals(merchantEmail,
+                transactionRepository.findById(result.getContent().get(0).getId()).orElseThrow()
+                        .getMerchant().getEmail());
     }
 
     @Test
-    @DisplayName("transitionStatus delegates to TransactionStateMachine and saves update")
-    void testTransitionStatus() {
-        when(transactionRepository.findById(transactionId)).thenReturn(Optional.of(transaction));
-        when(transactionRepository.save(any(Transaction.class))).thenAnswer(invocation -> invocation.getArgument(0));
+    void transitionStatusPersistsTheStateMachineTransition() {
+        TransactionResponse created = createTransaction("USD", "P0103");
 
-        TransactionResponse response = transactionService.transitionStatus(
-                transactionId,
-                TransactionStatus.PAYMENT_RECEIVED,
-                "RAZORPAY_WEBHOOK",
-                "Webhook event received"
-        );
+        TransactionResponse updated = transactionService.transitionStatus(
+                created.getId(), TransactionStatus.PAYMENT_RECEIVED, "RAZORPAY_WEBHOOK", "Webhook event received");
 
-        assertEquals(TransactionStatus.PAYMENT_RECEIVED, response.getStatus());
-        verify(transactionStateMachine).transition(transaction, TransactionStatus.PAYMENT_RECEIVED, "RAZORPAY_WEBHOOK", "Webhook event received");
-        verify(transactionRepository).save(transaction);
+        assertEquals(TransactionStatus.PAYMENT_RECEIVED, updated.getStatus());
+        assertEquals(TransactionStatus.PAYMENT_RECEIVED,
+                transactionRepository.findById(created.getId()).orElseThrow().getStatus());
+    }
+
+    private TransactionResponse createTransaction(String currency, String purposeCode) {
+        return transactionService.createTransaction(CreateTransactionRequest.builder()
+                .amount(new BigDecimal("2500.50"))
+                .currency(currency)
+                .beneficiaryName("XYZ Logistics")
+                .purposeCode(purposeCode)
+                .build(), merchantEmail);
+    }
+
+    private static RegisterRequest registerRequest(String fullName, String email) {
+        return RegisterRequest.builder()
+                .fullName(fullName)
+                .email(email)
+                .password("Password@123")
+                .build();
     }
 }

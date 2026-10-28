@@ -5,152 +5,108 @@ import com.aegisx.auth.dto.LoginRequest;
 import com.aegisx.auth.dto.RegisterRequest;
 import com.aegisx.auth.dto.UserResponse;
 import com.aegisx.auth.entity.Role;
-import com.aegisx.auth.entity.User;
 import com.aegisx.auth.repository.UserRepository;
-import com.aegisx.auth.security.JwtService;
 import com.aegisx.common.exception.EmailAlreadyExistsException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
-import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.security.authentication.BadCredentialsException;
-import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
-import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.test.context.ActiveProfiles;
+import org.springframework.transaction.annotation.Transactional;
 
-import java.time.Instant;
-import java.util.Optional;
 import java.util.UUID;
 
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
-@ExtendWith(MockitoExtension.class)
+@SpringBootTest
+@ActiveProfiles("test")
+@Transactional
 class UserServiceTest {
 
-    @Mock
-    private UserRepository userRepository;
-
-    @Mock
-    private PasswordEncoder passwordEncoder;
-
-    @Mock
-    private JwtService jwtService;
-
-    @Mock
-    private AuthenticationManager authenticationManager;
-
-    @InjectMocks
+    @Autowired
     private UserService userService;
 
-    private User sampleUser;
+    @Autowired
+    private UserRepository userRepository;
+
+    private String email;
 
     @BeforeEach
     void setUp() {
-        sampleUser = User.builder()
-                .fullName("ABC Exports")
-                .email("merchant@example.com")
-                .passwordHash("encoded_password")
-                .role(Role.MERCHANT)
-                .build();
-        sampleUser.setId(UUID.randomUUID());
-        sampleUser.setCreatedAt(Instant.now());
-        sampleUser.setUpdatedAt(Instant.now());
+        email = "merchant-" + UUID.randomUUID() + "@example.com";
     }
 
     @Test
     void registerSuccessfullyCreatesUser() {
-        RegisterRequest request = RegisterRequest.builder()
-                .fullName("ABC Exports")
-                .email("merchant@example.com")
-                .password("Password@123")
-                .build();
+        UserResponse response = userService.register(registerRequest("Password@123"));
 
-        when(userRepository.existsByEmail("merchant@example.com")).thenReturn(false);
-        when(passwordEncoder.encode("Password@123")).thenReturn("encoded_password");
-        when(userRepository.save(any(User.class))).thenReturn(sampleUser);
-
-        UserResponse response = userService.register(request);
-
-        assertNotNull(response);
-        assertEquals(sampleUser.getId(), response.getId());
+        assertNotNull(response.getId());
         assertEquals("ABC Exports", response.getFullName());
-        assertEquals("merchant@example.com", response.getEmail());
+        assertEquals(email, response.getEmail());
         assertEquals(Role.MERCHANT, response.getRole());
-        verify(userRepository, times(1)).save(any(User.class));
+        assertTrue(userRepository.findByEmail(email).orElseThrow().getPasswordHash().startsWith("$2"));
     }
 
     @Test
     void registerThrowsExceptionWhenEmailAlreadyExists() {
-        RegisterRequest request = RegisterRequest.builder()
-                .fullName("Duplicate User")
-                .email("merchant@example.com")
-                .password("Password@123")
-                .build();
+        userService.register(registerRequest("Password@123"));
 
-        when(userRepository.existsByEmail("merchant@example.com")).thenReturn(true);
-
-        assertThrows(EmailAlreadyExistsException.class, () -> userService.register(request));
-        verify(userRepository, never()).save(any(User.class));
+        assertThrows(EmailAlreadyExistsException.class,
+                () -> userService.register(registerRequest("AnotherPassword@123")));
     }
 
     @Test
     void loginSuccessfullyReturnsAuthResponse() {
-        LoginRequest request = LoginRequest.builder()
-                .email("merchant@example.com")
+        userService.register(registerRequest("Password@123"));
+
+        AuthResponse response = userService.login(LoginRequest.builder()
+                .email(email)
                 .password("Password@123")
-                .build();
+                .build());
 
-        when(userRepository.findByEmail("merchant@example.com")).thenReturn(Optional.of(sampleUser));
-        when(jwtService.generateToken(sampleUser)).thenReturn("sample_jwt_token");
-        when(jwtService.getExpirationTimeInSeconds()).thenReturn(86400L);
-
-        AuthResponse response = userService.login(request);
-
-        assertNotNull(response);
-        assertEquals("sample_jwt_token", response.getToken());
-        assertEquals(86400L, response.getExpiresIn());
+        assertNotNull(response.getToken());
+        assertTrue(response.getExpiresIn() > 0);
         assertEquals("Bearer", response.getTokenType());
-        assertEquals(sampleUser.getId(), response.getUserId());
-        assertEquals("merchant@example.com", response.getEmail());
+        assertEquals(email, response.getEmail());
         assertEquals(Role.MERCHANT, response.getRole());
-        verify(authenticationManager, times(1)).authenticate(any(UsernamePasswordAuthenticationToken.class));
     }
 
     @Test
     void loginThrowsBadCredentialsWhenAuthenticationFails() {
-        LoginRequest request = LoginRequest.builder()
-                .email("merchant@example.com")
+        userService.register(registerRequest("Password@123"));
+
+        assertThrows(BadCredentialsException.class, () -> userService.login(LoginRequest.builder()
+                .email(email)
                 .password("WrongPassword")
-                .build();
-
-        doThrow(new BadCredentialsException("Bad credentials"))
-                .when(authenticationManager)
-                .authenticate(any(UsernamePasswordAuthenticationToken.class));
-
-        assertThrows(BadCredentialsException.class, () -> userService.login(request));
+                .build()));
     }
 
     @Test
     void getCurrentUserReturnsUserResponse() {
-        when(userRepository.findByEmail("merchant@example.com")).thenReturn(Optional.of(sampleUser));
+        UserResponse registered = userService.register(registerRequest("Password@123"));
 
-        UserResponse response = userService.getCurrentUser("merchant@example.com");
+        UserResponse current = userService.getCurrentUser(email.toUpperCase());
 
-        assertNotNull(response);
-        assertEquals(sampleUser.getId(), response.getId());
-        assertEquals("ABC Exports", response.getFullName());
-        assertEquals("merchant@example.com", response.getEmail());
+        assertEquals(registered.getId(), current.getId());
+        assertEquals("ABC Exports", current.getFullName());
+        assertEquals(email, current.getEmail());
     }
 
     @Test
     void getCurrentUserThrowsUsernameNotFoundExceptionWhenUserDoesNotExist() {
-        when(userRepository.findByEmail("nonexistent@example.com")).thenReturn(Optional.empty());
+        assertThrows(UsernameNotFoundException.class, () -> userService.getCurrentUser(email));
+    }
 
-        assertThrows(UsernameNotFoundException.class, () -> userService.getCurrentUser("nonexistent@example.com"));
+    private RegisterRequest registerRequest(String password) {
+        return RegisterRequest.builder()
+                .fullName("ABC Exports")
+                .email(email)
+                .password(password)
+                .build();
     }
 }

@@ -339,6 +339,67 @@ public class AuditIntegrationTest {
     }
 
     @Test
+    @DisplayName("Audit search applies event type, module and date filters")
+    @WithMockUser(username = "compliance@test.com", roles = "COMPLIANCE_OFFICER")
+    void testAuditSearchFilters() throws Exception {
+        Transaction transaction = transactionRepository.findById(transactionId).orElseThrow();
+
+        auditEventRepository.save(AuditEvent.builder()
+            .transaction(transaction)
+            .eventType(com.aegisx.audit.entity.AuditEventType.POLICY_APPROVED)
+            .module(com.aegisx.audit.entity.AuditModule.POLICY_ENGINE)
+            .actorId(merchantId)
+            .actorType(com.aegisx.audit.entity.ActorType.USER)
+            .correlationId(correlationId)
+            .newState(TransactionStatus.APPROVED.name())
+            .build());
+        auditEventRepository.save(AuditEvent.builder()
+            .transaction(transaction)
+            .eventType(com.aegisx.audit.entity.AuditEventType.DOCUMENT_UPLOADED)
+            .module(com.aegisx.audit.entity.AuditModule.DOCUMENT)
+            .actorId(merchantId)
+            .actorType(com.aegisx.audit.entity.ActorType.USER)
+            .correlationId(correlationId)
+            .build());
+
+        mockMvc.perform(get("/api/transactions/audit/search")
+                .param("eventType", "policy_approved")
+                .param("module", "POLICY_ENGINE")
+                .header("X-Correlation-ID", correlationId))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.totalElements").value(1))
+            .andExpect(jsonPath("$.content[0].eventType").value("POLICY_APPROVED"));
+
+        String today = java.time.LocalDate.now(java.time.ZoneOffset.UTC).toString();
+        mockMvc.perform(get("/api/transactions/audit/search")
+                .param("transactionId", transactionId.toString())
+                .param("startDate", today)
+                .param("endDate", today)
+                .header("X-Correlation-ID", correlationId))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.totalElements").value(2));
+
+        String tomorrow = java.time.LocalDate.now(java.time.ZoneOffset.UTC).plusDays(1).toString();
+        mockMvc.perform(get("/api/transactions/audit/search")
+                .param("startDate", tomorrow)
+                .header("X-Correlation-ID", correlationId))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.totalElements").value(0));
+
+        log.info("✓ Audit search filters applied");
+    }
+
+    @Test
+    @DisplayName("Audit search rejects an unknown event type")
+    @WithMockUser(username = "compliance@test.com", roles = "COMPLIANCE_OFFICER")
+    void testAuditSearchRejectsUnknownEventType() throws Exception {
+        mockMvc.perform(get("/api/transactions/audit/search")
+                .param("eventType", "NOT_A_REAL_EVENT")
+                .header("X-Correlation-ID", correlationId))
+            .andExpect(status().isBadRequest());
+    }
+
+    @Test
     @DisplayName("Actuator metrics should be accessible")
     void testActuatorMetrics() throws Exception {
         log.info("Test: Actuator metrics accessibility");

@@ -61,7 +61,7 @@ public class AIAnalysis {
     @Column(name = "input_hash", nullable = false, length = 64)
     private String inputHash;
     
-    @Column(name = "analysis_json", nullable = false, columnDefinition = "JSONB")
+    @Column(name = "analysis_json", nullable = false)
     @JdbcTypeCode(SqlTypes.JSON)
     private JsonNode analysisJson;
     

@@ -17,6 +17,9 @@ target/
 # Logs
 logs/
 *.log
+*.log.*
+*.tmp
+*.gz
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
@@ -25,12 +28,29 @@ yarn-error.log*
 frontend/node_modules/
 frontend/dist/
 
-# Environment and secrets
-.env
-.env.local
-.env.*.local
+# Environment and secrets — NEVER commit real credentials
+**/.env
+**/.env.*
+!.env.example
+!**/src/**
 application-local.properties
 application-local.yml
+**/application-local.yml
+**/application-local.properties
+
+# Sensitive config files
+**/application-secret.yml
+**/application-secret.properties
+**/secrets.yml
+**/secrets.properties
+
+# Kubernetes / cloud secrets
+deployment/cloud/secrets/
+config/secrets/
+*.pem
+*.key
+*.p12
+*.jks
 
 # IDE & Editor files
 .idea/
@@ -38,6 +58,7 @@ application-local.yml
 *.iws
 *.ipr
 .vscode/
+.freebuff/
 .settings/
 .project
 .classpath
@@ -55,3 +76,7 @@ Thumbs.db
 uploads/
 scratch/
 tmp/
+backend/storage/
+backend/storage-test/
+tests/e2e/out/
+verification/

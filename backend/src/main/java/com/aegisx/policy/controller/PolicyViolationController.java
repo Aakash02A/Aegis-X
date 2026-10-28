@@ -47,7 +47,7 @@ public class PolicyViolationController {
      * Used by compliance officers and merchants to view violations.
      */
     @GetMapping("/transaction/{transactionId}")
-    @PreAuthorize("hasAnyRole('COMPLIANCE_OFFICER', 'MERCHANT')")
+    @PreAuthorize("hasAnyRole('COMPLIANCE_OFFICER', 'MERCHANT', 'ADMIN')")
     @Operation(summary = "Get violations for transaction", 
                description = "Retrieves all policy violations for a specific transaction")
     public ResponseEntity<ApiResponse<List<PolicyViolationResponse>>> getTransactionViolations(
@@ -75,7 +75,7 @@ public class PolicyViolationController {
      * Analyzes violations for a transaction and provides risk assessment.
      */
     @GetMapping("/transaction/{transactionId}/analysis")
-    @PreAuthorize("hasAnyRole('COMPLIANCE_OFFICER', 'RISK_MANAGER')")
+    @PreAuthorize("hasAnyRole('COMPLIANCE_OFFICER', 'ADMIN')")
     @Operation(summary = "Analyze transaction violations", 
                description = "Provides comprehensive violation analysis and risk assessment")
     public ResponseEntity<ApiResponse<ViolationAnalysisResponse>> analyzeTransactionViolations(
@@ -102,7 +102,7 @@ public class PolicyViolationController {
      * Gets violations by severity level with pagination.
      */
     @GetMapping("/severity/{severity}")
-    @PreAuthorize("hasRole('COMPLIANCE_OFFICER')")
+    @PreAuthorize("hasAnyRole('COMPLIANCE_OFFICER', 'ADMIN')")
     @Operation(summary = "Get violations by severity", 
                description = "Retrieves violations filtered by severity level")
     public ResponseEntity<ApiResponse<Page<PolicyViolationResponse>>> getViolationsBySeverity(
@@ -133,7 +133,7 @@ public class PolicyViolationController {
      * Gets violations requiring immediate attention (Critical and High severity).
      */
     @GetMapping("/attention")
-    @PreAuthorize("hasRole('COMPLIANCE_OFFICER')")
+    @PreAuthorize("hasAnyRole('COMPLIANCE_OFFICER', 'ADMIN')")
     @Operation(summary = "Get violations requiring attention", 
                description = "Retrieves violations that require immediate compliance officer attention")
     public ResponseEntity<ApiResponse<List<PolicyViolationResponse>>> getViolationsRequiringAttention() {
@@ -160,7 +160,7 @@ public class PolicyViolationController {
      * Gets violation statistics by rule.
      */
     @GetMapping("/statistics/rules")
-    @PreAuthorize("hasAnyRole('COMPLIANCE_OFFICER', 'RISK_MANAGER')")
+    @PreAuthorize("hasAnyRole('COMPLIANCE_OFFICER', 'ADMIN')")
     @Operation(summary = "Get violation statistics by rule", 
                description = "Provides statistics on violations grouped by policy rule")
     public ResponseEntity<ApiResponse<Map<String, Long>>> getViolationStatsByRule() {
@@ -186,7 +186,7 @@ public class PolicyViolationController {
      * Gets violations for a specific rule.
      */
     @GetMapping("/rule/{ruleId}")
-    @PreAuthorize("hasAnyRole('COMPLIANCE_OFFICER', 'RISK_MANAGER')")
+    @PreAuthorize("hasAnyRole('COMPLIANCE_OFFICER', 'ADMIN')")
     @Operation(summary = "Get violations by rule", 
                description = "Retrieves all violations for a specific policy rule")
     public ResponseEntity<ApiResponse<List<PolicyViolationResponse>>> getViolationsByRule(
@@ -214,7 +214,7 @@ public class PolicyViolationController {
      * Generates a violation report based on specified criteria.
      */
     @PostMapping("/report")
-    @PreAuthorize("hasAnyRole('COMPLIANCE_OFFICER', 'RISK_MANAGER')")
+    @PreAuthorize("hasAnyRole('COMPLIANCE_OFFICER', 'ADMIN')")
     @Operation(summary = "Generate violation report", 
                description = "Generates comprehensive violation report based on criteria")
     public ResponseEntity<ApiResponse<PolicyViolationService.ViolationReportResponse>> generateViolationReport(
@@ -246,7 +246,7 @@ public class PolicyViolationController {
      * Gets violation trends over a time period.
      */
     @GetMapping("/trends")
-    @PreAuthorize("hasAnyRole('COMPLIANCE_OFFICER', 'RISK_MANAGER')")
+    @PreAuthorize("hasAnyRole('COMPLIANCE_OFFICER', 'ADMIN')")
     @Operation(summary = "Get violation trends", 
                description = "Provides violation trend analysis over specified time period")
     public ResponseEntity<ApiResponse<Map<String, Object>>> getViolationTrends(
@@ -281,7 +281,7 @@ public class PolicyViolationController {
      * Checks if a transaction has critical violations.
      */
     @GetMapping("/transaction/{transactionId}/critical")
-    @PreAuthorize("hasAnyRole('COMPLIANCE_OFFICER', 'MERCHANT', 'SYSTEM')")
+    @PreAuthorize("hasAnyRole('COMPLIANCE_OFFICER', 'MERCHANT', 'ADMIN')")
     @Operation(summary = "Check for critical violations", 
                description = "Checks if transaction has critical violations requiring attention")
     public ResponseEntity<ApiResponse<Map<String, Boolean>>> hasCriticalViolations(
@@ -311,7 +311,7 @@ public class PolicyViolationController {
      * Gets a default violation report for the last 30 days.
      */
     @GetMapping("/report/default")
-    @PreAuthorize("hasAnyRole('COMPLIANCE_OFFICER', 'RISK_MANAGER')")
+    @PreAuthorize("hasAnyRole('COMPLIANCE_OFFICER', 'ADMIN')")
     @Operation(summary = "Get default violation report", 
                description = "Generates a default violation report for the last 30 days")
     public ResponseEntity<ApiResponse<PolicyViolationService.ViolationReportResponse>> getDefaultReport() {

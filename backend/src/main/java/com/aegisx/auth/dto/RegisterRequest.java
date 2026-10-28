@@ -2,6 +2,7 @@ package com.aegisx.auth.dto;
 
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -33,4 +34,12 @@ public class RegisterRequest {
     @NotBlank(message = "Password is required")
     @Size(min = 8, message = "Password must be at least 8 characters long")
     private String password;
+
+    /**
+     * Optional WhatsApp contact number. Stored in international format without the leading '+' so
+     * it can be handed to the WhatsApp Cloud API as-is.
+     */
+    @Size(max = 32, message = "Phone must not exceed 32 characters")
+    @Pattern(regexp = "^$|^\\+?[0-9 ()-]{7,32}$", message = "Phone must be a valid international number")
+    private String phone;
 }

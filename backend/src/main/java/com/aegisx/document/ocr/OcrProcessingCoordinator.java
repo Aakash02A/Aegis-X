@@ -10,6 +10,8 @@ import com.aegisx.document.repository.DocumentExtractionRepository;
 import com.aegisx.document.repository.DocumentRepository;
 import com.fasterxml.jackson.databind.JsonNode;
 import java.io.InputStream;
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -63,8 +65,9 @@ public class OcrProcessingCoordinator {
             documentRepository.save(document);
             log.debug("Document status updated to OCR_PROCESSING");
 
-            // Step 1: Attempt Tika text extraction
-            String extractedText = tikaTextExtractor.extractText(inputStream);
+            // Retain the upload bytes so both native text extraction and OCR can read them.
+            byte[] documentBytes = inputStream.readAllBytes();
+            String extractedText = tikaTextExtractor.extractText(new ByteArrayInputStream(documentBytes));
             log.debug("Tika extraction produced {} characters", extractedText.length());
 
             ExtractionMethod method = ExtractionMethod.TIKA;
@@ -73,12 +76,16 @@ public class OcrProcessingCoordinator {
             // Step 2: Decide: do we need OCR?
             if (!tikaTextExtractor.isSufficientText(extractedText)) {
                 log.debug("Insufficient text from Tika. Attempting Tesseract OCR.");
-                try {
-                    // For now, Tesseract requires image input or image conversion from PDF
-                    // Skip if we can't convert
-                    log.warn("Scanned document detection not yet fully implemented. Using Tika text only.");
-                } catch (UnsupportedDocumentException e) {
-                    log.debug("OCR not attempted: {}", e.getMessage());
+                String mimeType = document.getMimeType();
+                if (mimeType != null && mimeType.startsWith("image/")) {
+                    extractedText = tesseractOcrProcessor.processImage(new ByteArrayInputStream(documentBytes), mimeType);
+                    method = ExtractionMethod.TESSERACT;
+                } else if ("application/pdf".equalsIgnoreCase(mimeType)) {
+                    extractedText = tesseractOcrProcessor.processPdf(new ByteArrayInputStream(documentBytes));
+                    method = ExtractionMethod.TESSERACT;
+                }
+                if (extractedText == null || extractedText.isBlank()) {
+                    throw new OcrProcessingException("No text could be extracted from the document");
                 }
             }
 

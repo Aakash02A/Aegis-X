@@ -27,9 +27,8 @@ import java.util.UUID;
 @AllArgsConstructor
 public class Settlement extends BaseEntity {
 
-    @Id
-    @GeneratedValue(strategy = GenerationType.UUID)
-    private UUID id;
+    // The identifier is inherited from BaseEntity, which assigns it in @PrePersist. Declaring a
+    // second @Id field here shadowed that one and left this entity's id null on persist.
 
     /**
      * Reference to the transaction being settled.
@@ -142,14 +141,14 @@ public class Settlement extends BaseEntity {
      * Processor-specific metadata and response data.
      */
     @JdbcTypeCode(SqlTypes.JSON)
-    @Column(name = "processor_metadata", columnDefinition = "jsonb")
+    @Column(name = "processor_metadata")
     private JsonNode processorMetadata;
 
     /**
      * Settlement reconciliation data.
      */
     @JdbcTypeCode(SqlTypes.JSON)
-    @Column(name = "reconciliation_data", columnDefinition = "jsonb")
+    @Column(name = "reconciliation_data")
     private JsonNode reconciliationData;
 
     /**

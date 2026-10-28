@@ -1,0 +1,8 @@
+/*
+ * Self-hosted Font Awesome.
+ *
+ * The pages used to load this stylesheet from cdn.jsdelivr.net at runtime. Vite resolves this
+ * @import from node_modules, fingerprints the CSS and copies the webfonts into dist/assets, so the
+ * UI has no third-party runtime dependency and the icon set is pinned by package-lock.json.
+ */
+@import '@fortawesome/fontawesome-free/css/all.min.css';

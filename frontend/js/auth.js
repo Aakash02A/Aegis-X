@@ -48,6 +48,7 @@ export const Auth = {
       window.location.href = this.homeForRole(user?.role);
       return false;
     }
+    document.documentElement.classList.remove('auth-checking');
     return true;
   },
 

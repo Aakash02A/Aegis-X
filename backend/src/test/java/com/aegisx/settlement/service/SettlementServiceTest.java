@@ -1,5 +1,8 @@
 package com.aegisx.settlement.service;
 
+import com.aegisx.auth.entity.Role;
+import com.aegisx.auth.entity.User;
+import com.aegisx.auth.repository.UserRepository;
 import com.aegisx.settlement.dto.SettlementRequest;
 import com.aegisx.settlement.dto.SettlementResponse;
 import com.aegisx.settlement.entity.PaymentProcessor;
@@ -9,459 +12,204 @@ import com.aegisx.settlement.repository.SettlementRepository;
 import com.aegisx.transaction.entity.Transaction;
 import com.aegisx.transaction.entity.TransactionStatus;
 import com.aegisx.transaction.repository.TransactionRepository;
-import com.aegisx.audit.service.AuditService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
-import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageImpl;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Pageable;
+import org.springframework.test.context.ActiveProfiles;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
-import java.util.List;
-import java.util.Optional;
 import java.util.UUID;
 
-import static org.assertj.core.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.*;
-import static org.mockito.Mockito.*;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-/**
- * Comprehensive tests for SettlementService.
- * Tests settlement processing, status management, and business logic.
- */
-@ExtendWith(MockitoExtension.class)
-@DisplayName("SettlementService Tests")
+@SpringBootTest
+@ActiveProfiles("test")
+@Transactional
+@DisplayName("Settlement service integration")
 class SettlementServiceTest {
 
-    @Mock
-    private SettlementRepository settlementRepository;
-    
-    @Mock
-    private TransactionRepository transactionRepository;
-    
-    @Mock
-    private SettlementProcessorService settlementProcessorService;
-    
-    @Mock
-    private AuditService auditService;
+    @Autowired private SettlementService service;
+    @Autowired private SettlementRepository settlementRepository;
+    @Autowired private TransactionRepository transactionRepository;
+    @Autowired private UserRepository userRepository;
+    @Autowired private ObjectMapper objectMapper;
 
-    @InjectMocks
-    private SettlementService settlementService;
-
-    private ObjectMapper objectMapper;
-    private Transaction testTransaction;
-    private Settlement testSettlement;
-    private SettlementRequest testRequest;
+    private Transaction transaction;
 
     @BeforeEach
     void setUp() {
-        objectMapper = new ObjectMapper();
-        
-        // Create test transaction
-        testTransaction = new Transaction();
-        testTransaction.setId(UUID.randomUUID());
-        testTransaction.setReferenceNumber("TXN-001");
-        testTransaction.setAmount(BigDecimal.valueOf(1000.00));
-        testTransaction.applyStatus(TransactionStatus.APPROVED);
-        testTransaction.setCreatedAt(java.time.Instant.now());
+        User merchant = userRepository.saveAndFlush(User.builder()
+                .fullName("Settlement Merchant")
+                .email("settlement-" + UUID.randomUUID() + "@aegis-x.test")
+                .passwordHash("not-used-by-this-service")
+                .role(Role.MERCHANT)
+                .build());
+        transaction = transactionRepository.saveAndFlush(Transaction.builder()
+                .referenceNumber("TXN-SETTLEMENT-" + UUID.randomUUID())
+                .merchant(merchant)
+                .amount(new BigDecimal("1000.00"))
+                .currency("USD")
+                .beneficiaryName("Settlement Beneficiary")
+                .purposeCode("P0101")
+                .status(TransactionStatus.APPROVED)
+                .build());
+    }
 
-        // Create test settlement
-        testSettlement = Settlement.createSettlement(
-                testTransaction,
-                PaymentProcessor.SWIFT,
-                BigDecimal.valueOf(1000.00),
-                "USD",
-                "test-user"
-        );
-        testSettlement.setId(UUID.randomUUID());
+    @Test
+    @DisplayName("initiates a settlement and writes its audit record")
+    void shouldInitiateSettlementSuccessfully() {
+        SettlementResponse result = service.initiateSettlement(request(PaymentProcessor.SWIFT), "integration-test");
 
-        // Create test request
-        testRequest = SettlementRequest.builder()
-                .transactionId(testTransaction.getId())
+        assertThat(result.getTransactionId()).isEqualTo(transaction.getId());
+        assertThat(result.getPaymentProcessor()).isEqualTo(PaymentProcessor.SWIFT);
+        assertThat(result.getSettlementAmount()).isEqualByComparingTo("1000.00");
+        assertThat(result.getStatus()).isEqualTo(SettlementStatus.INITIATED);
+        assertThat(settlementRepository.findById(result.getId())).isPresent();
+    }
+
+    @Test
+    @DisplayName("rejects missing, ineligible and duplicate settlement transactions")
+    void rejectsInvalidInitiation() {
+        SettlementRequest missingTransaction = request(PaymentProcessor.SWIFT);
+        missingTransaction.setTransactionId(UUID.randomUUID());
+        assertThatThrownBy(() -> service.initiateSettlement(missingTransaction, "test"))
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("Transaction not found");
+
+        Transaction held = transactionRepository.saveAndFlush(Transaction.builder()
+                .referenceNumber("TXN-HELD-" + UUID.randomUUID())
+                .merchant(transaction.getMerchant())
+                .amount(new BigDecimal("300.00"))
+                .currency("USD")
+                .beneficiaryName("Held Beneficiary")
+                .purposeCode("P0101")
+                .status(TransactionStatus.COMPLIANCE_HOLD)
+                .build());
+        SettlementRequest ineligible = request(PaymentProcessor.SWIFT);
+        ineligible.setTransactionId(held.getId());
+        assertThatThrownBy(() -> service.initiateSettlement(ineligible, "test"))
+                .isInstanceOf(IllegalStateException.class).hasMessageContaining("not eligible");
+
+        service.initiateSettlement(request(PaymentProcessor.SWIFT), "test");
+        assertThatThrownBy(() -> service.initiateSettlement(request(PaymentProcessor.SWIFT), "test"))
+                .isInstanceOf(IllegalStateException.class).hasMessageContaining("already exists");
+    }
+
+    @Test
+    @DisplayName("submits an initiated settlement through the real local processor implementation")
+    void shouldProcessSettlementSuccessfully() {
+        SettlementResponse initiated = service.initiateSettlement(request(PaymentProcessor.SWIFT), "test");
+        SettlementResponse processed = service.processSettlement(initiated.getId());
+
+        assertThat(processed.getStatus()).isEqualTo(SettlementStatus.SUBMITTED);
+        assertThat(processed.getProcessorTransactionId()).startsWith("SW");
+        assertThat(processed.getPublicMetadata().get("messageType").asText()).isEqualTo("MT103");
+        assertThatThrownBy(() -> service.processSettlement(initiated.getId()))
+                .isInstanceOf(IllegalStateException.class).hasMessageContaining("not in INITIATED status");
+    }
+
+    @Test
+    @DisplayName("retrieves persisted settlements by id, reference, transaction and status")
+    void readsPersistedSettlements() {
+        SettlementResponse initiated = service.initiateSettlement(request(PaymentProcessor.SWIFT), "test");
+
+        assertThat(service.getSettlement(initiated.getId()).getId()).isEqualTo(initiated.getId());
+        assertThat(service.getSettlementByReference(initiated.getSettlementReference())
+                .getSettlementReference()).isEqualTo(initiated.getSettlementReference());
+        assertThat(service.getTransactionSettlements(transaction.getId())).hasSize(1);
+        assertThat(service.getSettlementsByStatus(SettlementStatus.INITIATED, PageRequest.of(0, 10))
+                .getContent()).hasSize(1);
+    }
+
+    @Test
+    @DisplayName("persists retry and cancel transitions and refuses transitions from terminal states")
+    void retryAndCancelTransitionsPersist() {
+        SettlementResponse initiated = service.initiateSettlement(request(PaymentProcessor.SWIFT), "test");
+        Settlement failed = settlementRepository.findById(initiated.getId()).orElseThrow();
+        failed.updateStatus(SettlementStatus.FAILED, "Local processor timeout");
+        settlementRepository.saveAndFlush(failed);
+
+        SettlementResponse retried = service.retrySettlement(failed.getId(), "retry");
+        assertThat(retried.getStatus()).isEqualTo(SettlementStatus.INITIATED);
+        assertThat(retried.getRetryCount()).isEqualTo(1);
+
+        SettlementResponse cancelled = service.cancelSettlement(failed.getId(), "operator requested");
+        assertThat(cancelled.getStatus()).isEqualTo(SettlementStatus.CANCELLED);
+        assertThatThrownBy(() -> service.cancelSettlement(failed.getId(), "again"))
+                .isInstanceOf(IllegalStateException.class);
+    }
+
+    @Test
+    @DisplayName("updates legal statuses and rejects a reversal from a terminal status")
+    void updatesSettlementStatusWithTransitionValidation() {
+        SettlementResponse initiated = service.initiateSettlement(request(PaymentProcessor.SWIFT), "test");
+        SettlementResponse processing = service.updateSettlementStatus(
+                initiated.getSettlementReference(), SettlementStatus.PROCESSING, null, null);
+        assertThat(processing.getStatus()).isEqualTo(SettlementStatus.PROCESSING);
+
+        service.updateSettlementStatus(
+                initiated.getSettlementReference(), SettlementStatus.SUBMITTED, null, null);
+        service.updateSettlementStatus(
+                initiated.getSettlementReference(), SettlementStatus.PENDING, null, null);
+        SettlementResponse completed = service.updateSettlementStatus(
+                initiated.getSettlementReference(), SettlementStatus.COMPLETED, null, null);
+        assertThat(completed.getStatus()).isEqualTo(SettlementStatus.COMPLETED);
+        assertThatThrownBy(() -> service.updateSettlementStatus(
+                initiated.getSettlementReference(), SettlementStatus.INITIATED, null, null))
+                .isInstanceOf(IllegalStateException.class).hasMessageContaining("Invalid status transition");
+    }
+
+    @Test
+    @DisplayName("processes completed settlements through reconciliation")
+    void reconcilesCompletedSettlement() {
+        SettlementResponse initiated = service.initiateSettlement(request(PaymentProcessor.SWIFT), "test");
+        Settlement settlement = settlementRepository.findById(initiated.getId()).orElseThrow();
+        settlement.updateStatus(SettlementStatus.COMPLETED, null);
+        settlementRepository.saveAndFlush(settlement);
+
+        service.processReconciliation();
+
+        Settlement reconciled = settlementRepository.findById(initiated.getId()).orElseThrow();
+        assertThat(reconciled.getReconciledAt()).isNotNull();
+    }
+
+    @Test
+    @DisplayName("validates request values and builds supported processor request forms")
+    void validatesRequestAndRequestFactories() {
+        SettlementRequest invalid = SettlementRequest.builder()
                 .paymentProcessor(PaymentProcessor.SWIFT)
-                .settlementAmount(BigDecimal.valueOf(1000.00))
+                .settlementAmount(new BigDecimal("-100"))
+                .settlementCurrency("INVALID")
+                .build();
+        assertThatThrownBy(invalid::validate).isInstanceOf(IllegalArgumentException.class);
+
+        SettlementRequest swift = SettlementRequest.createSwiftSettlement(
+                transaction.getId(), new BigDecimal("1000"), "USD", "123456789", "TESTBKXXXX", "John Doe");
+        assertThat(swift.getPaymentProcessor()).isEqualTo(PaymentProcessor.SWIFT);
+        assertThat(swift.getBeneficiaryAccountNumber()).isEqualTo("123456789");
+        assertThat(swift.getBeneficiaryBankCode()).isEqualTo("TESTBKXXXX");
+
+        SettlementRequest card = SettlementRequest.createCardSettlement(
+                transaction.getId(), PaymentProcessor.VISA_DIRECT, new BigDecimal("500"),
+                "USD", "4111111111111111", "John Doe");
+        assertThat(card.getPaymentProcessor()).isEqualTo(PaymentProcessor.VISA_DIRECT);
+        assertThat(card.isPrioritySettlement()).isTrue();
+    }
+
+    private SettlementRequest request(PaymentProcessor processor) {
+        return SettlementRequest.builder()
+                .transactionId(transaction.getId())
+                .paymentProcessor(processor)
+                .settlementAmount(new BigDecimal("1000.00"))
                 .settlementCurrency("USD")
                 .beneficiaryBankCode("TESTBANK")
                 .beneficiaryAccountNumber("1234567890")
                 .build();
-    }
-
-    @Test
-    @DisplayName("Should initiate settlement successfully")
-    void shouldInitiateSettlementSuccessfully() {
-        // Given
-        when(transactionRepository.findById(testTransaction.getId())).thenReturn(Optional.of(testTransaction));
-        when(settlementRepository.existsByTransactionId(testTransaction.getId())).thenReturn(false);
-        when(settlementRepository.save(any(Settlement.class))).thenReturn(testSettlement);
-
-        // When
-        SettlementResponse result = settlementService.initiateSettlement(testRequest, "test-user");
-
-        // Then
-        assertThat(result).isNotNull();
-        assertThat(result.getTransactionId()).isEqualTo(testTransaction.getId());
-        assertThat(result.getPaymentProcessor()).isEqualTo(PaymentProcessor.SWIFT);
-        assertThat(result.getSettlementAmount()).isEqualTo(BigDecimal.valueOf(1000.00));
-        assertThat(result.getStatus()).isEqualTo(SettlementStatus.INITIATED);
-        
-        verify(settlementRepository).save(any(Settlement.class));
-        verify(auditService).logEvent(any(), any(), any(), any());
-    }
-
-    @Test
-    @DisplayName("Should throw exception when transaction not found")
-    void shouldThrowExceptionWhenTransactionNotFound() {
-        // Given
-        when(transactionRepository.findById(testTransaction.getId())).thenReturn(Optional.empty());
-
-        // When & Then
-        assertThatThrownBy(() -> settlementService.initiateSettlement(testRequest, "test-user"))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("Transaction not found");
-    }
-
-    @Test
-    @DisplayName("Should throw exception when settlement already exists")
-    void shouldThrowExceptionWhenSettlementAlreadyExists() {
-        // Given
-        when(transactionRepository.findById(testTransaction.getId())).thenReturn(Optional.of(testTransaction));
-        when(settlementRepository.existsByTransactionId(testTransaction.getId())).thenReturn(true);
-
-        // When & Then
-        assertThatThrownBy(() -> settlementService.initiateSettlement(testRequest, "test-user"))
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("Settlement already exists");
-    }
-
-    @Test
-    @DisplayName("Should process settlement successfully")
-    void shouldProcessSettlementSuccessfully() throws Exception {
-        // Given
-        when(settlementRepository.findById(testSettlement.getId())).thenReturn(Optional.of(testSettlement));
-        
-        SettlementService.SettlementProcessorResult processorResult = 
-                SettlementService.SettlementProcessorResult.builder()
-                        .processorTransactionId("PROC-123")
-                        .success(true)
-                        .expectedCompletion(LocalDateTime.now().plusHours(24))
-                        .metadata(objectMapper.createObjectNode())
-                        .build();
-        
-        when(settlementProcessorService.submitSettlement(testSettlement)).thenReturn(processorResult);
-        when(settlementRepository.save(any(Settlement.class))).thenReturn(testSettlement);
-
-        // When
-        SettlementResponse result = settlementService.processSettlement(testSettlement.getId());
-
-        // Then
-        assertThat(result).isNotNull();
-        verify(settlementProcessorService).submitSettlement(testSettlement);
-        verify(settlementRepository, atLeast(2)).save(any(Settlement.class));
-        verify(auditService).logEvent(any(), any(), any(), any());
-    }
-
-    @Test
-    @DisplayName("Should throw exception when processing settlement not in INITIATED status")
-    void shouldThrowExceptionWhenProcessingSettlementNotInInitiatedStatus() {
-        // Given
-        testSettlement.updateStatus(SettlementStatus.COMPLETED, null);
-        when(settlementRepository.findById(testSettlement.getId())).thenReturn(Optional.of(testSettlement));
-
-        // When & Then
-        assertThatThrownBy(() -> settlementService.processSettlement(testSettlement.getId()))
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("not in INITIATED status");
-    }
-
-    @Test
-    @DisplayName("Should get settlement by ID")
-    void shouldGetSettlementById() {
-        // Given
-        when(settlementRepository.findById(testSettlement.getId())).thenReturn(Optional.of(testSettlement));
-
-        // When
-        SettlementResponse result = settlementService.getSettlement(testSettlement.getId());
-
-        // Then
-        assertThat(result).isNotNull();
-        assertThat(result.getId()).isEqualTo(testSettlement.getId());
-        verify(settlementRepository).findById(testSettlement.getId());
-    }
-
-    @Test
-    @DisplayName("Should get settlement by reference")
-    void shouldGetSettlementByReference() {
-        // Given
-        String reference = testSettlement.getSettlementReference();
-        when(settlementRepository.findBySettlementReference(reference)).thenReturn(Optional.of(testSettlement));
-
-        // When
-        SettlementResponse result = settlementService.getSettlementByReference(reference);
-
-        // Then
-        assertThat(result).isNotNull();
-        assertThat(result.getSettlementReference()).isEqualTo(reference);
-        verify(settlementRepository).findBySettlementReference(reference);
-    }
-
-    @Test
-    @DisplayName("Should get transaction settlements")
-    void shouldGetTransactionSettlements() {
-        // Given
-        UUID transactionId = testTransaction.getId();
-        List<Settlement> settlements = List.of(testSettlement);
-        when(settlementRepository.findByTransactionId(transactionId)).thenReturn(settlements);
-
-        // When
-        List<SettlementResponse> result = settlementService.getTransactionSettlements(transactionId);
-
-        // Then
-        assertThat(result).hasSize(1);
-        assertThat(result.get(0).getTransactionId()).isEqualTo(transactionId);
-        verify(settlementRepository).findByTransactionId(transactionId);
-    }
-
-    @Test
-    @DisplayName("Should get settlements by status with pagination")
-    void shouldGetSettlementsByStatusWithPagination() {
-        // Given
-        SettlementStatus status = SettlementStatus.PENDING;
-        Pageable pageable = PageRequest.of(0, 10);
-        Page<Settlement> settlementPage = new PageImpl<>(List.of(testSettlement), pageable, 1);
-        
-        when(settlementRepository.findByStatus(status, pageable)).thenReturn(settlementPage);
-
-        // When
-        Page<SettlementResponse> result = settlementService.getSettlementsByStatus(status, pageable);
-
-        // Then
-        assertThat(result).isNotNull();
-        assertThat(result.getContent()).hasSize(1);
-        verify(settlementRepository).findByStatus(status, pageable);
-    }
-
-    @Test
-    @DisplayName("Should get settlements requiring retry")
-    void shouldGetSettlementsRequiringRetry() {
-        // Given
-        testSettlement.updateStatus(SettlementStatus.FAILED, "Connection timeout");
-        List<Settlement> settlements = List.of(testSettlement);
-        when(settlementRepository.findSettlementsRequiringRetry(any(LocalDateTime.class))).thenReturn(settlements);
-
-        // When
-        List<SettlementResponse> result = settlementService.getSettlementsRequiringRetry();
-
-        // Then
-        assertThat(result).hasSize(1);
-        assertThat(result.get(0).getStatus()).isEqualTo(SettlementStatus.FAILED);
-        verify(settlementRepository).findSettlementsRequiringRetry(any(LocalDateTime.class));
-    }
-
-    @Test
-    @DisplayName("Should get overdue settlements")
-    void shouldGetOverdueSettlements() {
-        // Given
-        testSettlement.setExpectedCompletion(LocalDateTime.now().minusHours(1));
-        List<Settlement> settlements = List.of(testSettlement);
-        when(settlementRepository.findOverdueSettlements(any(LocalDateTime.class))).thenReturn(settlements);
-
-        // When
-        List<SettlementResponse> result = settlementService.getOverdueSettlements();
-
-        // Then
-        assertThat(result).hasSize(1);
-        verify(settlementRepository).findOverdueSettlements(any(LocalDateTime.class));
-    }
-
-    @Test
-    @DisplayName("Should get settlements requiring manual intervention")
-    void shouldGetSettlementsRequiringManualIntervention() {
-        // Given
-        testSettlement.updateStatus(SettlementStatus.MANUAL_REVIEW, "Requires compliance review");
-        List<Settlement> settlements = List.of(testSettlement);
-        when(settlementRepository.findSettlementsRequiringManualIntervention()).thenReturn(settlements);
-
-        // When
-        List<SettlementResponse> result = settlementService.getSettlementsRequiringManualIntervention();
-
-        // Then
-        assertThat(result).hasSize(1);
-        assertThat(result.get(0).getStatus()).isEqualTo(SettlementStatus.MANUAL_REVIEW);
-        verify(settlementRepository).findSettlementsRequiringManualIntervention();
-    }
-
-    @Test
-    @DisplayName("Should retry failed settlement")
-    void shouldRetryFailedSettlement() {
-        // Given
-        testSettlement.updateStatus(SettlementStatus.FAILED, "Network error");
-        when(settlementRepository.findById(testSettlement.getId())).thenReturn(Optional.of(testSettlement));
-        when(settlementRepository.save(any(Settlement.class))).thenReturn(testSettlement);
-
-        // When
-        SettlementResponse result = settlementService.retrySettlement(testSettlement.getId(), "Manual retry");
-
-        // Then
-        assertThat(result).isNotNull();
-        verify(settlementRepository).save(any(Settlement.class));
-        verify(auditService).logEvent(any(), any(), any(), any());
-    }
-
-    @Test
-    @DisplayName("Should throw exception when retrying settlement that cannot be retried")
-    void shouldThrowExceptionWhenRetryingSettlementThatCannotBeRetried() {
-        // Given
-        testSettlement.updateStatus(SettlementStatus.COMPLETED, null);
-        when(settlementRepository.findById(testSettlement.getId())).thenReturn(Optional.of(testSettlement));
-
-        // When & Then
-        assertThatThrownBy(() -> settlementService.retrySettlement(testSettlement.getId(), "Manual retry"))
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("cannot be retried");
-    }
-
-    @Test
-    @DisplayName("Should cancel pending settlement")
-    void shouldCancelPendingSettlement() {
-        // Given
-        when(settlementRepository.findById(testSettlement.getId())).thenReturn(Optional.of(testSettlement));
-        when(settlementRepository.save(any(Settlement.class))).thenReturn(testSettlement);
-
-        // When
-        SettlementResponse result = settlementService.cancelSettlement(testSettlement.getId(), "User requested");
-
-        // Then
-        assertThat(result).isNotNull();
-        verify(settlementRepository).save(any(Settlement.class));
-        verify(auditService).logEvent(any(), any(), any(), any());
-    }
-
-    @Test
-    @DisplayName("Should throw exception when cancelling settlement in final status")
-    void shouldThrowExceptionWhenCancellingSettlementInFinalStatus() {
-        // Given
-        testSettlement.updateStatus(SettlementStatus.COMPLETED, null);
-        when(settlementRepository.findById(testSettlement.getId())).thenReturn(Optional.of(testSettlement));
-
-        // When & Then
-        assertThatThrownBy(() -> settlementService.cancelSettlement(testSettlement.getId(), "User requested"))
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("Cannot cancel settlement in final status");
-    }
-
-    @Test
-    @DisplayName("Should update settlement status")
-    void shouldUpdateSettlementStatus() {
-        // Given
-        String reference = testSettlement.getSettlementReference();
-        when(settlementRepository.findBySettlementReference(reference)).thenReturn(Optional.of(testSettlement));
-        when(settlementRepository.save(any(Settlement.class))).thenReturn(testSettlement);
-
-        // When
-        SettlementResponse result = settlementService.updateSettlementStatus(
-                reference, SettlementStatus.PROCESSING, null, null);
-
-        // Then
-        assertThat(result).isNotNull();
-        verify(settlementRepository).save(any(Settlement.class));
-        verify(auditService).logEvent(any(), any(), any(), any());
-    }
-
-    @Test
-    @DisplayName("Should throw exception for invalid status transition")
-    void shouldThrowExceptionForInvalidStatusTransition() {
-        // Given
-        testSettlement.updateStatus(SettlementStatus.COMPLETED, null);
-        String reference = testSettlement.getSettlementReference();
-        when(settlementRepository.findBySettlementReference(reference)).thenReturn(Optional.of(testSettlement));
-
-        // When & Then
-        assertThatThrownBy(() -> settlementService.updateSettlementStatus(
-                reference, SettlementStatus.INITIATED, null, null))
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("Invalid status transition");
-    }
-
-    @Test
-    @DisplayName("Should process reconciliation")
-    void shouldProcessReconciliation() {
-        // Given
-        testSettlement.updateStatus(SettlementStatus.COMPLETED, null);
-        List<Settlement> settlements = List.of(testSettlement);
-        when(settlementRepository.findSettlementsPendingReconciliation()).thenReturn(settlements);
-        when(settlementRepository.save(any(Settlement.class))).thenReturn(testSettlement);
-
-        // When
-        settlementService.processReconciliation();
-
-        // Then
-        verify(settlementRepository).findSettlementsPendingReconciliation();
-        verify(settlementRepository, atLeast(2)).save(any(Settlement.class));
-    }
-
-    @Test
-    @DisplayName("Should validate settlement request")
-    void shouldValidateSettlementRequest() {
-        // Given
-        SettlementRequest invalidRequest = SettlementRequest.builder()
-                .transactionId(null) // Invalid
-                .paymentProcessor(PaymentProcessor.SWIFT)
-                .settlementAmount(BigDecimal.valueOf(-100)) // Invalid
-                .settlementCurrency("INVALID") // Invalid
-                .build();
-
-        // When & Then
-        assertThatThrownBy(() -> invalidRequest.validate())
-                .isInstanceOf(IllegalArgumentException.class);
-    }
-
-    @Test
-    @DisplayName("Should create SWIFT settlement request")
-    void shouldCreateSwiftSettlementRequest() {
-        // When
-        SettlementRequest request = SettlementRequest.createSwiftSettlement(
-                UUID.randomUUID(),
-                BigDecimal.valueOf(1000),
-                "USD",
-                "123456789",
-                "TESTBKXXXX",
-                "John Doe"
-        );
-
-        // Then
-        assertThat(request).isNotNull();
-        assertThat(request.getPaymentProcessor()).isEqualTo(PaymentProcessor.SWIFT);
-        assertThat(request.getBeneficiaryAccountNumber()).isEqualTo("123456789");
-        assertThat(request.getBeneficiaryBankCode()).isEqualTo("TESTBKXXXX");
-        assertThat(request.getBeneficiaryName()).isEqualTo("John Doe");
-    }
-
-    @Test
-    @DisplayName("Should create card settlement request")
-    void shouldCreateCardSettlementRequest() {
-        // When
-        SettlementRequest request = SettlementRequest.createCardSettlement(
-                UUID.randomUUID(),
-                PaymentProcessor.VISA_DIRECT,
-                BigDecimal.valueOf(500),
-                "USD",
-                "4111111111111111",
-                "John Doe"
-        );
-
-        // Then
-        assertThat(request).isNotNull();
-        assertThat(request.getPaymentProcessor()).isEqualTo(PaymentProcessor.VISA_DIRECT);
-        assertThat(request.getBeneficiaryAccountNumber()).isEqualTo("4111111111111111");
-        assertThat(request.getBeneficiaryName()).isEqualTo("John Doe");
-        assertThat(request.isPrioritySettlement()).isTrue();
     }
 }

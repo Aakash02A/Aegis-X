@@ -2,160 +2,178 @@ package com.aegisx.policy.service;
 
 import com.aegisx.ai.entity.AIAnalysis;
 import com.aegisx.ai.repository.AIAnalysisRepository;
+import com.aegisx.auth.entity.Role;
+import com.aegisx.auth.entity.User;
+import com.aegisx.auth.repository.UserRepository;
 import com.aegisx.common.exception.MissingEvidenceException;
+import com.aegisx.document.entity.Document;
 import com.aegisx.document.entity.DocumentExtraction;
+import com.aegisx.document.entity.DocumentStatus;
 import com.aegisx.document.entity.DocumentType;
 import com.aegisx.document.entity.RequiredDocument;
 import com.aegisx.document.repository.DocumentExtractionRepository;
+import com.aegisx.document.repository.DocumentRepository;
 import com.aegisx.document.repository.RequiredDocumentRepository;
 import com.aegisx.policy.entity.PolicyEvaluation;
+import com.aegisx.policy.entity.PolicyViolation;
 import com.aegisx.policy.repository.PolicyEvaluationRepository;
+import com.aegisx.policy.repository.PolicyViolationRepository;
 import com.aegisx.transaction.entity.Transaction;
 import com.aegisx.transaction.entity.TransactionStatus;
 import com.aegisx.transaction.repository.TransactionRepository;
-import com.aegisx.transaction.service.TransactionStateMachine;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
-import org.mockito.InjectMocks;
-import org.mockito.Mock;
-import org.mockito.Spy;
-import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.context.ActiveProfiles;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.util.Arrays;
-import java.util.Optional;
+import java.time.LocalDateTime;
 import java.util.UUID;
 
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.*;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-@DisplayName("PolicyEvaluationService Tests")
-@ExtendWith(MockitoExtension.class)
+@SpringBootTest
+@ActiveProfiles("test")
+@Transactional
+@DisplayName("Policy evaluation integration")
 class PolicyEvaluationServiceTest {
-    
-    @Mock
-    private RuleEngine ruleEngine;
-    
-    @Mock
-    private PolicyEvaluationRepository policyEvaluationRepository;
-    
-    @Mock
-    private TransactionRepository transactionRepository;
-    
-    @Mock
-    private DocumentExtractionRepository documentExtractionRepository;
-    
-    @Mock
-    private RequiredDocumentRepository requiredDocumentRepository;
-    
-    @Mock
-    private AIAnalysisRepository aiAnalysisRepository;
-    
-    @Mock
-    private TransactionStateMachine transactionStateMachine;
-    
-    @Spy
-    private ObjectMapper objectMapper = new ObjectMapper();
-    
-    @InjectMocks
-    private PolicyEvaluationService policyEvaluationService;
-    
-    private UUID transactionId;
+
+    @Autowired private PolicyEvaluationService service;
+    @Autowired private PolicyEvaluationRepository evaluationRepository;
+    @Autowired private PolicyViolationRepository violationRepository;
+    @Autowired private TransactionRepository transactionRepository;
+    @Autowired private DocumentRepository documentRepository;
+    @Autowired private DocumentExtractionRepository extractionRepository;
+    @Autowired private RequiredDocumentRepository requiredDocumentRepository;
+    @Autowired private AIAnalysisRepository aiAnalysisRepository;
+    @Autowired private UserRepository userRepository;
+    @Autowired private ObjectMapper objectMapper;
+
+    private User merchant;
     private Transaction transaction;
-    private PolicyEngineResult approvedResult;
-    
+
     @BeforeEach
     void setUp() {
-        transactionId = UUID.randomUUID();
-        transaction = Transaction.builder()
-            .referenceNumber("TXN-20260922-ABC123")
-            .beneficiaryName("XYZ Imports")
-            .amount(new BigDecimal("50000.00"))
-            .currency("USD")
-            .purposeCode("P0101")
-            .status(TransactionStatus.AI_ANALYSIS)
-            .build();
-        transaction.setId(transactionId);
-        
-        approvedResult = new PolicyEngineResult();
-        approvedResult.setFinalDecision("APPROVED");
-        approvedResult.setRuleResults(java.util.List.of());
-        approvedResult.setProcessingDurationMs(150L);
+        merchant = userRepository.saveAndFlush(User.builder()
+                .email("policy-" + UUID.randomUUID() + "@aegis-x.test")
+                .passwordHash("not-used-by-this-service")
+                .fullName("Policy Test Merchant")
+                .role(Role.MERCHANT)
+                .build());
+        transaction = transactionRepository.saveAndFlush(Transaction.builder()
+                .referenceNumber("TXN-POLICY-" + UUID.randomUUID())
+                .merchant(merchant)
+                .beneficiaryName("XYZ Imports")
+                .amount(new BigDecimal("2500.00"))
+                .currency("USD")
+                .purposeCode("P0101")
+                .status(TransactionStatus.COMPLIANCE_HOLD)
+                .version(0L)
+                .build());
     }
-    
-    @Test
-    @DisplayName("Should transition to APPROVED when policy engine approves")
-    void testEvaluateAndTransitionToApproved() {
-        when(transactionRepository.findById(transactionId)).thenReturn(Optional.of(transaction));
-        when(requiredDocumentRepository.findByTransactionId(transactionId)).thenReturn(java.util.List.of());
-        when(documentExtractionRepository.findLatestByTransactionId(transactionId)).thenReturn(Optional.of(new DocumentExtraction()));
-        when(aiAnalysisRepository.findLatestByTransactionId(transactionId)).thenReturn(Optional.of(AIAnalysis.builder().confidenceScore(BigDecimal.ONE).build()));
-        when(ruleEngine.evaluate(any())).thenReturn(approvedResult);
-        when(policyEvaluationRepository.save(any())).thenAnswer(i -> i.getArgument(0));
-        
-        PolicyEvaluation result = policyEvaluationService.evaluateTransaction(transactionId);
-        
-        assertNotNull(result);
-        assertEquals("APPROVED", result.getFinalDecision());
-        
 
-    }
-    
     @Test
-    @DisplayName("Should transition to COMPLIANCE_HOLD when policy engine denies")
-    void testEvaluateAndTransitionToComplianceHold() {
-        PolicyEngineResult holdResult = new PolicyEngineResult();
-        holdResult.setFinalDecision("COMPLIANCE_HOLD");
-        holdResult.setRuleResults(java.util.List.of());
-        holdResult.setProcessingDurationMs(200L);
-        
-        when(transactionRepository.findById(transactionId)).thenReturn(Optional.of(transaction));
-        when(requiredDocumentRepository.findByTransactionId(transactionId)).thenReturn(java.util.List.of());
-        when(documentExtractionRepository.findLatestByTransactionId(transactionId)).thenReturn(Optional.of(new DocumentExtraction()));
-        when(aiAnalysisRepository.findLatestByTransactionId(transactionId)).thenReturn(Optional.of(AIAnalysis.builder().confidenceScore(BigDecimal.ONE).build()));
-        when(ruleEngine.evaluate(any())).thenReturn(holdResult);
-        when(policyEvaluationRepository.save(any())).thenAnswer(i -> i.getArgument(0));
-        
-        PolicyEvaluation result = policyEvaluationService.evaluateTransaction(transactionId);
-        
-        assertNotNull(result);
-        assertEquals("COMPLIANCE_HOLD", result.getFinalDecision());
-        
-
-    }
-    
-    @Test
-    @DisplayName("Should throw exception when transaction not found")
+    @DisplayName("fails with a domain error when the transaction does not exist")
     void testThrowWhenTransactionNotFound() {
-        when(transactionRepository.findById(transactionId)).thenReturn(Optional.empty());
-        
-        assertThrows(MissingEvidenceException.class, 
-            () -> policyEvaluationService.evaluateTransaction(transactionId));
+        assertThatThrownBy(() -> service.evaluateTransaction(UUID.randomUUID()))
+                .isInstanceOf(MissingEvidenceException.class)
+                .hasMessageContaining("Transaction not found");
     }
-    
+
     @Test
-    @DisplayName("Should persist PolicyEvaluation with decision and duration")
-    void testPersistPolicyEvaluation() {
-        when(transactionRepository.findById(transactionId)).thenReturn(Optional.of(transaction));
-        when(requiredDocumentRepository.findByTransactionId(transactionId)).thenReturn(java.util.List.of());
-        when(documentExtractionRepository.findLatestByTransactionId(transactionId)).thenReturn(Optional.of(new DocumentExtraction()));
-        when(aiAnalysisRepository.findLatestByTransactionId(transactionId)).thenReturn(Optional.of(AIAnalysis.builder().confidenceScore(BigDecimal.ONE).build()));
-        when(ruleEngine.evaluate(any())).thenReturn(approvedResult);
-        when(policyEvaluationRepository.save(any())).thenAnswer(i -> i.getArgument(0));
-        
-        policyEvaluationService.evaluateTransaction(transactionId);
-        
-        ArgumentCaptor<PolicyEvaluation> evaluationCaptor = ArgumentCaptor.forClass(PolicyEvaluation.class);
-        verify(policyEvaluationRepository).save(evaluationCaptor.capture());
-        
-        PolicyEvaluation saved = evaluationCaptor.getValue();
-        assertNotNull(saved);
-        assertEquals("APPROVED", saved.getFinalDecision());
-        assertEquals(150L, saved.getProcessingDurationMs());
+    @DisplayName("fails closed when the transaction has no OCR extraction or AI assessment")
+    void testMissingEvidenceFailsClosed() {
+        assertThatThrownBy(() -> service.evaluateTransaction(transaction.getId()))
+                .isInstanceOf(MissingEvidenceException.class)
+                .hasMessageContaining("No OCR extraction");
+    }
+
+    @Test
+    @DisplayName("persists an approved decision when every real rule passes")
+    void testEvaluateAndTransitionToApproved() {
+        populateEvaluationEvidence(true, true);
+        transaction.applyStatus(TransactionStatus.POLICY_EVALUATION);
+        transactionRepository.saveAndFlush(transaction);
+
+        PolicyEvaluation result = service.evaluateTransaction(transaction.getId());
+
+        assertThat(result.getId()).isNotNull();
+        assertThat(result.getFinalDecision()).isEqualTo("APPROVED");
+        assertThat(result.getTotalRulesCount()).isEqualTo(7);
+        assertThat(result.getFailedRulesCount()).isZero();
+        assertThat(result.getEvaluatedAt()).isNotNull();
+        assertThat(evaluationRepository.findLatestByTransactionId(transaction.getId())).get()
+                .extracting(PolicyEvaluation::getFinalDecision).isEqualTo("APPROVED");
+        assertThat(transactionRepository.findById(transaction.getId()).orElseThrow().getStatus())
+                .isEqualTo(TransactionStatus.APPROVED);
+    }
+
+    @Test
+    @DisplayName("persists a compliance hold and each failed rule as a violation")
+    void testEvaluateAndTransitionToComplianceHold() {
+        populateEvaluationEvidence(false, false);
+
+        PolicyEvaluation result = service.evaluateTransaction(transaction.getId());
+
+        assertThat(result.getFinalDecision()).isEqualTo("COMPLIANCE_HOLD");
+        assertThat(result.getFailedRulesCount()).isPositive();
+        assertThat(result.getEvaluationJson().get("rules").isArray()).isTrue();
+        assertThat(violationRepository.findByPolicyEvaluationId(result.getId())).isNotEmpty();
+    }
+
+    private void populateEvaluationEvidence(boolean allDocumentsFulfilled, boolean dataMatches) {
+        Document document = documentRepository.saveAndFlush(Document.builder()
+                .transaction(transaction)
+                .documentType(DocumentType.INVOICE)
+                .documentStatus(DocumentStatus.OCR_COMPLETED)
+                .originalFilename("invoice.pdf")
+                .storedFilename("invoice-" + UUID.randomUUID() + ".pdf")
+                .mimeType("application/pdf")
+                .fileSize(100L)
+                .storagePath("policy-test/invoice.pdf")
+                .uploadedBy(merchant)
+                .version(1L)
+                .build());
+        for (DocumentType type : new DocumentType[]{
+                DocumentType.INVOICE, DocumentType.SHIPPING_PROOF, DocumentType.EXPORT_DECLARATION}) {
+            requiredDocumentRepository.saveAndFlush(RequiredDocument.builder()
+                    .transaction(transaction)
+                    .documentType(type)
+                    .fulfilled(allDocumentsFulfilled)
+                    .document(type == DocumentType.INVOICE ? document : null)
+                    .build());
+        }
+
+        var data = objectMapper.createObjectNode()
+                .put("beneficiary", dataMatches ? "XYZ Imports" : "Different Imports")
+                .put("amount", dataMatches ? 2500.00 : 250.00)
+                .put("currency", "USD");
+        extractionRepository.saveAndFlush(DocumentExtraction.builder()
+                .document(document)
+                .extractedText("Invoice INV-123")
+                .extractedData(data)
+                .extractionMethod(DocumentExtraction.ExtractionMethod.TIKA)
+                .confidenceScore(dataMatches ? 95.0 : 50.0)
+                .processingDurationMs(5L)
+                .ocrLanguage("eng")
+                .build());
+        DocumentExtraction extraction = extractionRepository.findLatestByTransactionId(transaction.getId())
+                .orElseThrow();
+        aiAnalysisRepository.saveAndFlush(AIAnalysis.builder()
+                .transactionId(transaction.getId())
+                .extractionId(extraction.getId())
+                .modelName("deterministic-test-input")
+                .promptVersion("integration-test")
+                .inputHash("a".repeat(64))
+                .analysisJson(objectMapper.createObjectNode().put("source", "test fixture"))
+                .confidenceScore(dataMatches ? new BigDecimal("95.00") : new BigDecimal("50.00"))
+                .processingDurationMs(0L)
+                .createdAt(LocalDateTime.now())
+                .build());
     }
 }

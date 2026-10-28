@@ -55,4 +55,24 @@ public interface TransactionRepository extends JpaRepository<Transaction, UUID> 
      * Finds transactions by status with pagination, ordered by created date.
      */
     Page<Transaction> findByStatusOrderByCreatedAtDesc(TransactionStatus status, Pageable pageable);
+
+    /**
+     * Lists transactions in a status that have no compliance review yet.
+     *
+     * <p>The "unreviewed" condition runs in the database so that the reviewer queue does not have to
+     * load and enrich every held transaction before discarding the reviewed ones in memory.</p>
+     */
+    @Query("SELECT t FROM Transaction t WHERE t.status = :status AND NOT EXISTS " +
+            "(SELECT cr.id FROM ComplianceReview cr WHERE cr.transaction = t) " +
+            "ORDER BY t.createdAt DESC")
+    List<Transaction> findUnreviewedByStatus(@Param("status") TransactionStatus status);
+
+    /**
+     * Returns the oldest {@code updatedAt} for a status, used by the queue summary.
+     *
+     * <p>The queue treats {@code updatedAt} as the moment a transaction entered the hold, so the
+     * oldest row is the one that has been waiting longest.</p>
+     */
+    @Query("SELECT MIN(t.updatedAt) FROM Transaction t WHERE t.status = :status")
+    Optional<java.time.Instant> findOldestUpdatedAtByStatus(@Param("status") TransactionStatus status);
 }

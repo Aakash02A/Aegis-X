@@ -1,105 +1,75 @@
 package com.aegisx.evidence.controller;
 
-import com.aegisx.document.entity.DocumentType;
-import com.aegisx.evidence.dto.EvidenceChecklistResponse;
-import com.aegisx.evidence.dto.EvidenceRequirementRequest;
-import com.aegisx.evidence.dto.MissingDocumentsResponse;
-import com.aegisx.evidence.entity.EvidenceChecklist;
-import com.aegisx.evidence.service.EvidenceChecklistService;
-import com.aegisx.auth.security.JwtService;
-import com.aegisx.auth.security.CustomUserDetailsService;
+import com.aegisx.auth.entity.Role;
 import com.aegisx.auth.entity.User;
+import com.aegisx.auth.repository.UserRepository;
+import com.aegisx.document.entity.DocumentType;
+import com.aegisx.evidence.entity.EvidenceChecklist;
+import com.aegisx.evidence.repository.EvidenceChecklistRepository;
 import com.aegisx.transaction.entity.Transaction;
+import com.aegisx.transaction.entity.TransactionStatus;
+import com.aegisx.transaction.repository.TransactionRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
-import org.springframework.context.annotation.Import;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.security.test.context.support.WithMockUser;
+import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
-import com.aegisx.common.config.SecurityConfig;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
-import java.util.List;
-import java.util.Optional;
 import java.util.UUID;
 
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.*;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
-@WebMvcTest(EvidenceController.class)
-@Import(SecurityConfig.class)
+@SpringBootTest
+@AutoConfigureMockMvc
+@ActiveProfiles("test")
+@Transactional
 class EvidenceControllerTest {
 
-    @Autowired
-    private MockMvc mockMvc;
-
-    @Autowired
-    private ObjectMapper objectMapper;
-
-    @MockBean
-    private EvidenceChecklistService evidenceChecklistService;
-
-    @MockBean
-    private JwtService jwtService;
-
-    @MockBean
-    private CustomUserDetailsService customUserDetailsService;
+    @Autowired private MockMvc mockMvc;
+    @Autowired private ObjectMapper objectMapper;
+    @Autowired private UserRepository userRepository;
+    @Autowired private TransactionRepository transactionRepository;
+    @Autowired private EvidenceChecklistRepository checklistRepository;
 
     private UUID transactionId;
-    private Transaction transaction;
-    private EvidenceChecklist evidenceChecklist;
-    private User merchant;
 
     @BeforeEach
     void setUp() {
-        transactionId = UUID.randomUUID();
-        
-        merchant = User.builder()
-                .fullName("Test Merchant")
-                .build();
-        merchant.setId(UUID.randomUUID());
-
-        transaction = Transaction.builder()
-                .referenceNumber("TXN-TEST-001")
+        User merchant = userRepository.saveAndFlush(User.builder()
+                .fullName("Evidence Test Merchant")
+                .email("evidence-" + UUID.randomUUID() + "@aegisx.test")
+                .passwordHash("not-used-by-this-service")
+                .role(Role.MERCHANT)
+                .build());
+        Transaction transaction = transactionRepository.saveAndFlush(Transaction.builder()
+                .referenceNumber("TXN-EVIDENCE-" + UUID.randomUUID())
                 .merchant(merchant)
                 .amount(new BigDecimal("1000.00"))
                 .currency("USD")
                 .beneficiaryName("Test Beneficiary")
-                .status(com.aegisx.transaction.entity.TransactionStatus.EVIDENCE_PENDING)
-                .build();
-        transaction.setId(transactionId);
-
-        evidenceChecklist = EvidenceChecklist.builder()
-                .transaction(transaction)
-                .invoiceRequired(true)
-                .invoiceUploaded(false)
-                .shippingBillRequired(false)
-                .shippingBillUploaded(false)
-                .isSatisfied(false)
-                .evaluatedAt(LocalDateTime.now())
-                .build();
-        evidenceChecklist.setId(UUID.randomUUID());
-        evidenceChecklist.setCreatedAt(java.time.Instant.now());
-        evidenceChecklist.setUpdatedAt(java.time.Instant.now());
+                .purposeCode("P0101")
+                .status(TransactionStatus.EVIDENCE_PENDING)
+                .version(0L)
+                .build());
+        transactionId = transaction.getId();
+        checklistRepository.saveAndFlush(checklist(transaction, true, false, false));
     }
 
     @Test
-    @DisplayName("Should get evidence checklist successfully")
-    @WithMockUser(authorities = {"ROLE_MERCHANT"})
-    void shouldGetEvidenceChecklistSuccessfully() throws Exception {
-        when(evidenceChecklistService.getChecklistByTransactionId(transactionId))
-                .thenReturn(Optional.of(evidenceChecklist));
-
+    @DisplayName("Reads the persisted evidence checklist")
+    @WithMockUser(authorities = "ROLE_MERCHANT")
+    void getsChecklist() throws Exception {
         mockMvc.perform(get("/api/v1/evidence/checklist/{transactionId}", transactionId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
@@ -107,51 +77,37 @@ class EvidenceControllerTest {
                 .andExpect(jsonPath("$.data.invoiceRequired").value(true))
                 .andExpect(jsonPath("$.data.invoiceUploaded").value(false))
                 .andExpect(jsonPath("$.data.satisfied").value(false));
-
-        verify(evidenceChecklistService).getChecklistByTransactionId(transactionId);
     }
 
     @Test
-    @DisplayName("Should return empty response when checklist not found")
-    @WithMockUser(authorities = {"ROLE_MERCHANT"})
-    void shouldReturnEmptyResponseWhenChecklistNotFound() throws Exception {
-        when(evidenceChecklistService.getChecklistByTransactionId(transactionId))
-                .thenReturn(Optional.empty());
-
-        mockMvc.perform(get("/api/v1/evidence/checklist/{transactionId}", transactionId))
+    @DisplayName("Returns a successful empty checklist response when none exists")
+    @WithMockUser(authorities = "ROLE_MERCHANT")
+    void returnsEmptyChecklist() throws Exception {
+        mockMvc.perform(get("/api/v1/evidence/checklist/{transactionId}", UUID.randomUUID()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
-                .andExpect(jsonPath("$.success").value(true));
-
-        verify(evidenceChecklistService).getChecklistByTransactionId(transactionId);
+                .andExpect(jsonPath("$.data").doesNotExist());
     }
 
     @Test
-    @DisplayName("Should get missing documents successfully")
-    @WithMockUser(authorities = {"ROLE_MERCHANT"})
-    void shouldGetMissingDocumentsSuccessfully() throws Exception {
-        List<DocumentType> missingTypes = List.of(DocumentType.COMMERCIAL_INVOICE, DocumentType.SHIPPING_BILL);
-        
-        when(evidenceChecklistService.getMissingDocuments(transactionId)).thenReturn(missingTypes);
-        when(evidenceChecklistService.getChecklistByTransactionId(transactionId))
-                .thenReturn(Optional.of(evidenceChecklist));
+    @DisplayName("Lists persisted missing documents")
+    @WithMockUser(authorities = "ROLE_MERCHANT")
+    void listsMissingDocuments() throws Exception {
+        checklistRepository.findByTransactionId(transactionId).orElseThrow().setShippingBillRequired(true);
+        checklistRepository.flush();
 
         mockMvc.perform(get("/api/v1/evidence/missing/{transactionId}", transactionId))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.transactionId").value(transactionId.toString()))
                 .andExpect(jsonPath("$.data.evidenceComplete").value(false))
-                .andExpect(jsonPath("$.data.missingDocuments").isArray())
                 .andExpect(jsonPath("$.data.missingDocuments.length()").value(2));
-
-        verify(evidenceChecklistService).getMissingDocuments(transactionId);
     }
 
     @Test
-    @DisplayName("Should update requirements successfully")
-    @WithMockUser(authorities = {"ROLE_COMPLIANCE_OFFICER"})
-    void shouldUpdateRequirementsSuccessfully() throws Exception {
-        EvidenceRequirementRequest request = EvidenceRequirementRequest.builder()
+    @DisplayName("Updates document requirements through the real service")
+    @WithMockUser(authorities = "ROLE_COMPLIANCE_OFFICER")
+    void updatesRequirements() throws Exception {
+        var request = com.aegisx.evidence.dto.EvidenceRequirementRequest.builder()
                 .transactionId(transactionId)
                 .invoiceRequired(true)
                 .shippingBillRequired(true)
@@ -160,20 +116,6 @@ class EvidenceControllerTest {
                 .reason("High-value transaction")
                 .build();
 
-        EvidenceChecklist updatedChecklist = EvidenceChecklist.builder()
-                .transaction(transaction)
-                .invoiceRequired(true)
-                .shippingBillRequired(true)
-                .isSatisfied(false)
-                .evaluatedAt(LocalDateTime.now())
-                .build();
-        updatedChecklist.setId(UUID.randomUUID());
-        updatedChecklist.setCreatedAt(java.time.Instant.now());
-        updatedChecklist.setUpdatedAt(java.time.Instant.now());
-
-        when(evidenceChecklistService.setCustomRequirements(eq(transactionId), eq(true), eq(true), eq(false), eq(false)))
-                .thenReturn(updatedChecklist);
-
         mockMvc.perform(put("/api/v1/evidence/requirements")
                         .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
@@ -181,131 +123,98 @@ class EvidenceControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.shippingBillRequired").value(true));
-
-        verify(evidenceChecklistService).setCustomRequirements(transactionId, true, true, false, false);
     }
 
     @Test
-    @DisplayName("Should mark document as uploaded successfully")
-    @WithMockUser(authorities = {"ROLE_MERCHANT"})
-    void shouldMarkDocumentAsUploadedSuccessfully() throws Exception {
-        EvidenceChecklist updatedChecklist = EvidenceChecklist.builder()
-                .transaction(transaction)
-                .invoiceRequired(true)
-                .invoiceUploaded(true)
-                .isSatisfied(true)
-                .evaluatedAt(LocalDateTime.now())
-                .build();
-        updatedChecklist.setId(UUID.randomUUID());
-        updatedChecklist.setCreatedAt(java.time.Instant.now());
-        updatedChecklist.setUpdatedAt(java.time.Instant.now());
-
-        when(evidenceChecklistService.markDocumentUploaded(transactionId, DocumentType.COMMERCIAL_INVOICE))
-                .thenReturn(updatedChecklist);
-
+    @DisplayName("Persists a document-uploaded checklist state")
+    @WithMockUser(authorities = "ROLE_MERCHANT")
+    void marksDocumentUploaded() throws Exception {
         mockMvc.perform(post("/api/v1/evidence/uploaded/{transactionId}", transactionId)
                         .with(csrf())
                         .param("documentType", "COMMERCIAL_INVOICE"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.invoiceUploaded").value(true))
                 .andExpect(jsonPath("$.data.satisfied").value(true))
                 .andExpect(jsonPath("$.message").value("Document uploaded and evidence checklist satisfied"));
-
-        verify(evidenceChecklistService).markDocumentUploaded(transactionId, DocumentType.COMMERCIAL_INVOICE);
     }
 
     @Test
-    @DisplayName("Should check evidence completeness successfully")
-    @WithMockUser(authorities = {"ROLE_MERCHANT"})
-    void shouldCheckEvidenceCompletenessSuccessfully() throws Exception {
-        when(evidenceChecklistService.isEvidenceComplete(transactionId)).thenReturn(true);
+    @DisplayName("Reports evidence completeness from the persisted checklist")
+    @WithMockUser(authorities = "ROLE_MERCHANT")
+    void checksEvidenceCompleteness() throws Exception {
+        checklistRepository.findByTransactionId(transactionId).orElseThrow().markDocumentUploaded(DocumentType.COMMERCIAL_INVOICE);
+        checklistRepository.flush();
 
         mockMvc.perform(get("/api/v1/evidence/complete/{transactionId}", transactionId))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data").value(true))
                 .andExpect(jsonPath("$.message").value("Evidence collection is complete"));
-
-        verify(evidenceChecklistService).isEvidenceComplete(transactionId);
     }
 
     @Test
-    @DisplayName("Should re-evaluate checklist successfully")
-    @WithMockUser(authorities = {"ROLE_COMPLIANCE_OFFICER"})
-    void shouldReEvaluateChecklistSuccessfully() throws Exception {
-        when(evidenceChecklistService.reevaluateChecklist(transactionId)).thenReturn(evidenceChecklist);
-
-        mockMvc.perform(post("/api/v1/evidence/reevaluate/{transactionId}", transactionId)
-                        .with(csrf()))
+    @DisplayName("Re-evaluates and persists checklist satisfaction")
+    @WithMockUser(authorities = "ROLE_COMPLIANCE_OFFICER")
+    void reevaluatesChecklist() throws Exception {
+        mockMvc.perform(post("/api/v1/evidence/reevaluate/{transactionId}", transactionId).with(csrf()))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.transactionId").value(transactionId.toString()));
-
-        verify(evidenceChecklistService).reevaluateChecklist(transactionId);
     }
 
     @Test
-    @DisplayName("Should get evidence summary successfully")
-    @WithMockUser(authorities = {"ROLE_MERCHANT"})
-    void shouldGetEvidenceSummarySuccessfully() throws Exception {
-        List<DocumentType> missingTypes = List.of(DocumentType.COMMERCIAL_INVOICE);
-        
-        when(evidenceChecklistService.getMissingDocuments(transactionId)).thenReturn(missingTypes);
-        when(evidenceChecklistService.isEvidenceComplete(transactionId)).thenReturn(false);
-
+    @DisplayName("Returns the merchant evidence summary")
+    @WithMockUser(authorities = "ROLE_MERCHANT")
+    void returnsSummary() throws Exception {
         mockMvc.perform(get("/api/v1/evidence/summary/{transactionId}", transactionId))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.transactionId").value(transactionId.toString()))
                 .andExpect(jsonPath("$.data.evidenceComplete").value(false))
                 .andExpect(jsonPath("$.data.missingDocumentCount").value(1))
                 .andExpect(jsonPath("$.data.status").value("PENDING"));
-
-        verify(evidenceChecklistService).getMissingDocuments(transactionId);
-        verify(evidenceChecklistService).isEvidenceComplete(transactionId);
     }
 
     @Test
-    @DisplayName("Should require authentication for evidence endpoints")
-    void shouldRequireAuthenticationForEvidenceEndpoints() throws Exception {
+    @DisplayName("Requires authentication")
+    void requiresAuthentication() throws Exception {
         mockMvc.perform(get("/api/v1/evidence/checklist/{transactionId}", transactionId))
                 .andExpect(status().isUnauthorized());
     }
 
     @Test
-    @DisplayName("Should require appropriate role for updating requirements")
-    @WithMockUser(authorities = {"ROLE_MERCHANT"}) // Wrong role
-    void shouldRequireAppropriateRoleForUpdatingRequirements() throws Exception {
-        EvidenceRequirementRequest request = EvidenceRequirementRequest.builder()
-                .transactionId(transactionId)
-                .invoiceRequired(true)
-                .build();
-
+    @DisplayName("Rejects requirement updates for merchants")
+    @WithMockUser(authorities = "ROLE_MERCHANT")
+    void rejectsWrongRole() throws Exception {
+        var request = com.aegisx.evidence.dto.EvidenceRequirementRequest.builder()
+                .transactionId(transactionId).invoiceRequired(true).build();
         mockMvc.perform(put("/api/v1/evidence/requirements")
                         .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isForbidden());
-
-        verify(evidenceChecklistService, never()).setCustomRequirements(any(), anyBoolean(), anyBoolean(), anyBoolean(), anyBoolean());
     }
 
     @Test
-    @DisplayName("Should validate request data for updating requirements")
-    @WithMockUser(authorities = {"ROLE_COMPLIANCE_OFFICER"})
-    void shouldValidateRequestDataForUpdatingRequirements() throws Exception {
-        EvidenceRequirementRequest request = EvidenceRequirementRequest.builder()
-                // Missing transactionId
-                .invoiceRequired(true)
-                .build();
-
+    @DisplayName("Validates the required transaction id")
+    @WithMockUser(authorities = "ROLE_COMPLIANCE_OFFICER")
+    void validatesRequest() throws Exception {
+        var request = com.aegisx.evidence.dto.EvidenceRequirementRequest.builder()
+                .invoiceRequired(true).build();
         mockMvc.perform(put("/api/v1/evidence/requirements")
                         .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isBadRequest());
+    }
 
-        verify(evidenceChecklistService, never()).setCustomRequirements(any(), anyBoolean(), anyBoolean(), anyBoolean(), anyBoolean());
+    private EvidenceChecklist checklist(Transaction transaction, boolean invoiceRequired,
+                                         boolean shippingRequired, boolean invoiceUploaded) {
+        EvidenceChecklist checklist = EvidenceChecklist.builder()
+                .transaction(transaction)
+                .invoiceRequired(invoiceRequired)
+                .shippingBillRequired(shippingRequired)
+                .invoiceUploaded(invoiceUploaded)
+                .evaluatedAt(LocalDateTime.now())
+                .build();
+        checklist.evaluateSatisfaction();
+        return checklist;
     }
 }

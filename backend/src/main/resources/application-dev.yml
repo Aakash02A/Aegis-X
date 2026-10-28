@@ -1,17 +1,38 @@
+# MySQL 8.4 development profile. This is the default profile (`SPRING_PROFILES_ACTIVE=dev`).
+#
+# The JDBC URL pins the session to UTC, which is what makes DEFAULT CURRENT_TIMESTAMP(6) in the
+# migrations mean UTC. allowPublicKeyRetrieval is only for local caching_sha2_password over plain TCP.
+# Hikari pins READ COMMITTED to match the isolation level this code was written and tested against.
 spring:
   datasource:
-    url: ${DB_URL:jdbc:postgresql://localhost:5432/aegisx}
-    username: ${DB_USERNAME:postgres}
-    password: ${DB_PASSWORD:postgres}
-    driver-class-name: org.postgresql.Driver
+    url: ${DB_URL:jdbc:mysql://localhost:3306/aegisx?connectionTimeZone=UTC&forceConnectionTimeZoneToSession=true&characterEncoding=UTF-8&useSSL=false&allowPublicKeyRetrieval=true}
+    username: ${DB_USERNAME:root}
+    password: ${DB_PASSWORD:}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      connection-init-sql: SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED
 
   jpa:
     hibernate:
+      # Kept as `update` to match the development behaviour that existed before the database switch.
+      # The verification path (`mysqlverify`) and `prod` run `validate`, which is what protects the
+      # entity/migration agreement; use those before shipping a schema change.
       ddl-auto: update
     show-sql: true
     properties:
       hibernate:
+        dialect: org.hibernate.dialect.MySQLDialect
         format_sql: true
+        # UTC on the JDBC side too, so DATETIME(6) holds UTC instants.
+        jdbc.time_zone: UTC
+        # CHAR(36) rather than the dialect's default binary(16): the migrations declare
+        # CHAR(36) CHARACTER SET ascii COLLATE ascii_bin, and the two must agree or validation fails.
+        type.preferred_uuid_jdbc_type: CHAR
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true
 
 management:
   endpoint:

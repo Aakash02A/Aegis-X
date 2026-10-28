@@ -2,7 +2,6 @@ package com.aegisx.audit.entity;
 
 import com.aegisx.transaction.entity.Transaction;
 import com.fasterxml.jackson.databind.JsonNode;
-import io.hypersistence.utils.hibernate.type.json.JsonBinaryType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -19,7 +18,8 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
-import org.hibernate.annotations.Type;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.time.Instant;
 import java.util.UUID;
@@ -150,8 +150,8 @@ public class AuditEvent {
      * - Webhook: headers, signature verification status
      * - WhatsApp: message ID, template name, delivery status
      */
-    @Type(JsonBinaryType.class)
-    @Column(name = "event_data", columnDefinition = "jsonb", updatable = false)
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "event_data", updatable = false)
     private JsonNode eventData;
 
     /**

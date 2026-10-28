@@ -5,11 +5,21 @@ spring:
   profiles:
     active: ${SPRING_PROFILES_ACTIVE:dev}
 
+  data:
+    web:
+      pageable:
+        # Bound every controller that accepts a Spring Data Pageable. Without a cap a caller can ask
+        # for `size=1000000` and make the server materialise an arbitrarily large page.
+        default-page-size: 20
+        max-page-size: 100
+
   jpa:
     open-in-view: false
     properties:
       hibernate:
-        dialect: org.hibernate.dialect.PostgreSQLDialect
+        # MySQL 8.4 is the only supported database. The concrete profiles repeat this so that
+        # each one is self-describing; the H2 test profile overrides it with H2Dialect.
+        dialect: org.hibernate.dialect.MySQLDialect
 
   flyway:
     enabled: true
@@ -18,7 +28,13 @@ spring:
 
   ai:
     openai:
-      api-key: ${OPENAI_API_KEY:}
+      # Spring AI refuses to build its OpenAI client when this value is blank, which used to abort
+      # application startup for every unconfigured checkout (docker compose and the README quick
+      # start both default OPENAI_API_KEY to an empty string, and an empty variable overrides this
+      # default). BlankOpenAiKeyEnvironmentPostProcessor substitutes a non-secret sentinel before
+      # binding, and AIAnalysisService refuses to send a request while the sentinel is in place, so
+      # a missing key degrades to "AI advisory unavailable" instead of a failed startup.
+      api-key: ${OPENAI_API_KEY:aegisx-openai-disabled}
       chat:
         options:
           temperature: 0.0
@@ -54,7 +70,7 @@ app:
 
 aegisx:
   cors:
-    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000,http://localhost:8080,http://localhost:5173,http://127.0.0.1:5173}
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000,http://127.0.0.1:3000,http://localhost:8080,http://localhost:5173,http://127.0.0.1:5173}
   ocr:
     tesseract-path: ${TESSERACT_PATH:}
     language: ${OCR_LANGUAGE:eng}
@@ -63,12 +79,35 @@ aegisx:
     model-name: ${AI_MODEL_NAME:gpt-4o}
     timeout-seconds: 30
     max-retries: 2
+  # Payment Integrity Engine (com.aegisx.integrity).
+  # Provider secrets are read from the environment only. The engine is Test-Mode only by
+  # construction: IntegrityEnvironment has no live value.
+  integrity:
+    staleness-threshold: ${INTEGRITY_STALENESS_THRESHOLD:15m}
+    default-currency: ${INTEGRITY_DEFAULT_CURRENCY:INR}
+    payload-retention-days: ${INTEGRITY_PAYLOAD_RETENTION_DAYS:30}
+    max-stored-payload-bytes: ${INTEGRITY_MAX_PAYLOAD_BYTES:65536}
+    # Financial recovery execution is intentionally OFF. Approving a money-moving
+    # recommendation is refused while this is false.
+    allow-financial-execution: ${INTEGRITY_ALLOW_FINANCIAL_EXECUTION:false}
+    benchmark-output-dir: ${INTEGRITY_BENCHMARK_DIR:benchmark/results}
+    razorpay:
+      base-url: ${RAZORPAY_API_BASE_URL:https://api.razorpay.com/v1}
+      key-id: ${RAZORPAY_KEY_ID:}
+      key-secret: ${RAZORPAY_KEY_SECRET:}
+      webhook-secret: ${RAZORPAY_WEBHOOK_SECRET:}
+      route-enabled: ${RAZORPAY_ROUTE_ENABLED:false}
+      connect-timeout: 5s
+      read-timeout: 10s
   whatsapp:
     phone-number-id: ${WHATSAPP_PHONE_NUMBER_ID:}
     access-token: ${WHATSAPP_ACCESS_TOKEN:}
     webhook-verify-token: ${WHATSAPP_VERIFY_TOKEN:}
     app-secret: ${WHATSAPP_APP_SECRET:}
-    api-endpoint: https://graph.whatsapp.com/v18.0
+    api-endpoint: ${WHATSAPP_API_ENDPOINT:https://graph.facebook.com/v26.0}
+    template-language: ${WHATSAPP_TEMPLATE_LANGUAGE:en_US}
+    notification-template: ${WHATSAPP_NOTIFICATION_TEMPLATE:notification}
+    document-request-template: ${WHATSAPP_DOCUMENT_REQUEST_TEMPLATE:document_request}
     sandbox-mode: ${WHATSAPP_SANDBOX_MODE:true}
 
 management:
@@ -119,4 +158,3 @@ management:
   tracing:
     sampling:
       probability: 0.1  # Sample 10% of requests for production
-

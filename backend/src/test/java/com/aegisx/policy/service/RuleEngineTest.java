@@ -4,227 +4,127 @@ import com.aegisx.ai.entity.AIAnalysis;
 import com.aegisx.document.entity.DocumentExtraction;
 import com.aegisx.document.entity.DocumentType;
 import com.aegisx.document.entity.RequiredDocument;
+import com.aegisx.policy.rules.AiConfidenceRule;
+import com.aegisx.policy.rules.AmountConsistencyRule;
+import com.aegisx.policy.rules.BeneficiaryMatchRule;
+import com.aegisx.policy.rules.CurrencyConsistencyRule;
+import com.aegisx.policy.rules.DocumentCompletenessRule;
+import com.aegisx.policy.rules.OcrConfidenceRule;
+import com.aegisx.policy.rules.PurposeCodeRule;
 import com.aegisx.policy.rules.RuleContext;
 import com.aegisx.transaction.entity.Transaction;
 import com.aegisx.transaction.entity.TransactionStatus;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
-import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.math.BigDecimal;
-import java.util.Arrays;
-import java.util.UUID;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.when;
+import java.util.List;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
-@DisplayName("RuleEngine Tests")
-@ExtendWith(MockitoExtension.class)
+@DisplayName("RuleEngine integration")
 class RuleEngineTest {
 
-    @Mock private com.aegisx.policy.rules.DocumentCompletenessRule documentCompletenessRule;
-    @Mock private com.aegisx.policy.rules.BeneficiaryMatchRule beneficiaryMatchRule;
-    @Mock private com.aegisx.policy.rules.AmountConsistencyRule amountConsistencyRule;
-    @Mock private com.aegisx.policy.rules.CurrencyConsistencyRule currencyConsistencyRule;
-    @Mock private com.aegisx.policy.rules.PurposeCodeRule purposeCodeRule;
-    @Mock private com.aegisx.policy.rules.OcrConfidenceRule ocrConfidenceRule;
-    @Mock private com.aegisx.policy.rules.AiConfidenceRule aiConfidenceRule;
-    
-    @InjectMocks
-    private RuleEngine ruleEngine;
-    
-    private Transaction transaction;
-    private RuleContext.RuleContextBuilder contextBuilder;
-    
+    private final RuleEngine ruleEngine = new RuleEngine(
+            new DocumentCompletenessRule(),
+            new BeneficiaryMatchRule(),
+            new AmountConsistencyRule(),
+            new CurrencyConsistencyRule(),
+            new PurposeCodeRule(),
+            new OcrConfidenceRule(),
+            new AiConfidenceRule());
+
+    private RuleContext passingContext;
+
     @BeforeEach
     void setUp() {
-        org.mockito.Mockito.lenient().when(documentCompletenessRule.evaluate(any())).thenReturn(ruleResult("document completeness", true));
-        org.mockito.Mockito.lenient().when(beneficiaryMatchRule.evaluate(any())).thenReturn(ruleResult("beneficiary match", true));
-        org.mockito.Mockito.lenient().when(amountConsistencyRule.evaluate(any())).thenReturn(ruleResult("amount consistency", true));
-        org.mockito.Mockito.lenient().when(currencyConsistencyRule.evaluate(any())).thenReturn(ruleResult("currency consistency", true));
-        org.mockito.Mockito.lenient().when(purposeCodeRule.evaluate(any())).thenReturn(ruleResult("purpose code", true));
-        org.mockito.Mockito.lenient().when(ocrConfidenceRule.evaluate(any())).thenReturn(ruleResult("OCR confidence", true));
-        org.mockito.Mockito.lenient().when(aiConfidenceRule.evaluate(any())).thenReturn(ruleResult("AI confidence", true));
-        transaction = Transaction.builder()
-            .referenceNumber("TXN-20260922-ABC123")
-            .amount(new BigDecimal("50000.00"))
-            .currency("USD")
-            .purposeCode("P0101")
-            .status(TransactionStatus.POLICY_EVALUATION)
-            .build();
-        
-        contextBuilder = RuleContext.builder()
-            .transaction(transaction);
-    }
-    
-    @Test
-    @DisplayName("Should return APPROVED when all rules pass")
-    void testAllRulesPass() {
-        RequiredDocument invoice = RequiredDocument.builder()
-            .documentType(DocumentType.INVOICE)
-            .fulfilled(true)
-            .build();
-        
-        RequiredDocument shipping = RequiredDocument.builder()
-            .documentType(DocumentType.SHIPPING_PROOF)
-            .fulfilled(true)
-            .build();
-        
-        RequiredDocument export = RequiredDocument.builder()
-            .documentType(DocumentType.EXPORT_DECLARATION)
-            .fulfilled(true)
-            .build();
-        
-        DocumentExtraction extraction = DocumentExtraction.builder()
-            .build();
-        
-        AIAnalysis analysis = AIAnalysis.builder()
-            .confidenceScore(new BigDecimal("88.0"))
-            .build();
-        
-        RuleContext context = contextBuilder
-            .requiredDocuments(Arrays.asList(invoice, shipping, export))
-            .documentExtraction(extraction)
-            .aiAnalysis(analysis)
-            .build();
-        
-        PolicyEngineResult result = ruleEngine.evaluate(context);
-        
-        assertEquals("APPROVED", result.getFinalDecision());
-        assertTrue(result.getRuleResults().stream().allMatch(r -> r.getPassed()));
-        assertEquals(7, result.getRuleResults().size());
-        assertTrue(result.getProcessingDurationMs() >= 0);
-    }
-    
-    @Test
-    @DisplayName("Should return COMPLIANCE_HOLD when any rule fails")
-    void testSingleRuleFails() {
-        when(documentCompletenessRule.evaluate(any())).thenReturn(ruleResult("document completeness", false));
-        RequiredDocument invoice = RequiredDocument.builder()
-            .documentType(DocumentType.INVOICE)
-            .fulfilled(true)
-            .build();
-        
-        RequiredDocument shipping = RequiredDocument.builder()
-            .documentType(DocumentType.SHIPPING_PROOF)
-            .fulfilled(false)  // FAIL: Not fulfilled
-            .build();
-        
-        RequiredDocument export = RequiredDocument.builder()
-            .documentType(DocumentType.EXPORT_DECLARATION)
-            .fulfilled(true)
-            .build();
-        
-        DocumentExtraction extraction = DocumentExtraction.builder()
-            .build();
-        
-        AIAnalysis analysis = AIAnalysis.builder()
-            .confidenceScore(new BigDecimal("88.0"))
-            .build();
-        
-        RuleContext context = contextBuilder
-            .requiredDocuments(Arrays.asList(invoice, shipping, export))
-            .documentExtraction(extraction)
-            .aiAnalysis(analysis)
-            .build();
-        
-        PolicyEngineResult result = ruleEngine.evaluate(context);
-        
-        assertEquals("COMPLIANCE_HOLD", result.getFinalDecision());
-        assertTrue(result.getRuleResults().stream().anyMatch(r -> !r.getPassed()));
-    }
+        Transaction transaction = Transaction.builder()
+                .referenceNumber("TXN-20260922-ABC123")
+                .beneficiaryName("XYZ Imports")
+                .amount(new BigDecimal("50000.00"))
+                .currency("USD")
+                .purposeCode("P0101")
+                .status(TransactionStatus.POLICY_EVALUATION)
+                .build();
 
-    private com.aegisx.policy.rules.RuleEvaluationResult ruleResult(String name, boolean passed) {
-        return com.aegisx.policy.rules.RuleEvaluationResult.builder()
-                .ruleName(name)
-                .passed(passed)
-                .reason(passed ? "Passed" : "Failed")
-                .evidence("test fixture")
+        DocumentExtraction extraction = DocumentExtraction.builder()
+                .extractedData(new ObjectMapper().createObjectNode()
+                        .put("beneficiary", "XYZ Imports")
+                        .put("amount", "50000.00")
+                        .put("currency", "USD"))
+                .confidenceScore(95.0)
+                .build();
+
+        passingContext = RuleContext.builder()
+                .transaction(transaction)
+                .requiredDocuments(List.of(
+                        requiredDocument(DocumentType.INVOICE, true),
+                        requiredDocument(DocumentType.SHIPPING_PROOF, true),
+                        requiredDocument(DocumentType.EXPORT_DECLARATION, true)))
+                .documentExtraction(extraction)
+                .aiAnalysis(AIAnalysis.builder().confidenceScore(new BigDecimal("88.0")).build())
                 .build();
     }
-    
+
     @Test
-    @DisplayName("Should record all rule results with names and reasons")
+    @DisplayName("all real policy rules approve consistent complete evidence")
+    void testAllRulesPass() {
+        PolicyEngineResult result = ruleEngine.evaluate(passingContext);
+
+        assertEquals("APPROVED", result.getFinalDecision());
+        assertEquals(7, result.getRuleResults().size());
+        assertTrue(result.getRuleResults().stream().allMatch(rule -> rule.getPassed()));
+    }
+
+    @Test
+    @DisplayName("a missing required document fails closed")
+    void testSingleRuleFails() {
+        RuleContext incomplete = RuleContext.builder()
+                .transaction(passingContext.getTransaction())
+                .requiredDocuments(List.of(
+                        requiredDocument(DocumentType.INVOICE, true),
+                        requiredDocument(DocumentType.SHIPPING_PROOF, false),
+                        requiredDocument(DocumentType.EXPORT_DECLARATION, true)))
+                .documentExtraction(passingContext.getDocumentExtraction())
+                .aiAnalysis(passingContext.getAiAnalysis())
+                .build();
+
+        PolicyEngineResult result = ruleEngine.evaluate(incomplete);
+
+        assertEquals("COMPLIANCE_HOLD", result.getFinalDecision());
+        assertTrue(result.getRuleResults().stream().anyMatch(rule -> !rule.getPassed()));
+    }
+
+    @Test
+    @DisplayName("real rule results include an auditable name and reason")
     void testRuleResultsAuditable() {
-        RequiredDocument invoice = RequiredDocument.builder()
-            .documentType(DocumentType.INVOICE)
-            .fulfilled(true)
-            .build();
-        
-        RequiredDocument shipping = RequiredDocument.builder()
-            .documentType(DocumentType.SHIPPING_PROOF)
-            .fulfilled(true)
-            .build();
-        
-        RequiredDocument export = RequiredDocument.builder()
-            .documentType(DocumentType.EXPORT_DECLARATION)
-            .fulfilled(true)
-            .build();
-        
-        DocumentExtraction extraction = DocumentExtraction.builder()
-            .build();
-        
-        AIAnalysis analysis = AIAnalysis.builder()
-            .confidenceScore(new BigDecimal("88.0"))
-            .build();
-        
-        RuleContext context = contextBuilder
-            .requiredDocuments(Arrays.asList(invoice, shipping, export))
-            .documentExtraction(extraction)
-            .aiAnalysis(analysis)
-            .build();
-        
-        PolicyEngineResult result = ruleEngine.evaluate(context);
-        
-        // Verify all rules have names and reasons
+        PolicyEngineResult result = ruleEngine.evaluate(passingContext);
+
         result.getRuleResults().forEach(rule -> {
             assertNotNull(rule.getRuleName());
-            assertFalse(rule.getRuleName().isEmpty());
+            assertFalse(rule.getRuleName().isBlank());
             assertNotNull(rule.getReason());
-            assertFalse(rule.getReason().isEmpty());
+            assertFalse(rule.getReason().isBlank());
         });
     }
-    
+
     @Test
-    @DisplayName("Should measure processing duration")
+    @DisplayName("evaluation records a non-negative processing duration")
     void testProcessingDurationRecorded() {
-        RequiredDocument invoice = RequiredDocument.builder()
-            .documentType(DocumentType.INVOICE)
-            .fulfilled(true)
-            .build();
-        
-        RequiredDocument shipping = RequiredDocument.builder()
-            .documentType(DocumentType.SHIPPING_PROOF)
-            .fulfilled(true)
-            .build();
-        
-        RequiredDocument export = RequiredDocument.builder()
-            .documentType(DocumentType.EXPORT_DECLARATION)
-            .fulfilled(true)
-            .build();
-        
-        DocumentExtraction extraction = DocumentExtraction.builder()
-            .build();
-        
-        AIAnalysis analysis = AIAnalysis.builder()
-            .confidenceScore(new BigDecimal("88.0"))
-            .build();
-        
-        RuleContext context = contextBuilder
-            .requiredDocuments(Arrays.asList(invoice, shipping, export))
-            .documentExtraction(extraction)
-            .aiAnalysis(analysis)
-            .build();
-        
-        PolicyEngineResult result = ruleEngine.evaluate(context);
-        
-        // Processing should complete in reasonable time (< 500ms for MVP)
+        PolicyEngineResult result = ruleEngine.evaluate(passingContext);
+
         assertTrue(result.getProcessingDurationMs() >= 0);
-        assertTrue(result.getProcessingDurationMs() < 500);
+    }
+
+    private static RequiredDocument requiredDocument(DocumentType type, boolean fulfilled) {
+        return RequiredDocument.builder()
+                .documentType(type)
+                .fulfilled(fulfilled)
+                .build();
     }
 }

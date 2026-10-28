@@ -63,24 +63,34 @@ public class WhatsAppWebhookController {
      * Webhook event endpoint (POST).
      * 
      * Receives messages, delivery receipts, read receipts from Meta.
-     * All POST requests MUST be verified via X-Hub-Signature header.
-     * 
-     * @param payload Webhook payload
-     * @param xHubSignature X-Hub-Signature header (REQUIRED for production)
+     * All POST requests MUST be verified via the signature header.
+     *
+     * <p>Meta's current Cloud API webhooks carry {@code X-Hub-Signature-256} (HMAC-SHA256). The
+     * legacy {@code X-Hub-Signature} (HMAC-SHA1) is still accepted as a fallback, because older
+     * apps and some proxies send only that one. When both are present the stronger header wins.
+     *
+     * @param rawPayload raw webhook payload, exactly as received
+     * @param xHubSignature256 X-Hub-Signature-256 header (preferred)
+     * @param xHubSignature X-Hub-Signature header (legacy fallback)
      * @param request Raw request for signature verification
      * @return 200 OK if processed successfully
      */
     @PostMapping
     public ResponseEntity<Void> handleWebhookEvent(
         @RequestBody String rawPayload,
+        @RequestHeader(value = "X-Hub-Signature-256", required = false) String xHubSignature256,
         @RequestHeader(value = "X-Hub-Signature", required = false) String xHubSignature,
         jakarta.servlet.http.HttpServletRequest request
     ) {
         log.info("Webhook event received");
         
         try {
+            String signature = (xHubSignature256 != null && !xHubSignature256.isBlank())
+                ? xHubSignature256
+                : xHubSignature;
+
             // Security: Verify webhook signature (REQUIRED)
-            if (!webhookService.verifyWebhookSignature(rawPayload, xHubSignature)) {
+            if (!webhookService.verifyWebhookSignature(rawPayload, signature)) {
                 log.error("Webhook signature verification failed - rejecting request");
                 return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
             }

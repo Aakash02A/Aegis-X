@@ -258,7 +258,7 @@ public class SettlementController {
      * Gets overdue settlements.
      */
     @GetMapping("/overdue")
-    @PreAuthorize("hasAnyRole('SETTLEMENT_OPERATOR', 'RISK_MANAGER')")
+    @PreAuthorize("hasAnyRole('SETTLEMENT_OPERATOR', 'ADMIN')")
     @Operation(summary = "Get overdue settlements", 
                description = "Retrieves settlements that are past their expected completion time")
     public ResponseEntity<ApiResponse<List<SettlementResponse>>> getOverdueSettlements() {
@@ -312,7 +312,7 @@ public class SettlementController {
      * Retries a failed settlement.
      */
     @PostMapping("/{settlementId}/retry")
-    @PreAuthorize("hasRole('SETTLEMENT_OPERATOR')")
+    @PreAuthorize("hasAnyRole('SETTLEMENT_OPERATOR', 'ADMIN')")
     @Operation(summary = "Retry settlement", 
                description = "Retries a failed settlement")
     public ResponseEntity<ApiResponse<SettlementResponse>> retrySettlement(
@@ -342,7 +342,7 @@ public class SettlementController {
      * Cancels a pending settlement.
      */
     @PostMapping("/{settlementId}/cancel")
-    @PreAuthorize("hasRole('SETTLEMENT_OPERATOR')")
+    @PreAuthorize("hasAnyRole('SETTLEMENT_OPERATOR', 'ADMIN')")
     @Operation(summary = "Cancel settlement", 
                description = "Cancels a pending settlement")
     public ResponseEntity<ApiResponse<SettlementResponse>> cancelSettlement(
@@ -371,7 +371,7 @@ public class SettlementController {
      * Gets settlement statistics by processor.
      */
     @GetMapping("/statistics/processors")
-    @PreAuthorize("hasAnyRole('SETTLEMENT_OPERATOR', 'RISK_MANAGER')")
+    @PreAuthorize("hasAnyRole('SETTLEMENT_OPERATOR', 'ADMIN')")
     @Operation(summary = "Get settlement statistics by processor", 
                description = "Provides settlement statistics grouped by payment processor")
     public ResponseEntity<ApiResponse<Map<PaymentProcessor, SettlementService.SettlementStats>>> getSettlementStatsByProcessor(
@@ -407,7 +407,7 @@ public class SettlementController {
      * Processes settlement reconciliation.
      */
     @PostMapping("/reconciliation/process")
-    @PreAuthorize("hasRole('SETTLEMENT_OPERATOR')")
+    @PreAuthorize("hasAnyRole('SETTLEMENT_OPERATOR', 'ADMIN')")
     @Operation(summary = "Process reconciliation", 
                description = "Processes settlement reconciliation with bank records")
     public ResponseEntity<ApiResponse<String>> processReconciliation() {

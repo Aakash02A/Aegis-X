@@ -211,7 +211,8 @@ public class PolicyViolationService {
         log.debug("Getting violation trends from {} to {}", startDate, endDate);
         
         List<PolicyViolation> violations = policyViolationRepository.findBySeverityAndDateRange(
-                null, startDate, endDate);
+                null, startDate.atZone(java.time.ZoneOffset.UTC).toInstant(),
+                endDate.atZone(java.time.ZoneOffset.UTC).toInstant());
         
         // Group by date and severity for trend analysis
         Map<String, Long> dailyCounts = violations.stream()
@@ -242,12 +243,15 @@ public class PolicyViolationService {
         
         if (request.hasSeverityFilter() && request.getSeverities().size() == 1) {
             violations = policyViolationRepository.findBySeverityAndDateRange(
-                    request.getSeverities().get(0), request.getStartDate(), request.getEndDate());
+                    request.getSeverities().get(0),
+                    request.getStartDate().atZone(java.time.ZoneOffset.UTC).toInstant(),
+                    request.getEndDate().atZone(java.time.ZoneOffset.UTC).toInstant());
         } else {
             // For now, get all violations in date range and filter in memory
             // In production, this would use a more sophisticated query
             violations = policyViolationRepository.findBySeverityAndDateRange(
-                    null, request.getStartDate(), request.getEndDate());
+                    null, request.getStartDate().atZone(java.time.ZoneOffset.UTC).toInstant(),
+                    request.getEndDate().atZone(java.time.ZoneOffset.UTC).toInstant());
             
             if (request.hasSeverityFilter()) {
                 violations = violations.stream()

@@ -3,66 +3,49 @@ package com.aegisx.document.service;
 import com.aegisx.auth.entity.Role;
 import com.aegisx.auth.entity.User;
 import com.aegisx.auth.repository.UserRepository;
-import com.aegisx.document.dto.EvidenceStatusResponse;
 import com.aegisx.document.entity.DocumentType;
-import com.aegisx.document.repository.DocumentRepository;
+import com.aegisx.document.entity.RequiredDocument;
 import com.aegisx.document.repository.RequiredDocumentRepository;
-import com.aegisx.storage.service.StorageService;
 import com.aegisx.transaction.entity.Transaction;
 import com.aegisx.transaction.entity.TransactionStatus;
 import com.aegisx.transaction.repository.TransactionRepository;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
-import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.context.ActiveProfiles;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.util.List;
-import java.util.Optional;
 import java.util.UUID;
 
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.anyList;
-import static org.mockito.Mockito.*;
+import static org.assertj.core.api.Assertions.assertThat;
 
-@ExtendWith(MockitoExtension.class)
+@SpringBootTest
+@ActiveProfiles("test")
+@Transactional
+@DisplayName("Document service integration")
 class DocumentServiceTest {
 
-    @Mock
-    private TransactionRepository transactionRepository;
+    @Autowired private DocumentService documentService;
+    @Autowired private TransactionRepository transactionRepository;
+    @Autowired private UserRepository userRepository;
+    @Autowired private RequiredDocumentRepository requiredDocumentRepository;
 
-    @Mock
-    private UserRepository userRepository;
-
-    @Mock
-    private DocumentRepository documentRepository;
-
-    @Mock
-    private RequiredDocumentRepository requiredDocumentRepository;
-
-    @Mock
-    private StorageService storageService;
-
-    @InjectMocks
-    private DocumentService documentService;
-
-    private Transaction transaction;
     private User merchant;
+    private Transaction transaction;
 
     @BeforeEach
     void setUp() {
-        merchant = User.builder()
+        merchant = userRepository.saveAndFlush(User.builder()
                 .fullName("ABC Exports")
-                .email("merchant@example.com")
-                .passwordHash("hashed")
+                .email("document-" + UUID.randomUUID() + "@aegis-x.test")
+                .passwordHash("not-used-by-this-service")
                 .role(Role.MERCHANT)
-                .build();
-        merchant.setId(UUID.randomUUID());
-
-        transaction = Transaction.builder()
-                .referenceNumber("TXN-20260922-ABC123")
+                .build());
+        transaction = transactionRepository.saveAndFlush(Transaction.builder()
+                .referenceNumber("TXN-DOC-" + UUID.randomUUID())
                 .merchant(merchant)
                 .amount(new BigDecimal("2500.00"))
                 .currency("USD")
@@ -70,31 +53,30 @@ class DocumentServiceTest {
                 .purposeCode("P0001")
                 .status(TransactionStatus.EVIDENCE_PENDING)
                 .version(0L)
-                .build();
-        transaction.setId(UUID.randomUUID());
+                .build());
     }
 
     @Test
+    @DisplayName("initializes and persists all required evidence rows")
     void initializeChecklistCreatesRequiredEvidenceRowsForTransaction() {
-        when(transactionRepository.findById(transaction.getId())).thenReturn(Optional.of(transaction));
-        when(requiredDocumentRepository.findByTransactionId(transaction.getId())).thenReturn(List.of());
-
         documentService.initializeChecklist(transaction.getId());
 
-        verify(requiredDocumentRepository).saveAll(anyList());
+        assertThat(requiredDocumentRepository.findByTransactionId(transaction.getId()))
+                .extracting(RequiredDocument::getDocumentType)
+                .containsExactlyInAnyOrder(
+                        DocumentType.INVOICE, DocumentType.SHIPPING_PROOF, DocumentType.EXPORT_DECLARATION);
     }
 
     @Test
+    @DisplayName("reports the real persisted checklist state for the transaction owner")
     void evidenceStatusReflectsCompletedChecklist() {
-        when(transactionRepository.findById(transaction.getId())).thenReturn(Optional.of(transaction));
-        when(userRepository.findByEmail("merchant@example.com")).thenReturn(Optional.of(merchant));
-        when(requiredDocumentRepository.findByTransactionId(transaction.getId())).thenReturn(List.of(
-                new com.aegisx.document.entity.RequiredDocument(),
-                new com.aegisx.document.entity.RequiredDocument()
-        ));
-        EvidenceStatusResponse response = documentService.getEvidenceStatus(transaction.getId(), "merchant@example.com");
+        documentService.initializeChecklist(transaction.getId());
 
-        assertNotNull(response);
-        assertEquals(2, response.getTotalRequired());
+        var response = documentService.getEvidenceStatus(transaction.getId(), merchant.getEmail());
+
+        assertThat(response.getTotalRequired()).isEqualTo(3);
+        assertThat(response.getFulfilledCount()).isZero();
+        assertThat(response.getRemainingCount()).isEqualTo(3);
+        assertThat(response.isComplete()).isFalse();
     }
 }
