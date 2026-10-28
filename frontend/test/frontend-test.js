@@ -150,6 +150,29 @@ assert(dashboardJs.includes('transaction-pagination'), 'Merchant transaction tab
 assert(complianceJs.includes('compliance-pagination'), 'Compliance table has pagination controls');
 assert(!requiredPages.map(page => fs.readFileSync(path.join(frontendDir, page), 'utf-8')).some(content => content.includes('cdn.tailwindcss.com')), 'HTML pages do not load Tailwind from a runtime CDN');
 
+// Every entry page, not just the eight core workflows: the integrity console is served from the
+// same build and used to pull Font Awesome from a CDN.
+const allHtmlPages = fs.readdirSync(frontendDir).filter(file => file.endsWith('.html'));
+const externalAssetPattern = /(?:unpkg\.com|cdn\.jsdelivr\.net|cdnjs\.cloudflare\.com|fonts\.googleapis\.com|fonts\.gstatic\.com)/;
+assert(!allHtmlPages.some(page => externalAssetPattern.test(fs.readFileSync(path.join(frontendDir, page), 'utf-8'))), 'HTML pages load no runtime third-party CDN assets');
+assert(allHtmlPages.every(page => fs.readFileSync(path.join(frontendDir, page), 'utf-8').includes('css/icons.css')), 'HTML pages load the self-hosted icon stylesheet');
+
+// Stylesheets are part of the runtime asset graph too, and the HTML scan above cannot see a request
+// made from CSS. components.css used to @import Google Fonts, so every page load reached a third
+// party even though the icons were already self-hosted. The fonts now come from pinned @fontsource
+// packages through css/fonts.css, and neither an @import nor a url() may point off-origin again.
+const cssDir = path.join(frontendDir, 'css');
+const cssFiles = fs.readdirSync(cssDir).filter(file => file.endsWith('.css'));
+const externalCssUrl = /(?:@import\s+(?:url\()?\s*['"]?https?:\/\/|url\(\s*['"]?https?:\/\/)/i;
+const cssOffenders = cssFiles.filter(file => externalCssUrl.test(fs.readFileSync(path.join(cssDir, file), 'utf-8')));
+assert(cssOffenders.length === 0, `Stylesheets load no runtime third-party assets (offending: ${cssOffenders.join(', ') || 'none'})`);
+assert(cssFiles.includes('fonts.css'), 'The webfonts are self-hosted in css/fonts.css');
+assert(fs.readFileSync(path.join(cssDir, 'components.css'), 'utf-8').includes("@import './fonts.css'"), 'components.css loads the self-hosted webfont stylesheet');
+
+const packageJson = JSON.parse(fs.readFileSync(path.join(frontendDir, 'package.json'), 'utf-8'));
+const fontPackages = ['fraunces', 'inter', 'jetbrains-mono', 'urbanist', 'work-sans'];
+assert(fontPackages.every(name => packageJson.dependencies[`@fontsource/${name}`]), 'Every self-hosted webfont family is a pinned dependency');
+
 globalThis.window = { AEGIS_API_BASE_URL: 'https://aegis.test/api' };
 const storage = new Map([['aegis_jwt_token', 'test-session-token']]);
 globalThis.sessionStorage = {
@@ -180,7 +203,7 @@ try {
 assert(envelopeRejected, 'API client rejects unsuccessful response envelopes');
 
 const viteConfig = fs.readFileSync(path.join(frontendDir, 'vite.config.js'), 'utf-8');
-assert(['index', 'login', 'register', 'dashboard', 'transaction', 'compliance', 'settlement', 'operations'].every(page => viteConfig.includes(`'${page}'`)), 'Production build includes all eight HTML workflows');
+assert(allHtmlPages.every(page => viteConfig.includes(`'${page.replace(/\.html$/, '')}'`)), 'Production build includes every HTML entry page');
 
 console.log(`\n========================================`);
 console.log(`Test Results: ${passed} Passed, ${failed} Failed`);

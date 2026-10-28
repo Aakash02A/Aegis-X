@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" class="scroll-smooth">
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -10,7 +10,7 @@
   <link rel="stylesheet" href="css/tailwind.css" />
   <link rel="stylesheet" href="css/animations.css" />
   <link rel="stylesheet" href="css/components.css" />
-  <script src="https://unpkg.com/lucide@latest"></script>
+  <link rel="stylesheet" href="css/icons.css" />
 </head>
 <body class="bg-paper text-ink leading-relaxed">
 
@@ -19,7 +19,7 @@
     <div class="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2">
       <div class="flex items-center gap-4">
         <span class="flex items-center gap-1.5 font-medium">
-          <i data-lucide="shield-check" class="w-3.5 h-3.5 text-brass"></i>
+          <i class="fa-solid fa-shield-halved w-3.5 h-3.5 text-brass"></i>
           RBI FEMA and OFAC workflow coverage
         </span>
         <span class="hidden md:inline text-paper/40">·</span>
@@ -39,7 +39,7 @@
         <span class="font-serif text-xl tracking-tight font-semibold text-ink">Aegis<span class="text-rust italic font-serif">X</span></span>
       </a>
 
-      <div class="hidden md:flex items-center gap-9 text-sm text-ink-soft">
+      <div class="hidden lg:flex items-center gap-9 text-sm text-ink-soft">
         <a href="#pipeline" class="hover:text-ink transition-colors">The Pipeline</a>
         <a href="#services" class="hover:text-ink transition-colors">Intelligence</a>
         <a href="#story" class="hover:text-ink transition-colors">Philosophy</a>
@@ -51,15 +51,29 @@
         <a href="login.html" class="text-sm px-5 py-2 border border-ink rounded-full text-ink hover:bg-ink hover:text-paper transition-all">
           Sign In
         </a>
-        <a href="dashboard.html" class="hidden sm:inline-flex items-center rounded-full bg-rust text-paper text-sm px-5 py-2 hover:bg-ink transition-colors">
+        <a href="login.html" class="hidden lg:inline-flex items-center rounded-full bg-rust text-paper text-sm px-5 py-2 hover:bg-ink transition-colors">
           Open Console
         </a>
+        <details class="relative lg:hidden">
+          <summary aria-label="Open navigation menu" title="Open navigation menu" class="flex h-10 w-10 cursor-pointer list-none items-center justify-center rounded-full border border-ink/20 text-ink hover:bg-paper-dim">
+            <i class="fa-solid fa-bars h-5 w-5"></i>
+            <span class="sr-only">Open navigation menu</span>
+          </summary>
+          <div class="absolute right-0 top-full z-50 mt-3 flex w-64 max-w-[calc(100vw-2rem)] flex-col rounded-sm border border-ink/10 bg-paper p-2 text-sm text-ink shadow-xl">
+            <a href="#pipeline" class="rounded-sm px-3 py-2.5 hover:bg-paper-dim">The Pipeline</a>
+            <a href="#services" class="rounded-sm px-3 py-2.5 hover:bg-paper-dim">Intelligence</a>
+            <a href="#story" class="rounded-sm px-3 py-2.5 hover:bg-paper-dim">Philosophy</a>
+            <a href="#audit" class="rounded-sm px-3 py-2.5 hover:bg-paper-dim">Audit Trail</a>
+            <a href="#faq" class="rounded-sm px-3 py-2.5 hover:bg-paper-dim">FAQ</a>
+            <a href="login.html" class="mt-2 rounded-sm bg-rust px-3 py-2.5 text-center text-paper hover:bg-ink">Open Console</a>
+          </div>
+        </details>
       </div>
     </div>
   </nav>
 
   <!-- 3. Hero Section (Tonsor Asymmetric Layout) -->
-  <section class="max-w-6xl mx-auto px-6 pt-16 pb-20 md:pt-24 md:pb-28">
+  <section id="pipeline" class="max-w-6xl mx-auto scroll-mt-24 px-6 pt-16 pb-20 md:pt-24 md:pb-28">
     <div class="grid md:grid-cols-12 gap-12 items-center">
       
       <!-- Left Column: Editorial Copy -->
@@ -77,9 +91,9 @@
         </p>
 
         <div class="flex flex-wrap items-center gap-4 pt-2">
-          <a href="dashboard.html" class="aegis-btn-rust">
-            <span>Explore Dashboard</span>
-            <i data-lucide="arrow-right" class="w-4 h-4"></i>
+          <a href="login.html" class="aegis-btn-rust">
+              <span>Explore Dashboard</span>
+            <i class="fa-solid fa-arrow-right w-4 h-4"></i>
           </a>
           <a href="#services" class="editorial-link">
             Architecture &amp; Rules
@@ -115,8 +129,8 @@
             <div class="flex justify-between py-2 border-b border-ink/5">
               <span class="text-ink-soft">Document analysis</span>
               <span class="font-semibold text-ink">OCR then AI advisory</span>
-            </div>
-            <div class="flex justify-between py-2 border-b border-ink/5">
+                    <span class="block font-serif text-3xl font-medium text-ink">UTC</span>
+                    <span class="text-xs text-ink-soft">Event timestamps</span>
               <span class="text-ink-soft">Decision authority</span>
               <span class="font-semibold text-ink">Policy engine and reviewer</span>
             </div>
@@ -158,7 +172,7 @@
   </section>
 
   <!-- 5. High-Contrast Dark Section (The Intelligence Menu) -->
-  <section id="services" class="bg-ink text-paper py-24 md:py-32">
+  <section id="services" class="scroll-mt-24 bg-ink text-paper py-24 md:py-32">
     <div class="max-w-6xl mx-auto px-6">
       <div class="grid md:grid-cols-5 gap-14 items-start">
         
@@ -218,7 +232,7 @@
   </section>
 
   <!-- 6. Story & Philosophy Section (Amble Editorial Rhythm) -->
-  <section id="story" class="py-24 md:py-32 bg-paper">
+  <section id="story" class="scroll-mt-24 py-24 md:py-32 bg-paper">
     <div class="max-w-6xl mx-auto px-6 grid md:grid-cols-12 gap-12 items-center">
       <div class="md:col-span-5">
         <div class="editorial-card p-8 bg-paper-dim border border-ink/10 rounded-sm">
@@ -242,8 +256,8 @@
             <span class="text-xs text-ink-soft">Subsystems Unified</span>
           </div>
           <div>
-            <span class="block font-serif text-3xl font-medium text-ink">100%</span>
-            <span class="text-xs text-ink-soft">Audit Trail Hash</span>
+            <span class="block font-serif text-3xl font-medium text-ink">UTC</span>
+            <span class="text-xs text-ink-soft">Event timestamps</span>
           </div>
           <div>
             <span class="block font-serif text-3xl font-medium text-ink">0</span>
@@ -254,8 +268,84 @@
     </div>
   </section>
 
-  <!-- 7. FAQ Section (Tonsor Style) -->
-  <section id="faq" class="py-24 md:py-32 bg-paper-dim border-t border-ink/10">
+  <!-- Transaction Audit Trail -->
+  <section id="audit" class="scroll-mt-24 border-y border-ink/10 bg-paper-dim py-20 md:py-28">
+    <div class="max-w-6xl mx-auto px-6 grid lg:grid-cols-12 gap-12 lg:gap-16">
+      <div class="lg:col-span-5">
+        <div class="editorial-eyebrow mb-4">Transaction record</div>
+        <h2 class="font-serif text-4xl md:text-5xl font-medium leading-tight text-ink">Every decision, in sequence.</h2>
+        <p class="mt-5 max-w-lg text-sm sm:text-base leading-relaxed text-ink-soft">
+          Each transaction has a chronological, append-only event history, from payment receipt through evidence review and policy decision.
+        </p>
+        <dl class="mt-8 border-t border-ink/15">
+          <div class="grid grid-cols-[8rem_1fr] gap-4 border-b border-ink/10 py-3 text-xs">
+            <dt class="uppercase tracking-wider text-ink-soft">Traceable by</dt>
+            <dd class="text-ink">Transaction, actor, and source module</dd>
+          </div>
+          <div class="grid grid-cols-[8rem_1fr] gap-4 border-b border-ink/10 py-3 text-xs">
+            <dt class="uppercase tracking-wider text-ink-soft">State changes</dt>
+            <dd class="text-ink">Previous and new transaction state</dd>
+          </div>
+          <div class="grid grid-cols-[8rem_1fr] gap-4 border-b border-ink/10 py-3 text-xs">
+            <dt class="uppercase tracking-wider text-ink-soft">Request trace</dt>
+            <dd class="text-ink">Correlation ID across workflow modules</dd>
+          </div>
+        </dl>
+        <p class="mt-5 font-mono-data text-[11px] text-ink-soft">GET /api/transactions/{id}/audit</p>
+      </div>
+
+      <div class="lg:col-span-7">
+        <div class="flex flex-wrap items-center justify-between gap-3 border-b border-ink/20 pb-4">
+          <span class="editorial-eyebrow">Example event sequence</span>
+          <span class="font-mono-data text-[10px] uppercase text-ink-soft">Ordered by recorded time</span>
+        </div>
+        <ol class="divide-y divide-ink/10">
+          <li class="grid grid-cols-[2.25rem_1fr] gap-3 py-5 sm:gap-4">
+            <span class="font-mono-data text-xs text-rust">01</span>
+            <div class="min-w-0">
+              <div class="flex flex-wrap justify-between gap-x-4 gap-y-1">
+                <span class="font-mono-data text-xs font-semibold text-ink">PAYMENT_RECEIVED</span>
+                <span class="font-mono-data text-[10px] text-ink-soft">RAZORPAY · WEBHOOK</span>
+              </div>
+              <p class="mt-1 text-xs leading-relaxed text-ink-soft">Payment event and transaction state transition.</p>
+            </div>
+          </li>
+          <li class="grid grid-cols-[2.25rem_1fr] gap-3 py-5 sm:gap-4">
+            <span class="font-mono-data text-xs text-rust">02</span>
+            <div class="min-w-0">
+              <div class="flex flex-wrap justify-between gap-x-4 gap-y-1">
+                <span class="font-mono-data text-xs font-semibold text-ink">DOCUMENT_UPLOADED</span>
+                <span class="font-mono-data text-[10px] text-ink-soft">DOCUMENT · USER</span>
+              </div>
+              <p class="mt-1 text-xs leading-relaxed text-ink-soft">Evidence action with actor and event context.</p>
+            </div>
+          </li>
+          <li class="grid grid-cols-[2.25rem_1fr] gap-3 py-5 sm:gap-4">
+            <span class="font-mono-data text-xs text-rust">03</span>
+            <div class="min-w-0">
+              <div class="flex flex-wrap justify-between gap-x-4 gap-y-1">
+                <span class="font-mono-data text-xs font-semibold text-ink">OCR_COMPLETED</span>
+                <span class="font-mono-data text-[10px] text-ink-soft">OCR · SYSTEM</span>
+              </div>
+              <p class="mt-1 text-xs leading-relaxed text-ink-soft">Processing result and extraction context.</p>
+            </div>
+          </li>
+          <li class="grid grid-cols-[2.25rem_1fr] gap-3 py-5 sm:gap-4">
+            <span class="font-mono-data text-xs text-rust">04</span>
+            <div class="min-w-0">
+              <div class="flex flex-wrap justify-between gap-x-4 gap-y-1">
+                <span class="font-mono-data text-xs font-semibold text-ink">POLICY_APPROVED</span>
+                <span class="font-mono-data text-[10px] text-ink-soft">POLICY_ENGINE · SYSTEM</span>
+              </div>
+              <p class="mt-1 text-xs leading-relaxed text-ink-soft">Rule outcome and resulting transaction state.</p>
+            </div>
+          </li>
+        </ol>
+      </div>
+    </div>
+  </section>
+
+  <section id="faq" class="scroll-mt-24 py-24 md:py-32 bg-paper-dim border-t border-ink/10">
     <div class="max-w-6xl mx-auto px-6 grid md:grid-cols-5 gap-14">
       <div class="md:col-span-2">
         <h2 class="font-serif text-4xl font-medium text-ink leading-tight">Good to know</h2>
@@ -274,24 +364,12 @@
             Aegis-X uses a hybrid deterministic architecture: Spring AI performs extraction and cross-referencing against statutory texts, but final clearance is governed by strict deterministic Java policy rules.
           </p>
         </details>
-
+            <span class="block font-serif text-3xl font-medium text-ink">05</span>
         <details class="group py-5 cursor-pointer">
           <summary class="flex items-center justify-between font-serif text-lg text-ink list-none">
-            <span>What document formats does OCR accept?</span>
-            <span class="text-ink-soft group-open:rotate-45 transition-transform text-xl">+</span>
           </summary>
-          <p class="mt-3 text-xs sm:text-sm text-ink-soft leading-relaxed">
-            We accept PDF, PNG, JPG, and JPEG documents up to 25MB via multipart drag-and-drop.
-          </p>
-        </details>
-
-        <details class="group py-5 cursor-pointer">
-          <summary class="flex items-center justify-between font-serif text-lg text-ink list-none">
-            <span>How do WhatsApp notifications integrate?</span>
-            <span class="text-ink-soft group-open:rotate-45 transition-transform text-xl">+</span>
-          </summary>
-          <p class="mt-3 text-xs sm:text-sm text-ink-soft leading-relaxed">
-            When evidence is required or compliance is cleared, merchants receive instant alerts with secure action links directly on their registered WhatsApp number.
+            <span class="block font-serif text-3xl font-medium text-ink">UTC</span>
+            <span class="text-xs text-ink-soft">Event timestamps</span>
           </p>
         </details>
       </div>
@@ -308,7 +386,7 @@
       <div class="pt-2 flex flex-col sm:flex-row items-center justify-center gap-4">
         <a href="login.html" class="aegis-btn-paper">
           <span>Launch Merchant Console</span>
-          <i data-lucide="arrow-right" class="w-4 h-4"></i>
+          <i class="fa-solid fa-arrow-right w-4 h-4"></i>
         </a>
         <a href="register.html" class="inline-flex items-center rounded-full border border-paper/40 text-paper text-sm px-7 py-3 hover:bg-paper/10 transition-colors">
           Create Account
@@ -330,7 +408,7 @@
       <div>
         <p class="font-sans text-[11px] uppercase tracking-widest text-paper/40 font-semibold mb-4">Workspaces</p>
         <ul class="space-y-2">
-          <li><a href="dashboard.html" class="hover:text-paper transition-colors">Merchant Dashboard</a></li>
+          <li><a href="login.html" class="hover:text-paper transition-colors">Merchant Sign In</a></li>
           <li><a href="compliance.html" class="hover:text-paper transition-colors">Compliance Officer Queue</a></li>
           <li><a href="operations.html" class="hover:text-paper transition-colors">Operations &amp; Actuator</a></li>
           <li><a href="transaction.html" class="hover:text-paper transition-colors">Transaction Detail</a></li>
@@ -363,7 +441,43 @@
 
   <script type="module">
     import { Utils } from './js/utils.js';
-    Utils.initIcons();
+
+    let activeScrollFrame = null;
+    const scrollToSection = (target) => {
+      if (activeScrollFrame !== null) cancelAnimationFrame(activeScrollFrame);
+
+      const start = window.scrollY;
+      const marginTop = Number.parseFloat(getComputedStyle(target).scrollMarginTop) || 0;
+      const destination = Math.max(0, start + target.getBoundingClientRect().top - marginTop);
+      if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        window.scrollTo(0, destination);
+        return;
+      }
+
+      const duration = Math.min(900, Math.max(360, Math.abs(destination - start) * 0.45));
+      const startedAt = performance.now();
+      const animate = (timestamp) => {
+        const progress = Math.min((timestamp - startedAt) / duration, 1);
+        const easedProgress = 1 - Math.pow(1 - progress, 3);
+        window.scrollTo(0, start + (destination - start) * easedProgress);
+        activeScrollFrame = progress < 1 ? requestAnimationFrame(animate) : null;
+      };
+      activeScrollFrame = requestAnimationFrame(animate);
+    };
+
+    document.querySelectorAll('a[href^="#"]').forEach((link) => {
+      link.addEventListener('click', (event) => {
+        const target = document.getElementById(link.hash.slice(1));
+        if (!target || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+
+        event.preventDefault();
+        if (window.location.hash !== link.hash) {
+          window.history.pushState(null, '', link.hash);
+        }
+        scrollToSection(target);
+        link.closest('details')?.removeAttribute('open');
+      });
+    });
   </script>
 </body>
 </html>

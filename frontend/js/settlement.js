@@ -79,12 +79,11 @@ export const SettlementPage = {
       tbody.innerHTML = `
         <tr>
           <td colspan="7" class="text-center py-12 text-ink-soft">
-            <i data-lucide="filter-x" class="w-8 h-8 mx-auto mb-2 text-ink-soft"></i>
+            <i class="fa-solid fa-filter-circle-xmark w-8 h-8 mx-auto mb-2 text-ink-soft"></i>
             <p class="font-sans text-xs">${failed ? 'Settlement records could not be loaded.' : 'No settlement records match the active criteria.'}</p>
           </td>
         </tr>
       `;
-      Utils.initIcons();
       return;
     }
 
@@ -102,7 +101,7 @@ export const SettlementPage = {
         <td class="text-right py-3.5 px-6">
           ${st.canRetry && Auth.getUser()?.role === 'SETTLEMENT_OPERATOR' ? `
           <button type="button" data-retry-id="${Utils.escapeHtml(st.id)}" class="aegis-btn-ink py-1 px-3 text-xs inline-flex items-center gap-1">
-            <i data-lucide="refresh-cw" class="w-3 h-3"></i> Retry
+            <i class="fa-solid fa-arrows-rotate w-3 h-3"></i> Retry
           </button>
           ` : `
           <span class="text-xs text-ink-soft">—</span>
@@ -111,7 +110,6 @@ export const SettlementPage = {
       </tr>
     `).join('');
 
-    Utils.initIcons();
     tbody.querySelectorAll('[data-retry-id]').forEach(button => {
       button.addEventListener('click', () => this.retrySettlement(button.dataset.retryId));
     });

@@ -25,10 +25,14 @@ export class ToastManager {
 
     toast.classList.add(borders[type] || 'border-cyan-500/30');
 
-    const iconNames = { success: 'check', error: 'alert-circle', warning: 'alert-triangle', info: 'info' };
+    const iconNames = {
+      success: 'fa-solid fa-circle-check',
+      error: 'fa-solid fa-circle-exclamation',
+      warning: 'fa-solid fa-triangle-exclamation',
+      info: 'fa-solid fa-circle-info'
+    };
     const icon = document.createElement('i');
-    icon.dataset.lucide = iconNames[type] || iconNames.info;
-    icon.className = 'w-4 h-4';
+    icon.className = `${iconNames[type] || iconNames.info} w-4 h-4`;
     const iconWrap = document.createElement('div');
     iconWrap.className = 'p-1 rounded-full';
     iconWrap.append(icon);
@@ -40,17 +44,12 @@ export class ToastManager {
     close.type = 'button';
     close.setAttribute('aria-label', 'Dismiss notification');
     const closeIcon = document.createElement('i');
-    closeIcon.dataset.lucide = 'x';
-    closeIcon.className = 'w-3.5 h-3.5';
+    closeIcon.className = 'fa-solid fa-xmark w-3.5 h-3.5';
     close.append(closeIcon);
     close.addEventListener('click', () => toast.remove());
     toast.append(iconWrap, text, close);
 
     this.container.appendChild(toast);
-
-    if (window.lucide && typeof window.lucide.createIcons === 'function') {
-      window.lucide.createIcons();
-    }
 
     setTimeout(() => {
       toast.style.opacity = '0';

@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="auth-checking">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -9,14 +9,14 @@
   <link rel="stylesheet" href="css/tailwind.css" />
   <link rel="stylesheet" href="css/animations.css" />
   <link rel="stylesheet" href="css/components.css" />
-  <script src="https://unpkg.com/lucide@latest"></script>
+  <link rel="stylesheet" href="css/icons.css" />
 </head>
 <body class="bg-paper text-ink flex min-h-screen">
 
   <!-- Sidebar -->
   <aside class="w-64 bg-paper-dim border-r border-ink/10 flex flex-col justify-between hidden md:flex shrink-0">
     <div>
-      <div class="h-18 px-6 flex items-center gap-3 border-b border-ink/10">
+      <div class="min-h-[4.5rem] px-6 flex items-center gap-3 border-b border-ink/10">
         <div class="w-8 h-8 rounded-full bg-ink text-paper flex items-center justify-center font-serif text-sm font-bold">
           A
         </div>
@@ -27,20 +27,24 @@
       </div>
 
       <nav class="p-4 space-y-1 font-sans">
+        <a href="integrity.html" class="flex items-center gap-3 px-3.5 py-2.5 rounded-full text-sm font-medium text-ink-soft hover:text-ink hover:bg-ink/5 transition-all">
+          <i class="fa-solid fa-shield-halved w-4 h-4"></i>
+          <span>Payment Integrity</span>
+        </a>
         <a data-roles="COMPLIANCE_OFFICER,ADMIN" href="compliance.html" class="flex items-center gap-3 px-3.5 py-2.5 rounded-full text-sm font-medium bg-ink text-paper">
-          <i data-lucide="shield" class="w-4 h-4"></i>
+          <i class="fa-solid fa-shield w-4 h-4"></i>
           <span>Investigation Queue</span>
         </a>
         <a data-roles="MERCHANT" href="dashboard.html" class="flex items-center gap-3 px-3.5 py-2.5 rounded-full text-sm font-medium text-ink-soft hover:text-ink hover:bg-ink/5 transition-all">
-          <i data-lucide="layout-dashboard" class="w-4 h-4"></i>
+          <i class="fa-solid fa-table-columns w-4 h-4"></i>
           <span>Merchant Console</span>
         </a>
         <a data-roles="COMPLIANCE_OFFICER" href="settlement.html" class="flex items-center gap-3 px-3.5 py-2.5 rounded-full text-sm font-medium text-ink-soft hover:text-ink hover:bg-ink/5 transition-all">
-          <i data-lucide="landmark" class="w-4 h-4"></i>
+          <i class="fa-solid fa-landmark w-4 h-4"></i>
           <span>Settlement Desk</span>
         </a>
         <a data-roles="ADMIN" href="operations.html" class="flex items-center gap-3 px-3.5 py-2.5 rounded-full text-sm font-medium text-ink-soft hover:text-ink hover:bg-ink/5 transition-all">
-          <i data-lucide="activity" class="w-4 h-4"></i>
+          <i class="fa-solid fa-chart-line w-4 h-4"></i>
           <span>Operations &amp; Metrics</span>
         </a>
       </nav>
@@ -58,7 +62,7 @@
           </div>
         </div>
         <button onclick="window.Auth.logout()" class="text-ink-soft hover:text-rust p-1 transition-colors" title="Logout">
-          <i data-lucide="log-out" class="w-4 h-4"></i>
+          <i class="fa-solid fa-right-from-bracket w-4 h-4"></i>
         </button>
       </div>
     </div>
@@ -66,10 +70,10 @@
 
   <!-- Main Viewport -->
   <div class="flex-1 flex flex-col min-w-0">
-    <header class="h-18 bg-paper/90 backdrop-blur border-b border-ink/10 px-6 flex items-center justify-between sticky top-0 z-30">
+    <header class="min-h-[4.5rem] py-2 bg-paper/90 backdrop-blur border-b border-ink/10 px-4 sm:px-6 flex items-center justify-between gap-3 sticky top-0 z-30">
       <div class="flex items-center gap-3">
         <span class="editorial-badge badge-approved">
-          <i data-lucide="shield-check" class="w-3.5 h-3.5 inline"></i>
+          <i class="fa-solid fa-shield-halved w-3.5 h-3.5 inline"></i>
           Statutory Audit Mode
         </span>
       </div>
@@ -89,7 +93,7 @@
       <div class="editorial-card p-5 bg-white grid grid-cols-1 md:grid-cols-12 gap-4 items-center">
         <!-- Search -->
         <div class="md:col-span-5 relative">
-          <i data-lucide="search" class="w-4 h-4 text-ink-soft absolute left-3 top-1/2 -translate-y-1/2"></i>
+          <i class="fa-solid fa-magnifying-glass w-4 h-4 text-ink-soft absolute left-3 top-1/2 -translate-y-1/2"></i>
           <input type="text" id="compliance-search" placeholder="Search reference, beneficiary, or merchant" class="editorial-input pl-9 text-xs" />
         </div>
 
@@ -142,7 +146,7 @@
           <p id="review-reference" class="font-mono-data text-xs text-ink-soft mt-1">—</p>
         </div>
         <button id="close-review-modal" type="button" class="text-ink-soft hover:text-ink" aria-label="Close review">
-          <i data-lucide="x" class="w-5 h-5"></i>
+          <i class="fa-solid fa-xmark w-5 h-5"></i>
         </button>
       </header>
       <dl class="grid grid-cols-2 md:grid-cols-3 gap-4 py-5 text-xs">

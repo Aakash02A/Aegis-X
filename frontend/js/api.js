@@ -75,6 +75,24 @@ export const API = {
     return readResponse(response);
   },
 
+  /**
+   * Fetches a protected resource as a blob, so a stored document can be downloaded through the
+   * normal bearer-token path instead of a bare link that the browser would request unauthenticated.
+   */
+  async downloadBlob(endpoint) {
+    const token = this.getAuthToken();
+    const response = await fetch(resolveUrl(endpoint), {
+      headers: {
+        'X-Correlation-ID': createCorrelationId(),
+        ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+      }
+    });
+    if (!response.ok) {
+      throw new Error(`Could not download the document (HTTP ${response.status})`);
+    }
+    return response.blob();
+  },
+
   async uploadDocument(transactionId, file, documentType = 'COMMERCIAL_INVOICE', onProgress = () => {}) {
     const token = this.getAuthToken();
     const formData = new FormData();
