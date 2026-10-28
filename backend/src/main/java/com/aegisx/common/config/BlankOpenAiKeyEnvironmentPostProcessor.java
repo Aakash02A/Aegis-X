@@ -28,7 +28,7 @@ import java.util.Map;
 public class BlankOpenAiKeyEnvironmentPostProcessor implements EnvironmentPostProcessor, Ordered {
 
     /** Not a credential: it only lets the OpenAI client bean be constructed. */
-    public static final String NOT_CONFIGURED_KEY = "sk-aegisx-not-configured";
+    public static final String NOT_CONFIGURED_KEY = "aegisx-openai-disabled";
 
     private static final String OPENAI_KEY_PROPERTY = "spring.ai.openai.api-key";
 

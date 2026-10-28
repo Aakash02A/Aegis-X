@@ -22,12 +22,9 @@ import java.util.Arrays;
 @Profile("prod")
 public class ProductionSafetyChecks implements InitializingBean {
 
-    /** The value shipped in .env.example; it must never reach a production deployment. */
-    private static final String EXAMPLE_SECRET =
-            "404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970";
-
-    /** The placeholder shipped in .env.example; it must never reach a production deployment. */
-    private static final String PLACEHOLDER_SECRET = "CHANGE_ME_replace_with_openssl_rand_base64_48";
+    /** SHA-256 hash of legacy published example secret (raw high-entropy strings must not appear in code). */
+    private static final String LEGACY_EXAMPLE_SECRET_SHA256 =
+            "3354cfcf65c7b2e6840ea6f880aede239750cb1d063950c4e8fd9fbf9ec73a32";
 
     private static final int MIN_SECRET_BYTES = 32;
 
@@ -49,7 +46,7 @@ public class ProductionSafetyChecks implements InitializingBean {
                     "JWT_SECRET is required with the prod profile. Generate one with "
                             + "`openssl rand -base64 48` and inject it as a secret.");
         }
-        if (EXAMPLE_SECRET.equals(jwtSecret) || PLACEHOLDER_SECRET.equals(jwtSecret) || jwtSecret.startsWith("CHANGE_ME")) {
+        if (jwtSecret.startsWith("CHANGE_ME") || isLegacyExampleSecret(jwtSecret)) {
             throw new IllegalStateException(
                     "JWT_SECRET still has the default/placeholder value from .env.example. Generate a unique secret with `openssl rand -base64 48`.");
         }
@@ -57,6 +54,22 @@ public class ProductionSafetyChecks implements InitializingBean {
             throw new IllegalStateException(
                     "JWT_SECRET must be at least " + MIN_SECRET_BYTES + " bytes (HS256 requirement); "
                             + "the supplied value is " + jwtSecret.getBytes(StandardCharsets.UTF_8).length + " bytes.");
+        }
+    }
+
+    private boolean isLegacyExampleSecret(String secret) {
+        try {
+            java.security.MessageDigest digest = java.security.MessageDigest.getInstance("SHA-256");
+            byte[] hash = digest.digest(secret.getBytes(StandardCharsets.UTF_8));
+            StringBuilder hexString = new StringBuilder();
+            for (byte b : hash) {
+                String hex = Integer.toHexString(0xff & b);
+                if (hex.length() == 1) hexString.append('0');
+                hexString.append(hex);
+            }
+            return LEGACY_EXAMPLE_SECRET_SHA256.equalsIgnoreCase(hexString.toString());
+        } catch (Exception e) {
+            return false;
         }
     }
 

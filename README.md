@@ -702,7 +702,7 @@ CORS_ALLOWED_ORIGINS=https://your-frontend-domain.com
 ### **External API Integration**
 ```bash
 # OpenAI (Required for AI Analysis)
-OPENAI_API_KEY=sk-your-openai-api-key-here
+OPENAI_API_KEY=your_openai_api_key_here
 
 # Razorpay (Required for Payment Processing)
 RAZORPAY_KEY_ID=rzp_test_your_key_id_here
@@ -741,7 +741,7 @@ application degrades rather than failing when one is absent — see
 | `DB_URL` | ✅ | MySQL connection URL (parameters are required) | `jdbc:mysql://localhost:3306/aegisx?connectionTimeZone=UTC&forceConnectionTimeZoneToSession=true` |
 | `DB_USERNAME` / `DB_PASSWORD` | ✅ | MySQL account | `aegisx` |
 | `JWT_SECRET` | ✅ | HMAC signing key (32+ chars) | `your-super-secure-jwt-secret...` |
-| `OPENAI_API_KEY` | — | OpenAI API authentication (AI advice degrades when absent) | `sk-proj-abc123...` |
+| `OPENAI_API_KEY` | — | OpenAI API authentication (AI advice degrades when absent) | `your_openai_api_key` |
 | `RAZORPAY_KEY_ID` / `RAZORPAY_KEY_SECRET` | — | Razorpay **Test Mode** keys | `rzp_test_abc123` |
 | `RAZORPAY_WEBHOOK_SECRET` | — | Razorpay webhook signature verification | `your_webhook_secret` |
 | `WHATSAPP_ACCESS_TOKEN` | — | WhatsApp Graph API token | `EAAx...` |
@@ -803,7 +803,7 @@ CORS_ALLOWED_ORIGINS=https://your-production-domain.com
 DATABASE_URL=<railway-mysql-url>
 
 # External APIs (Required)
-OPENAI_API_KEY=sk-<your-production-openai-key>
+OPENAI_API_KEY=<your-production-openai-key>
 RAZORPAY_KEY_ID=rzp_live_<your-live-key>
 RAZORPAY_KEY_SECRET=<your-live-secret>
 RAZORPAY_WEBHOOK_SECRET=<your-webhook-secret>

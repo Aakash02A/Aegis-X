@@ -15,8 +15,7 @@ VALUES
 ON DUPLICATE KEY UPDATE `name` = VALUES(`name`);
 
 -- 2. Initial Administrative & Demo Accounts
--- Passwords hashed with BCrypt (strength 12) for 'Password123!'
--- Hash: $2a$12$e8hFzX7jS9QcKzP5uW2PCOe3Gf1tY9X9y2M8m7T6r5K4j3H2g1Fe
+-- Passwords hashed with BCrypt (strength 12) for test accounts
 INSERT INTO `users` (`id`, `email`, `password`, `full_name`, `phone`, `role`, `created_at`, `updated_at`)
 VALUES
   (1001, 'admin@aegisx.io', '$2a$12$6/YdJpD9yTq/7WqBqX1i3.lXfM9m3yF3yTq/7WqBqX1i3.lXfM9m3', 'Aegis System Admin', '+919999900001', 'ADMIN', CURRENT_TIMESTAMP(6), CURRENT_TIMESTAMP(6)),

@@ -34,7 +34,7 @@ spring:
       # default). BlankOpenAiKeyEnvironmentPostProcessor substitutes a non-secret sentinel before
       # binding, and AIAnalysisService refuses to send a request while the sentinel is in place, so
       # a missing key degrades to "AI advisory unavailable" instead of a failed startup.
-      api-key: ${OPENAI_API_KEY:sk-aegisx-not-configured}
+      api-key: ${OPENAI_API_KEY:aegisx-openai-disabled}
       chat:
         options:
           temperature: 0.0
