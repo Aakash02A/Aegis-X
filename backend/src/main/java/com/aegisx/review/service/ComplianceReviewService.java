@@ -3,7 +3,9 @@ package com.aegisx.review.service;
 import com.aegisx.auth.entity.User;
 import com.aegisx.auth.service.UserService;
 import com.aegisx.policy.entity.PolicyViolation;
+import com.aegisx.policy.entity.ViolationSeverity;
 import com.aegisx.policy.repository.PolicyViolationRepository;
+import com.aegisx.review.dto.QueueSummary;
 import com.aegisx.review.dto.ReviewQueueItemResponse;
 import com.aegisx.review.entity.ComplianceReview;
 import com.aegisx.review.entity.ReviewDecision;
@@ -43,6 +45,7 @@ public class ComplianceReviewService {
     private final ComplianceReviewRepository complianceReviewRepository;
     private final TransactionRepository transactionRepository;
     private final PolicyViolationRepository policyViolationRepository;
+    private final com.aegisx.document.repository.RequiredDocumentRepository requiredDocumentRepository;
     private final UserService userService;
     private final TransactionStateMachine stateMachine;
 
@@ -83,17 +86,54 @@ public class ComplianceReviewService {
 
     /**
      * Gets pending review items for a specific compliance officer.
+     *
+     * <p>The "already reviewed" filter runs in the database. It used to load every transaction in
+     * {@code COMPLIANCE_HOLD}, enrich each one (three extra queries per row) and then discard the
+     * reviewed ones in memory, which made the endpoint's cost scale with the whole queue rather than
+     * with the items it returns.</p>
      */
     @Transactional(readOnly = true)
     @PreAuthorize("hasRole('COMPLIANCE_OFFICER') or hasRole('ADMIN')")
     public List<ReviewQueueItemResponse> getMyReviewQueue(UUID reviewerId) {
-        List<Transaction> transactions = transactionRepository.findByStatusOrderByCreatedAtDesc(
+        List<Transaction> transactions = transactionRepository.findUnreviewedByStatus(
                 TransactionStatus.COMPLIANCE_HOLD);
-        
+
         return transactions.stream()
                 .map(this::buildReviewQueueItem)
-                .filter(item -> !item.isHasBeenReviewed()) // Only unreviewed items
                 .toList();
+    }
+
+    /**
+     * Computes the review-queue statistics without materialising the queue.
+     *
+     * <p>{@code highPriorityItems} is {@code priorityScore >= 80 || hasCriticalViolations}. With the
+     * current weights the score is capped at 30 (time) + 25 (amount) + 25 (severity) = 80, so the
+     * threshold is only reachable when all three maxima apply, and the severity maximum is CRITICAL —
+     * which already sets {@code hasCriticalViolations}. The two counts therefore coincide by
+     * construction, not by accident, and {@code ComplianceReviewServiceSummaryTest} pins the current
+     * behaviour. Any change to the scoring weights makes this equivalence untrue, and this method
+     * must then compute the score explicitly — the aggregate cannot silently inherit a new rule.</p>
+     */
+    @Transactional(readOnly = true)
+    @PreAuthorize("hasRole('COMPLIANCE_OFFICER') or hasRole('ADMIN')")
+    public QueueSummary summarizeQueue() {
+        int totalItems = (int) transactionRepository.countByStatus(TransactionStatus.COMPLIANCE_HOLD);
+        int criticalViolations = (int) policyViolationRepository
+                .countTransactionsWithSeverityInStatus(TransactionStatus.COMPLIANCE_HOLD,
+                        ViolationSeverity.CRITICAL);
+
+        Optional<java.time.Instant> oldestHold = transactionRepository
+                .findOldestUpdatedAtByStatus(TransactionStatus.COMPLIANCE_HOLD);
+        long oldestItemHours = oldestHold
+                .map(instant -> Math.max(0, ChronoUnit.HOURS.between(instant, java.time.Instant.now())))
+                .orElse(0L);
+
+        return QueueSummary.builder()
+                .totalItems(totalItems)
+                .highPriorityItems(criticalViolations)
+                .criticalViolations(criticalViolations)
+                .oldestItemHours(oldestItemHours)
+                .build();
     }
 
     /**
@@ -201,29 +241,45 @@ public class ComplianceReviewService {
      */
     private ReviewQueueItemResponse buildReviewQueueItem(Transaction transaction) {
         ReviewQueueItemResponse item = ReviewQueueItemResponse.fromTransaction(transaction);
-        
-        // Add timing information
-        LocalDateTime enteredHoldAt = getHoldEntryTime(transaction);
-        item.setEnteredHoldAt(enteredHoldAt);
-        
-        if (enteredHoldAt != null) {
-            long hoursInHold = ChronoUnit.HOURS.between(enteredHoldAt, LocalDateTime.now());
-            item.setTimeInHold(formatDuration(hoursInHold));
-            item.setPriorityScore(calculatePriorityScore(transaction, hoursInHold));
-        }
-        
+
+        // Evidence completeness comes from the evidence checklist, not from the transaction row.
+        // Without this the queue reported every item as incomplete, including fully evidenced ones.
+        var requiredDocuments = requiredDocumentRepository.findByTransactionId(transaction.getId());
+        int missingDocuments = (int) requiredDocuments.stream()
+                .filter(document -> !document.isFulfilled())
+                .count();
+        item.setMissingDocuments(missingDocuments);
+        item.setEvidenceComplete(!requiredDocuments.isEmpty() && missingDocuments == 0);
+
         // Add violation information
         List<PolicyViolation> violations = policyViolationRepository.findByTransactionId(transaction.getId());
         item.setViolations(violations.stream()
                 .map(ReviewQueueItemResponse.ViolationInfo::fromPolicyViolation)
                 .toList());
         item.setTotalViolations(violations.size());
-        
+
+        ViolationSeverity highestSeverity = null;
         if (!violations.isEmpty()) {
-            item.setHighestSeverity(violations.stream()
+            highestSeverity = violations.stream()
                     .map(PolicyViolation::getSeverity)
                     .max((s1, s2) -> Integer.compare(s1.getPriorityLevel(), s2.getPriorityLevel()))
-                    .orElse(null));
+                    .orElse(null);
+            item.setHighestSeverity(highestSeverity);
+        }
+
+        // Add timing information
+        LocalDateTime enteredHoldAt = getHoldEntryTime(transaction);
+        item.setEnteredHoldAt(enteredHoldAt);
+
+        if (enteredHoldAt != null) {
+            // Measured between two instants. This used to compare the UTC wall-clock LocalDateTime
+            // above with LocalDateTime.now(), which is the JVM's zone: on any host that is not UTC
+            // the age of an item (and therefore its priority score and the queue's oldest age) was
+            // shifted by the zone offset, so the same data classified differently per environment.
+            long hoursInHold = Math.max(0,
+                    ChronoUnit.HOURS.between(transaction.getUpdatedAt(), java.time.Instant.now()));
+            item.setTimeInHold(formatDuration(hoursInHold));
+            item.setPriorityScore(calculatePriorityScore(transaction, hoursInHold, highestSeverity));
         }
         
         // Add review status
@@ -250,25 +306,32 @@ public class ComplianceReviewService {
     /**
      * Calculates priority score based on various factors.
      */
-    private int calculatePriorityScore(Transaction transaction, long hoursInHold) {
+    private int calculatePriorityScore(Transaction transaction, long hoursInHold,
+                                       ViolationSeverity highestSeverity) {
         int score = 0;
-        
+
         // Time-based scoring
         if (hoursInHold > 48) score += 30;      // > 2 days
         else if (hoursInHold > 24) score += 20; // > 1 day
         else if (hoursInHold > 8) score += 10;  // > 8 hours
-        
+
         // Amount-based scoring
         if (transaction.getAmount().compareTo(new java.math.BigDecimal("10000")) > 0) {
             score += 25; // High-value transactions
         } else if (transaction.getAmount().compareTo(new java.math.BigDecimal("5000")) > 0) {
             score += 15; // Medium-value transactions
         }
-        
-        // Violation severity scoring (would be calculated from policy violations)
-        // This is a placeholder - in production, check actual violations
-        score += 20;
-        
+
+        // Violation severity scoring, from the actual persisted findings.
+        if (highestSeverity != null) {
+            score += switch (highestSeverity) {
+                case CRITICAL -> 25;
+                case HIGH -> 15;
+                case MEDIUM -> 8;
+                case LOW -> 3;
+            };
+        }
+
         return Math.min(score, 100); // Cap at 100
     }
 

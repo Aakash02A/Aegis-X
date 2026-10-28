@@ -3,6 +3,8 @@ package com.aegisx.audit.controller;
 import com.aegisx.audit.dto.AuditEventResponse;
 import com.aegisx.audit.dto.AuditTimelineResponse;
 import com.aegisx.audit.entity.AuditEvent;
+import com.aegisx.audit.entity.AuditEventType;
+import com.aegisx.audit.entity.AuditModule;
 import com.aegisx.audit.repository.AuditEventRepository;
 import com.aegisx.auth.entity.Role;
 import com.aegisx.auth.entity.User;
@@ -11,18 +13,30 @@ import com.aegisx.transaction.entity.Transaction;
 import com.aegisx.transaction.repository.TransactionRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import jakarta.persistence.criteria.Predicate;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeParseException;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -208,6 +222,12 @@ public class AuditController {
      */
     @GetMapping("/audit/search")
     public ResponseEntity<Page<AuditEventResponse>> searchAuditEvents(
+        @RequestParam(required = false) UUID transactionId,
+        @RequestParam(required = false) String eventType,
+        @RequestParam(required = false) String module,
+        @RequestParam(required = false) UUID actor,
+        @RequestParam(required = false) String startDate,
+        @RequestParam(required = false) String endDate,
         Authentication authentication,
         Pageable pageable
     ) {
@@ -223,14 +243,117 @@ public class AuditController {
             return ResponseEntity.notFound().build();
         }
 
-        // For now, return all audit events (TODO: implement comprehensive search with filters)
-        // This will be enhanced in future phases with advanced search/filtering capability
-        Page<AuditEvent> auditPage = auditEventRepository.findAll(pageable);
-        
+        AuditEventType parsedEventType = parseEventType(eventType);
+        AuditModule parsedModule = parseModule(module);
+        Instant rangeStart = parseDateBoundary(startDate, true, "startDate");
+        Instant rangeEnd = parseDateBoundary(endDate, false, "endDate");
+        if (rangeStart != null && rangeEnd != null && rangeStart.isAfter(rangeEnd)) {
+            throw new IllegalArgumentException("startDate must not be after endDate");
+        }
+
+        // An unsorted page would come back in whatever order the database chooses, which makes a
+        // paginated audit view unusable. Newest first is the operator's expectation.
+        Pageable effectivePageable = pageable.getSort().isSorted()
+            ? pageable
+            : PageRequest.of(pageable.getPageNumber(), pageable.getPageSize(),
+                Sort.by(Sort.Direction.DESC, "createdAt"));
+
+        Specification<AuditEvent> specification = buildSearchSpecification(
+            transactionId, parsedEventType, parsedModule, actor, rangeStart, rangeEnd);
+
+        Page<AuditEvent> auditPage = auditEventRepository.findAll(specification, effectivePageable);
         Page<AuditEventResponse> responseEvents = auditPage.map(this::toAuditEventResponse);
-        
+
         log.info("Returning {} audit events to user {}", responseEvents.getNumberOfElements(), authentication.getName());
         return ResponseEntity.ok(responseEvents);
+    }
+
+    /**
+     * Builds the filter the search endpoint documents. Every filter is optional; an absent filter
+     * contributes nothing rather than a wildcard comparison, so filtered and unfiltered searches
+     * use the same code path.
+     */
+    private Specification<AuditEvent> buildSearchSpecification(UUID transactionId,
+                                                               AuditEventType eventType,
+                                                               AuditModule module,
+                                                               UUID actorId,
+                                                               Instant rangeStart,
+                                                               Instant rangeEnd) {
+        return (root, query, criteriaBuilder) -> {
+            List<Predicate> predicates = new ArrayList<>();
+            if (transactionId != null) {
+                predicates.add(criteriaBuilder.equal(root.get("transaction").get("id"), transactionId));
+            }
+            if (eventType != null) {
+                predicates.add(criteriaBuilder.equal(root.get("eventType"), eventType));
+            }
+            if (module != null) {
+                predicates.add(criteriaBuilder.equal(root.get("module"), module));
+            }
+            if (actorId != null) {
+                predicates.add(criteriaBuilder.equal(root.get("actorId"), actorId));
+            }
+            if (rangeStart != null) {
+                predicates.add(criteriaBuilder.greaterThanOrEqualTo(root.get("createdAt"), rangeStart));
+            }
+            if (rangeEnd != null) {
+                predicates.add(criteriaBuilder.lessThanOrEqualTo(root.get("createdAt"), rangeEnd));
+            }
+            return criteriaBuilder.and(predicates.toArray(new Predicate[0]));
+        };
+    }
+
+    private AuditEventType parseEventType(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        try {
+            return AuditEventType.valueOf(value.trim().toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException ex) {
+            throw new IllegalArgumentException("Unknown eventType: " + value);
+        }
+    }
+
+    private AuditModule parseModule(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        try {
+            return AuditModule.valueOf(value.trim().toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException ex) {
+            throw new IllegalArgumentException("Unknown module: " + value);
+        }
+    }
+
+    /**
+     * Accepts an ISO-8601 instant (2026-10-20T10:00:00Z), an offset date-time, a local date-time
+     * (read as UTC, matching the database's UTC session), or a plain date. A date used as the end
+     * of a range includes that whole day.
+     */
+    private Instant parseDateBoundary(String value, boolean startOfRange, String parameterName) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        String trimmed = value.trim();
+        try {
+            return Instant.parse(trimmed);
+        } catch (DateTimeParseException ignored) {
+            // fall through to the other accepted shapes
+        }
+        try {
+            return LocalDateTime.parse(trimmed).toInstant(ZoneOffset.UTC);
+        } catch (DateTimeParseException ignored) {
+            // fall through to a plain date
+        }
+        try {
+            LocalDate date = LocalDate.parse(trimmed);
+            return startOfRange
+                ? date.atStartOfDay(ZoneOffset.UTC).toInstant()
+                : date.plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant().minusNanos(1);
+        } catch (DateTimeParseException ex) {
+            throw new IllegalArgumentException(
+                parameterName + " must be an ISO-8601 date or date-time, e.g. 2026-10-20 or 2026-10-20T10:00:00Z");
+        }
     }
 
     /**

@@ -1,0 +1,23 @@
+# Build output and logs are large and would be re-sent on every build.
+target/
+*.log
+*.log.*
+*.tmp
+*.gz
+logs/
+
+# Secrets and environment files
+.env
+.env.*
+
+# Local document storage must never be baked into an image.
+storage/
+storage-test/
+benchmark/results/
+
+# Developer tooling
+.idea/
+*.iml
+.vscode/
+.freebuff/
+HELP.md

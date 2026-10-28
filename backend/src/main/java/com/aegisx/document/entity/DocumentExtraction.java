@@ -65,7 +65,7 @@ public class DocumentExtraction extends BaseEntity {
      * }
      */
     @JdbcTypeCode(SqlTypes.JSON)
-    @Column(name = "extracted_data", columnDefinition = "jsonb")
+    @Column(name = "extracted_data")
     private JsonNode extractedData;
 
     /**

@@ -44,6 +44,7 @@ public class UserService {
                 .email(request.getEmail().toLowerCase().trim())
                 .passwordHash(passwordEncoder.encode(request.getPassword()))
                 .role(com.aegisx.auth.entity.Role.MERCHANT)  // Default role - cannot be escalated via registration
+                .phone(normalizePhone(request.getPhone()))
                 .build();
 
         User savedUser = userRepository.save(user);
@@ -53,8 +54,21 @@ public class UserService {
                 .fullName(savedUser.getFullName())
                 .email(savedUser.getEmail())
                 .role(savedUser.getRole())
+                .phone(savedUser.getPhone())
                 .createdAt(savedUser.getCreatedAt())
                 .build();
+    }
+
+    /**
+     * Reduces a human-entered number to the digits-only international form the WhatsApp Cloud API
+     * takes. Returns null for a blank value so "no contact number" stays distinguishable from "".
+     */
+    private String normalizePhone(String phone) {
+        if (phone == null || phone.isBlank()) {
+            return null;
+        }
+        String digits = phone.replaceAll("[^0-9]", "");
+        return digits.isEmpty() ? null : digits;
     }
 
     @Transactional(readOnly = true)
@@ -94,6 +108,7 @@ public class UserService {
                 .fullName(user.getFullName())
                 .email(user.getEmail())
                 .role(user.getRole())
+                .phone(user.getPhone())
                 .createdAt(user.getCreatedAt())
                 .build();
     }

@@ -1,8 +1,11 @@
 package com.aegisx.review.controller;
 
+import com.aegisx.auth.entity.User;
+import com.aegisx.auth.repository.UserRepository;
 import com.aegisx.common.response.ApiResponse;
 import com.aegisx.review.dto.ComplianceReviewRequest;
 import com.aegisx.review.dto.ComplianceReviewResponse;
+import com.aegisx.review.dto.QueueSummary;
 import com.aegisx.review.dto.ReviewQueueItemResponse;
 import com.aegisx.review.entity.ComplianceReview;
 import com.aegisx.review.service.ComplianceReviewService;
@@ -18,6 +21,8 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
@@ -37,6 +42,7 @@ import java.util.UUID;
 public class ComplianceReviewController {
 
     private final ComplianceReviewService complianceReviewService;
+    private final UserRepository userRepository;
 
     @Operation(summary = "Get review queue", 
                description = "Retrieves transactions pending compliance review ordered by priority")
@@ -48,9 +54,14 @@ public class ComplianceReviewController {
             @Parameter(description = "Optional queue filter: COMPLIANCE_HOLD, OCR_FAILED, AI_FAILED, PAYMENT_FAILED, SETTLEMENT_FAILED, HIGH_RISK, PENDING_REVIEW")
             @RequestParam(required = false) String filter) {
         
-        log.debug("Getting review queue - page: {}, size: {}", page, size);
-        
-        Pageable pageable = PageRequest.of(page, size);
+        // This controller builds its own PageRequest, so the global pageable cap does not apply.
+        // Clamp here instead: an unbounded size would let a caller ask the server to materialise the
+        // whole queue in one response.
+        int safePage = Math.max(page, 0);
+        int safeSize = Math.min(Math.max(size, 1), 100);
+        log.debug("Getting review queue - page: {}, size: {}", safePage, safeSize);
+
+        Pageable pageable = PageRequest.of(safePage, safeSize);
         Page<ReviewQueueItemResponse> queue = complianceReviewService.getReviewQueue(pageable, filter);
         
         return ResponseEntity.ok(ApiResponse.success(queue, "Review queue retrieved successfully"));
@@ -157,10 +168,19 @@ public class ComplianceReviewController {
     @Operation(summary = "Get reviewer statistics",
                description = "Retrieves performance statistics for a compliance officer")
     @GetMapping("/stats/{reviewerId}")
-    @PreAuthorize("hasRole('ADMIN') or (hasRole('COMPLIANCE_OFFICER') and #reviewerId == authentication.principal.id)")
+    @PreAuthorize("hasRole('ADMIN') or hasRole('COMPLIANCE_OFFICER')")
     public ResponseEntity<ApiResponse<ComplianceReviewService.ReviewerStats>> getReviewerStats(
             @Parameter(description = "Reviewer ID") @PathVariable UUID reviewerId,
-            @Parameter(description = "Days to look back") @RequestParam(defaultValue = "30") int days) {
+            @Parameter(description = "Days to look back") @RequestParam(defaultValue = "30") int days,
+            Authentication authentication) {
+        
+        UUID currentUserId = getUserIdFromAuthentication(authentication);
+        if (!currentUserId.equals(reviewerId) && !hasRole(authentication, "ROLE_ADMIN")) {
+            // A compliance officer may read their own statistics only. 404 rather than 403 keeps the
+            // endpoint from confirming that another reviewer exists.
+            log.warn("Reviewer {} attempted to read statistics for reviewer {}", currentUserId, reviewerId);
+            return ResponseEntity.notFound().build();
+        }
         
         log.debug("Getting reviewer statistics for: {}, days: {}", reviewerId, days);
         
@@ -215,9 +235,11 @@ public class ComplianceReviewController {
             return ResponseEntity.ok(ApiResponse.success(response, "Transaction approved successfully"));
             
         } catch (Exception e) {
+            // The client gets a fixed message: an arbitrary exception can quote SQL, file paths or
+            // provider payloads, which is the same leak the global handler was fixed for.
             log.error("Error in quick approval", e);
             return ResponseEntity.badRequest()
-                    .body(ApiResponse.error("Failed to approve transaction: " + e.getMessage()));
+                    .body(ApiResponse.error("Failed to approve transaction"));
         }
     }
 
@@ -228,46 +250,39 @@ public class ComplianceReviewController {
     public ResponseEntity<ApiResponse<QueueSummary>> getQueueSummary() {
         
         log.debug("Getting queue summary");
-        
-        Page<ReviewQueueItemResponse> queue = complianceReviewService.getReviewQueue(
-                PageRequest.of(0, Integer.MAX_VALUE));
-        
-        List<ReviewQueueItemResponse> items = queue.getContent();
-        
-        QueueSummary summary = QueueSummary.builder()
-                .totalItems(items.size())
-                .highPriorityItems((int) items.stream().filter(ReviewQueueItemResponse::isHighPriority).count())
-                .criticalViolations((int) items.stream().filter(ReviewQueueItemResponse::hasCriticalViolations).count())
-                .oldestItemHours(items.stream()
-                        .filter(item -> item.getEnteredHoldAt() != null)
-                        .mapToLong(item -> java.time.temporal.ChronoUnit.HOURS.between(
-                                item.getEnteredHoldAt(), LocalDateTime.now()))
-                        .max().orElse(0))
-                .build();
-        
+
+        // Aggregated in the database. The previous implementation asked for
+        // PageRequest.of(0, Integer.MAX_VALUE) and counted in Java, so the endpoint's cost grew with
+        // the queue and could be used to force a full materialisation.
+        QueueSummary summary = complianceReviewService.summarizeQueue();
+
         return ResponseEntity.ok(ApiResponse.success(summary, "Queue summary retrieved successfully"));
     }
 
     /**
-     * Extracts user ID from Spring Security authentication.
+     * Resolves the authenticated principal to the persisted user id.
+     *
+     * <p>The review trail is only audit-grade if the reviewer it names is the person the security
+     * layer authenticated. This used to return a fixed placeholder UUID, which attributed every
+     * decision to the same non-existent account.</p>
      */
     private UUID getUserIdFromAuthentication(Authentication authentication) {
-        // This is a placeholder - in production, extract from JWT or UserDetails
-        // For now, return a test UUID
-        return UUID.fromString("550e8400-e29b-41d4-a716-446655440000");
+        if (authentication == null || !authentication.isAuthenticated()) {
+            throw new UsernameNotFoundException("No authenticated user");
+        }
+        return userRepository.findByEmail(authentication.getName())
+                .map(User::getId)
+                .orElseThrow(() -> new UsernameNotFoundException(
+                        "User not found: " + authentication.getName()));
+    }
+
+    private boolean hasRole(Authentication authentication, String role) {
+        return authentication.getAuthorities().stream()
+                .map(GrantedAuthority::getAuthority)
+                .anyMatch(role::equals);
     }
 
     /**
      * Queue summary statistics.
      */
-    @lombok.Data
-    @lombok.Builder
-    @lombok.NoArgsConstructor
-    @lombok.AllArgsConstructor
-    public static class QueueSummary {
-        private int totalItems;
-        private int highPriorityItems;
-        private int criticalViolations;
-        private long oldestItemHours;
-    }
 }

@@ -5,7 +5,6 @@ import com.aegisx.common.entity.BaseEntity;
 import com.aegisx.transaction.entity.Transaction;
 import com.aegisx.transaction.entity.TransactionStatus;
 import com.fasterxml.jackson.databind.JsonNode;
-import io.hypersistence.utils.hibernate.type.json.JsonType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -19,7 +18,8 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
-import org.hibernate.annotations.Type;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.time.LocalDateTime;
 
@@ -55,8 +55,18 @@ public class ComplianceReview extends BaseEntity {
     @Column(name = "justification", nullable = false, columnDefinition = "TEXT")
     private String justification;
 
-    @Type(JsonType.class)
-    @Column(name = "review_context", columnDefinition = "jsonb")
+    /**
+     * Structured review context.
+     *
+     * Mapped with Hibernate's own JSON type code and no {@code columnDefinition}: the
+     * dialect then renders {@code jsonb} on PostgreSQL and {@code json} on MySQL, so one
+     * entity mapping validates against both schemas. Pinning {@code columnDefinition}
+     * (the previous {@code "JSONB"}) makes Hibernate expect PostgreSQL's type name on
+     * MySQL and fails validation; hypersistence's {@code JsonType} instead reports
+     * {@code SqlTypes.OTHER}, which MySQL has no column type for.
+     */
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "review_context")
     private JsonNode reviewContext;
 
     @Column(name = "reviewed_at", nullable = false)

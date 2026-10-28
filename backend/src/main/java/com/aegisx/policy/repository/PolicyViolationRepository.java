@@ -10,7 +10,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
@@ -63,8 +63,8 @@ public interface PolicyViolationRepository extends JpaRepository<PolicyViolation
            "AND pv.createdAt BETWEEN :startDate AND :endDate " +
            "ORDER BY pv.createdAt DESC")
     List<PolicyViolation> findBySeverityAndDateRange(@Param("severity") ViolationSeverity severity,
-                                                     @Param("startDate") LocalDateTime startDate,
-                                                     @Param("endDate") LocalDateTime endDate);
+                                                     @Param("startDate") Instant startDate,
+                                                     @Param("endDate") Instant endDate);
 
     /**
      * Finds violations by severity with pagination.
@@ -109,4 +109,17 @@ public interface PolicyViolationRepository extends JpaRepository<PolicyViolation
            "FROM PolicyViolation pv WHERE pv.policyEvaluation.transaction.id = :transactionId " +
            "AND pv.severity = 'CRITICAL'")
     boolean hasCriticalViolations(@Param("transactionId") UUID transactionId);
+
+    /**
+     * Counts distinct transactions in a status that carry a violation of the given severity.
+     *
+     * <p>Used by the queue summary, which needs the number of held transactions with a critical
+     * finding without loading the violations (or the queue) into memory. {@code COUNT(DISTINCT)} is
+     * required because one transaction can have several violations of the same severity.</p>
+     */
+    @Query("SELECT COUNT(DISTINCT pv.policyEvaluation.transaction.id) FROM PolicyViolation pv " +
+           "WHERE pv.policyEvaluation.transaction.status = :status AND pv.severity = :severity")
+    long countTransactionsWithSeverityInStatus(
+            @Param("status") com.aegisx.transaction.entity.TransactionStatus status,
+            @Param("severity") ViolationSeverity severity);
 }

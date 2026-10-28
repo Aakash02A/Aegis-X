@@ -44,6 +44,9 @@ public class WhatsAppClient {
     
     @Value("${aegisx.whatsapp.api-endpoint}")
     private String apiEndpoint;
+
+    @Value("${aegisx.whatsapp.template-language:en_US}")
+    private String templateLanguage;
     
     /**
      * Send a WhatsApp template message.
@@ -65,9 +68,25 @@ public class WhatsAppClient {
             
             ObjectNode template = objectMapper.createObjectNode();
             template.put("name", templateName);
+            ObjectNode language = objectMapper.createObjectNode();
+            language.put("code", templateLanguage);
+            template.set("language", language);
             
             if (templateParams != null) {
-                template.set("parameters", templateParams);
+                JsonNode bodyParameters = templateParams.path("body");
+                if (bodyParameters.isArray() || bodyParameters.isTextual()) {
+                    ObjectNode body = objectMapper.createObjectNode();
+                    body.put("type", "body");
+                    if (bodyParameters.isArray()) {
+                        body.set("parameters", bodyParameters);
+                    } else {
+                        ObjectNode parameter = objectMapper.createObjectNode();
+                        parameter.put("type", "text");
+                        parameter.put("text", bodyParameters.asText());
+                        body.set("parameters", objectMapper.createArrayNode().add(parameter));
+                    }
+                    template.set("components", objectMapper.createArrayNode().add(body));
+                }
             }
             
             payload.set("template", template);

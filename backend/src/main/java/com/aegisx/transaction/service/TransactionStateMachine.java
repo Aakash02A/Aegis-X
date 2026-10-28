@@ -178,7 +178,9 @@ public class TransactionStateMachine {
             transaction.markAsTerminal();
         }
 
-        // TODO Phase 12: Publish audit event (actor, reason, currentStatus, targetStatus, transaction.getId())
+        // The audit event is published by the caller (TransactionService.transitionStatus) in the
+        // same transaction as the status change. This method deliberately has no persistence or
+        // audit dependency of its own, so callers that bypass that service must record their event.
     }
 
     /**

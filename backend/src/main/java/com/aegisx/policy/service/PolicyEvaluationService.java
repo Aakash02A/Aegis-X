@@ -7,6 +7,8 @@ import com.aegisx.document.repository.DocumentExtractionRepository;
 import com.aegisx.document.repository.RequiredDocumentRepository;
 import com.aegisx.policy.dto.PolicyEvaluationResponse;
 import com.aegisx.policy.entity.PolicyEvaluation;
+import com.aegisx.policy.entity.PolicyVerdict;
+import com.aegisx.policy.entity.ViolationSeverity;
 import com.aegisx.policy.repository.PolicyEvaluationRepository;
 import com.aegisx.policy.rules.RuleContext;
 import com.aegisx.transaction.entity.Transaction;
@@ -19,7 +21,9 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Map;
 import java.util.UUID;
+import java.time.LocalDateTime;
 import java.util.stream.Collectors;
 
 /**
@@ -50,6 +54,24 @@ public class PolicyEvaluationService {
     private final AIAnalysisRepository aiAnalysisRepository;
     private final ObjectMapper objectMapper;
     private final TransactionService transactionService;
+    private final PolicyViolationService policyViolationService;
+
+    /**
+     * Stable rule identifiers published in the policy-violation analytics API.
+     * The identifier is what the regulator-facing report groups on, so it must not
+     * change when a rule's display name is reworded.
+     */
+    private static final Map<String, RuleMetadata> RULE_METADATA = Map.of(
+        "DOCUMENT_COMPLETENESS", new RuleMetadata("PR-01", ViolationSeverity.CRITICAL),
+        "BENEFICIARY_MATCH",    new RuleMetadata("PR-02", ViolationSeverity.CRITICAL),
+        "AMOUNT_CONSISTENCY",   new RuleMetadata("PR-03", ViolationSeverity.CRITICAL),
+        "CURRENCY_CONSISTENCY", new RuleMetadata("PR-04", ViolationSeverity.HIGH),
+        "PURPOSE_CODE",         new RuleMetadata("PR-05", ViolationSeverity.HIGH),
+        "OCR_CONFIDENCE",       new RuleMetadata("PR-06", ViolationSeverity.HIGH),
+        "AI_CONFIDENCE",        new RuleMetadata("PR-07", ViolationSeverity.MEDIUM)
+    );
+
+    private record RuleMetadata(String ruleId, ViolationSeverity severity) { }
     
     /**
      * Evaluate policy for a transaction.
@@ -107,6 +129,15 @@ public class PolicyEvaluationService {
             PolicyEvaluation evaluation = PolicyEvaluation.builder()
                 .transaction(transaction)
                 .aiAnalysis(aiAnalysis)
+                .verdict(PolicyVerdict.fromLegacyDecision(result.getFinalDecision()))
+                .totalRulesCount(result.getRuleResults().size())
+                .passedRulesCount((int) result.getRuleResults().stream()
+                    .filter(ruleResult -> ruleResult.getPassed())
+                    .count())
+                .failedRulesCount((int) result.getRuleResults().stream()
+                    .filter(ruleResult -> !ruleResult.getPassed())
+                    .count())
+                .evaluatedAt(LocalDateTime.now())
                 .finalDecision(result.getFinalDecision())
                 .overallScore(aiAnalysis.getConfidenceScore())
                 .evaluationJson(evaluationJson)
@@ -114,6 +145,26 @@ public class PolicyEvaluationService {
                 .build();
             
             PolicyEvaluation saved = policyEvaluationRepository.save(evaluation);
+
+            // Persist one violation row per failed rule. Without this the evaluation JSON is the only
+            // record of a failure, so the violation analytics, severity queues and regulator report
+            // have nothing to read. Writing them here keeps evaluation and violations atomic.
+            result.getRuleResults().stream()
+                .filter(ruleResult -> !ruleResult.getPassed())
+                .forEach(ruleResult -> {
+                    RuleMetadata metadata = RULE_METADATA.get(ruleResult.getRuleName());
+                    if (metadata == null) {
+                        log.warn("No violation metadata registered for rule {}; failing closed and recording it as PR-07",
+                            ruleResult.getRuleName());
+                        metadata = new RuleMetadata("PR-07", ViolationSeverity.MEDIUM);
+                    }
+                    var contextNode = objectMapper.createObjectNode();
+                    contextNode.put("rule", ruleResult.getRuleName());
+                    contextNode.put("reason", ruleResult.getReason());
+                    contextNode.put("evidence", ruleResult.getEvidence());
+                    policyViolationService.createViolation(saved, metadata.ruleId(),
+                        ruleResult.getRuleName(), metadata.severity(), ruleResult.getReason(), contextNode);
+                });
 
             TransactionStatus nextStatus = switch (result.getFinalDecision()) {
                 case "APPROVED" -> TransactionStatus.APPROVED;

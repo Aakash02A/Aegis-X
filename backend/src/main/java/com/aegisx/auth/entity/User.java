@@ -33,4 +33,12 @@ public class User extends BaseEntity {
     @Enumerated(EnumType.STRING)
     @Column(name = "role", nullable = false, length = 50)
     private Role role;
+
+    /**
+     * WhatsApp contact number in international format without the leading '+', e.g. 919820011234.
+     * Nullable: an account can exist without a messaging channel, in which case notification
+     * services skip the send instead of targeting a placeholder.
+     */
+    @Column(name = "phone", length = 32)
+    private String phone;
 }

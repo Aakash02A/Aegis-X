@@ -2,7 +2,6 @@ package com.aegisx.policy.entity;
 
 import com.aegisx.common.entity.BaseEntity;
 import com.fasterxml.jackson.databind.JsonNode;
-import io.hypersistence.utils.hibernate.type.json.JsonType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -16,7 +15,8 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
-import org.hibernate.annotations.Type;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 /**
  * Policy Violation Entity - tracks detailed rule failures during policy evaluation.
@@ -48,8 +48,8 @@ public class PolicyViolation extends BaseEntity {
     @Column(name = "description", nullable = false, columnDefinition = "TEXT")
     private String description;
 
-    @Type(JsonType.class)
-    @Column(name = "rule_context", columnDefinition = "jsonb")
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "rule_context")
     private JsonNode ruleContext;
 
     /**
