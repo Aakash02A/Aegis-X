@@ -263,9 +263,16 @@ class IntegrityReconciliationWorkflowTest extends IntegrityTestSupport {
         List<ReconciliationFinding> recoveredFindings =
                 findingRepository.findByRunIdOrderByCreatedAtAsc(recovered.runId());
         assertThat(recovered.findingsCount())
-                .as("a disagreement that was only unconfirmed must clear once provider state is re-read; reported=%s",
+                .as("a disagreement that was only unconfirmed must clear once provider state is re-read; "
+                                + "reported=%s observations=%s",
                         recoveredFindings.stream()
                                 .map(finding -> finding.getFindingType() + ": " + finding.getSummary())
+                                .toList(),
+                        observationRepository.findAllByWorkspaceIdOrderByObservedAtDesc(workspace.getId()).stream()
+                                .filter(observation -> observation.getSource().isProviderAuthoritative())
+                                .map(observation -> observation.getSource() + "/rank=" + observation.getEvidenceRank()
+                                        + " " + observation.getObservedState() + " @" + observation.getObservedAt()
+                                        + (observation.isSimulated() ? " (simulated)" : ""))
                                 .toList())
                 .isZero();
     }

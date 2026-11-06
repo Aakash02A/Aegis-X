@@ -26,6 +26,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
 import java.util.UUID;
 
@@ -70,10 +72,30 @@ class ComplianceReviewServiceSummaryTest {
         addCriticalViolation(firstCritical, "CRITICAL-2");
         addCriticalViolation(secondCritical, "CRITICAL-3");
 
-        Instant oldestUpdatedAt = Instant.now().minus(52, ChronoUnit.HOURS);
+        // The fixture instant is deliberately half an hour past a whole hour. `oldestItemHours`
+        // truncates, so a value that lands exactly on an hour boundary makes the expected number
+        // depend on how many microseconds elapse between writing the row and calling the service --
+        // it read 52 on one run and 51 on the next. Half an hour of headroom removes that flake
+        // without weakening the check: any zone misinterpretation (a JVM offset, a UTC/local mix in
+        // the driver) shifts the age by at least an hour and still fails this assertion.
+        Instant oldestUpdatedAt = Instant.now().minus(52, ChronoUnit.HOURS).minus(30, ChronoUnit.MINUTES);
+        // Bound as an offset date-time rather than a java.sql.Timestamp: a Timestamp carries no
+        // zone, so binding it into a TIMESTAMP WITH TIME ZONE column leaves the driver to guess one.
         jdbcTemplate.update("UPDATE transactions SET updated_at = ? WHERE id = ?",
-                java.sql.Timestamp.from(oldestUpdatedAt), oldest.getId());
+                OffsetDateTime.ofInstant(oldestUpdatedAt, ZoneOffset.UTC), oldest.getId());
         entityManager.clear();
+
+        Instant persisted = jdbcTemplate.queryForObject(
+                "SELECT updated_at FROM transactions WHERE id = ?",
+                (rs, rowNum) -> rs.getObject(1, OffsetDateTime.class).toInstant(),
+                oldest.getId());
+        // The column keeps microseconds and Instant.now() carries nanoseconds, so the driver rounds
+        // the fixture value. One microsecond of slack is the storage precision, not tolerance for a
+        // defect: a zone reinterpretation moves the instant by at least an hour. This rounding is
+        // also why a 52h-exact fixture could read back as 51 hours.
+        assertThat(Math.abs(ChronoUnit.MICROS.between(persisted, oldestUpdatedAt)))
+                .as("the fixture stored the instant it intended, with no zone reinterpretation")
+                .isLessThanOrEqualTo(1L);
 
         QueueSummary summary = service.summarizeQueue();
 

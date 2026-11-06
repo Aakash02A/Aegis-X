@@ -16,9 +16,9 @@ cp .env.example .env
 
 | Variable | Default / Example | Purpose |
 | :--- | :--- | :--- |
-| `SERVER_PORT` | `8080` | Port for the Spring Boot backend REST API. |
-| `SPRING_PROFILES_ACTIVE` | `dev` (use `prod` for production) | Active Spring profile. `prod` enforces strict DDL validation (`ddl-auto=validate`). |
-| `DB_URL` | `jdbc:mysql://localhost:3308/aegisx_db?...` | Full JDBC connection string with UTC session parameters. |
+| `PORT` | `8080` | Port for the Spring Boot backend REST API. Unset means 8080; do **not** set `PORT=0`, which makes Spring bind a random free port. |
+| `SPRING_PROFILES_ACTIVE` | `dev` (use `prod` for staging/production) | Active Spring profile. `prod` enforces strict DDL validation (`ddl-auto=validate`) and refuses to start without a strong `JWT_SECRET` and explicit CORS origins. |
+| `DB_URL` | `jdbc:mysql://localhost:3307/aegisx?...` | Full JDBC connection string with the UTC session parameters. 3307 is the compose database; a host install uses 3306. |
 | `DB_USERNAME` | `root` | Database user account. |
 | `DB_PASSWORD` | `rootpassword` | Database password. |
 | `CORS_ALLOWED_ORIGINS` | `http://localhost:3000,http://127.0.0.1:3000` | Comma-separated allowed frontend origins. |
@@ -29,7 +29,7 @@ cp .env.example .env
 | Variable | Description |
 | :--- | :--- |
 | `JWT_SECRET` | Mandatory base64-encoded secret key (minimum 256-bit / 32 bytes; 48 bytes recommended). |
-| `JWT_EXPIRATION_MS` | Token lifespan in milliseconds (default: `86400000` = 24 hours). |
+| `JWT_EXPIRATION` | Token lifespan in milliseconds (default: `86400000` = 24 hours). |
 
 > [!IMPORTANT]
 > To generate a secure production JWT secret, execute in bash or terminal:
@@ -116,7 +116,9 @@ curl -s http://localhost:8080/actuator/health
 
 ## 4. Production Deployment Checklist
 
-Before deploying to staging or production:
+Before deploying to staging or production, work through
+[STAGING_DEPLOYMENT_CHECKLIST.md](STAGING_DEPLOYMENT_CHECKLIST.md), which gives the exact steps and the
+verification for each one. The short version:
 
 - [ ] **Enforce `prod` profile:** Ensure `SPRING_PROFILES_ACTIVE=prod` so Flyway validates migrations without modifying tables (`ddl-auto=validate`).
 - [ ] **Generate unique secrets:** Replace all default values in `.env` with cryptographically random secrets.
