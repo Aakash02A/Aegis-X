@@ -251,6 +251,14 @@ public class TestPaymentProviderAdapter implements PaymentProviderAdapter {
         transfersEnabled.set(true);
     }
 
+    /**
+     * Restores fixture controls without deleting provider records referenced by persisted rows.
+     */
+    public void resetControls() {
+        reachable.set(true);
+        transfersEnabled.set(true);
+    }
+
     /** Establishes a provider-confirmed order. Returns the provider order id. */
     public String registerOrder(long amountMinor, String currency, OrderState state) {
         String id = nextId("order_SIM");

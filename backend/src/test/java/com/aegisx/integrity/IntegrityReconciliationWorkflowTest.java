@@ -278,6 +278,20 @@ class IntegrityReconciliationWorkflowTest extends IntegrityTestSupport {
     }
 
     @Test
+    @DisplayName("resetting simulated provider controls preserves provider truth for persisted rows")
+    void resetPreservesProviderTruthForPersistedOrders() {
+        Workspace workspace = newWorkspace();
+        PaymentOrder order = newOrderWithProviderOrder(workspace, 20_000);
+        simulationService.simulateCapturedPayment(workspace.getId(), order.getId(), false);
+
+        simulationService.reset(workspace.getId());
+
+        assertThat(simulatedProvider.fetchOrder(order.getProviderOrderId()).value().state())
+                .isEqualTo(com.aegisx.integrity.domain.OrderState.PAID);
+        assertThat(orderRepository.findById(order.getId())).isPresent();
+    }
+
+    @Test
     @DisplayName("the audit trail records the reconciliation run and the human decisions")
     void auditTrailCoversRunAndDecisions() {
         Workspace workspace = newWorkspace();

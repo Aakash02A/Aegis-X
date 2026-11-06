@@ -1,5 +1,7 @@
 package com.aegisx.integrity.domain;
 
+import java.time.Duration;
+
 /**
  * Evidence hierarchy. Higher rank outranks lower rank when two observations disagree.
  *
@@ -8,13 +10,13 @@ package com.aegisx.integrity.domain;
  */
 public enum EvidenceSource {
     /** Rank 4: fetched live from the provider's own resource endpoint. */
-    PROVIDER_API_CONFIRMED(4),
+    PROVIDER_API_CONFIRMED(4, Duration.ofMillis(1)),
     /** Rank 3: a signature-verified webhook observation. */
-    PROVIDER_WEBHOOK(3),
+    PROVIDER_WEBHOOK(3, Duration.ofSeconds(1)),
     /** Rank 2: Aegis-X's own persisted record. */
-    INTERNAL_RECORD(2),
+    INTERNAL_RECORD(2, Duration.ofMillis(1)),
     /** Rank 1: derived by Aegis-X (for example "stale because older than the threshold"). */
-    INFERRED(1),
+    INFERRED(1, Duration.ofMillis(1)),
     /**
      * Rank 0: evidence that is synthetic by construction.
      *
@@ -26,16 +28,25 @@ public enum EvidenceSource {
      * deliberately weaker than a provider statement, such as a benchmark fixture or an injected
      * projection.</p>
      */
-    SIMULATED(0);
+    SIMULATED(0, Duration.ofMillis(1));
 
     private final int rank;
+    private final Duration timePrecision;
 
-    EvidenceSource(int rank) {
+    EvidenceSource(int rank, Duration timePrecision) {
         this.rank = rank;
+        this.timePrecision = timePrecision;
     }
 
     public int rank() {
         return rank;
+    }
+
+    /**
+     * Smallest timestamp separation at which this source supports an ordering claim.
+     */
+    public Duration timePrecision() {
+        return timePrecision;
     }
 
     /** True when this source represents an actual provider (live API or verified webhook). */

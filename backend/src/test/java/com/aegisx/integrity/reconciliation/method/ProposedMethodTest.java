@@ -83,7 +83,7 @@ class ProposedMethodTest {
     }
 
     @Test
-    @DisplayName("observations tied on rank and timestamp produce the same verdict in either list order")
+    @DisplayName("observations tied on rank and timestamp do not imply a lifecycle sequence")
     void equalTimestampTiesAreDeterministic() {
         // Provider webhook observations carry the event's created_at, which has second precision.
         // Two events for one payment can therefore share a timestamp, and the verdict must not depend
@@ -117,8 +117,34 @@ class ProposedMethodTest {
                 .as("findings must be emitted in a stable order, not in hash or row order")
                 .containsExactlyElementsOf(reversed.stream().map(FindingCandidate::type).toList());
         assertThat(detected(forward))
-                .as("the contradiction itself must still be detected")
-                .contains(FindingType.CONFLICTING_OBSERVATIONS);
+                .as("equal timestamps cannot establish which observation came later")
+                .doesNotContain(FindingType.CONFLICTING_OBSERVATIONS);
+    }
+
+    @Test
+    @DisplayName("source timestamps closer than their precision do not imply a lifecycle sequence")
+    void observationsWithinSourcePrecisionDoNotInferSequence() {
+        EvidencePack.ObservationView paidWebhook = new EvidencePack.ObservationView(
+                ORDER, ResourceType.ORDER, "order_test", EvidenceSource.PROVIDER_WEBHOOK,
+                EvidenceSource.PROVIDER_WEBHOOK.rank(), OrderState.PAID.name(), 100_000L, "INR", NOW, false);
+        EvidencePack.ObservationView createdApiRead = new EvidencePack.ObservationView(
+                ORDER, ResourceType.ORDER, "order_test", EvidenceSource.PROVIDER_API_CONFIRMED,
+                EvidenceSource.PROVIDER_API_CONFIRMED.rank(), OrderState.CREATED.name(), 100_000L, "INR",
+                NOW.plusMillis(250), false);
+
+        List<FindingCandidate> findings = method.evaluate(pack(
+                List.of(order(OrderState.PAID)),
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(paidWebhook, createdApiRead),
+                List.of(),
+                true,
+                true));
+
+        assertThat(detected(findings))
+                .as("a second-precision webhook and nearby API read cannot establish ordering")
+                .doesNotContain(FindingType.CONFLICTING_OBSERVATIONS);
     }
 
     @Test

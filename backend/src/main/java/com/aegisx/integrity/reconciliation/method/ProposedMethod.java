@@ -17,6 +17,7 @@ import com.aegisx.integrity.reconciliation.model.MethodSupport;
 import org.springframework.stereotype.Component;
 
 import java.time.Instant;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -195,7 +196,10 @@ public class ProposedMethod extends BaselineTwoMethod {
             }
             EvidencePack.ObservationView previous = ordered.get(ordered.size() - 2);
             EvidencePack.ObservationView current = ordered.get(ordered.size() - 1);
+            Duration separation = Duration.between(previous.observedAt(), current.observedAt());
             if (current.state().equals(previous.state())
+                    || separation.compareTo(previous.source().timePrecision()) < 0
+                    || separation.compareTo(current.source().timePrecision()) < 0
                     || isLegalSuccession(previous.resourceType(), previous.state(), current.state())
                     || !reported.add(key)) {
                 return;
