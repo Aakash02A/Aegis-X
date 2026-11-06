@@ -55,8 +55,8 @@ class PaymentCapturedHandlerTest {
     }
 
     @Test
-    @DisplayName("A replay for a transaction already advanced is recorded without another transition")
-    void capturedPaymentForAdvancedTransactionIsIdempotentlyProcessed() {
+    @DisplayName("A replay for a transaction already advanced is recorded as a conflict and not applied")
+    void capturedPaymentForAdvancedTransactionIsFlaggedForReview() {
         Transaction transaction = createTransaction(TransactionStatus.EVIDENCE_PENDING);
         String eventId = "evt_replay_" + UUID.randomUUID();
 
@@ -65,7 +65,7 @@ class PaymentCapturedHandlerTest {
         assertThat(transactionRepository.findById(transaction.getId()).orElseThrow().getStatus())
                 .isEqualTo(TransactionStatus.EVIDENCE_PENDING);
         assertThat(webhookEventRepository.findByEventId(eventId).orElseThrow().getProcessingStatus())
-                .isEqualTo(WebhookProcessingStatus.PROCESSED);
+                .isEqualTo(WebhookProcessingStatus.FAILED);
         assertThat(requiredDocumentRepository.findByTransactionId(transaction.getId())).isEmpty();
     }
 
@@ -111,6 +111,37 @@ class PaymentCapturedHandlerTest {
         .isEqualTo(TransactionStatus.PAYMENT_FAILED);
         assertThat(webhookEventRepository.findByEventId(eventId).orElseThrow().getProcessingStatus())
         .isEqualTo(WebhookProcessingStatus.FAILED);
+    }
+
+    @Test
+    @DisplayName("a captured payment with the wrong order id is rejected and flagged for review")
+    void wrongOrderIdIsRejected() {
+        Transaction transaction = createTransaction(TransactionStatus.CREATED);
+        String eventId = "evt_wrong_order_" + UUID.randomUUID();
+
+        dispatcher.dispatch(capturedPayload("order_wrong_" + UUID.randomUUID(), transaction.getReferenceNumber()),
+                eventId, "WHK-TEST08");
+
+        assertThat(transactionRepository.findById(transaction.getId()).orElseThrow().getStatus())
+                .isEqualTo(TransactionStatus.CREATED);
+        assertThat(webhookEventRepository.findByEventId(eventId).orElseThrow().getProcessingStatus())
+                .isEqualTo(WebhookProcessingStatus.FAILED);
+    }
+
+    @Test
+    @DisplayName("a duplicate payment capture with a new event id is rejected and not reapplied")
+    void duplicateCaptureDeliveryIsRejected() {
+        Transaction transaction = createTransaction(TransactionStatus.CREATED);
+        String firstEventId = "evt_duplicate_first_" + UUID.randomUUID();
+        String secondEventId = "evt_duplicate_second_" + UUID.randomUUID();
+
+        dispatcher.dispatch(capturedPayload(transaction), firstEventId, "WHK-TEST09");
+        dispatcher.dispatch(capturedPayload(transaction), secondEventId, "WHK-TEST10");
+
+        assertThat(transactionRepository.findById(transaction.getId()).orElseThrow().getStatus())
+                .isEqualTo(TransactionStatus.EVIDENCE_PENDING);
+        assertThat(webhookEventRepository.findByEventId(secondEventId).orElseThrow().getProcessingStatus())
+                .isEqualTo(WebhookProcessingStatus.FAILED);
     }
 
     @Test
