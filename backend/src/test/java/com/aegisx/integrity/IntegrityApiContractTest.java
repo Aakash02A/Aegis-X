@@ -1,9 +1,15 @@
 package com.aegisx.integrity;
 
+import com.aegisx.auth.entity.Role;
+import com.aegisx.auth.entity.User;
+import com.aegisx.auth.repository.UserRepository;
 import com.aegisx.integrity.entity.PaymentOrder;
 import com.aegisx.integrity.entity.Workspace;
 import com.aegisx.integrity.support.IntegrityScenarioFixtures;
 import com.aegisx.integrity.support.IntegrityTestSupport;
+import com.aegisx.integrity.domain.WorkspaceMemberRole;
+import com.aegisx.integrity.service.WorkspaceMembershipService;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -38,12 +44,33 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class IntegrityApiContractTest extends IntegrityTestSupport {
 
     @Autowired private MockMvc mockMvc;
+    @Autowired private UserRepository userRepository;
+    @Autowired private WorkspaceMembershipService membershipService;
+
+    private User operator;
+
+    @BeforeEach
+    void ensureOperatorUser() {
+        operator = userRepository.findByEmail("operator@aegis-x.test")
+                .orElseGet(() -> userRepository.save(User.builder()
+                        .fullName("Integrity API Contract Operator")
+                        .email("operator@aegis-x.test")
+                        .passwordHash("not-used-by-mock-authentication")
+                        .role(Role.ADMIN)
+                        .build()));
+    }
+
+    private Workspace newAuthorizedWorkspace() {
+        Workspace workspace = newWorkspace();
+        membershipService.addMember(operator.getId(), workspace.getId(), WorkspaceMemberRole.OWNER);
+        return workspace;
+    }
 
     @Test
     @DisplayName("the console's read endpoints all answer with the documented envelope")
     @WithMockUser(username = "operator@aegis-x.test", roles = "ADMIN")
     void readEndpointsAnswer() throws Exception {
-        Workspace workspace = newWorkspace();
+        Workspace workspace = newAuthorizedWorkspace();
         PaymentOrder order = newOrderWithProviderOrder(workspace, 100_000);
         simulationService.injectDiscrepancy(workspace.getId(), order.getId(),
                 IntegrityScenarioFixtures.DiscrepancyKind.AMOUNT_MISMATCH);
@@ -79,7 +106,7 @@ class IntegrityApiContractTest extends IntegrityTestSupport {
     @DisplayName("the console's evidence endpoints all answer with the documented envelope")
     @WithMockUser(username = "operator@aegis-x.test", roles = "ADMIN")
     void evidenceEndpointsAnswer() throws Exception {
-        Workspace workspace = newWorkspace();
+        Workspace workspace = newAuthorizedWorkspace();
         PaymentOrder order = newOrderWithProviderOrder(workspace, 150_000);
         // A confirmed payment with incomplete paperwork is the case the console exists for: the
         // summary must report a confirmed payment and an incomplete evidence status side by side.
@@ -162,7 +189,7 @@ class IntegrityApiContractTest extends IntegrityTestSupport {
     @DisplayName("an evidence document belonging to another workspace cannot be read over HTTP")
     @WithMockUser(username = "operator@aegis-x.test", roles = "ADMIN")
     void crossWorkspaceEvidenceAccessIsRefusedOverHttp() throws Exception {
-        Workspace owner = newWorkspace();
+        Workspace owner = newAuthorizedWorkspace();
         PaymentOrder order = newOrderWithProviderOrder(owner, 150_000);
         String ownerBase = "/api/integrity/workspaces/" + owner.getId() + "/evidence";
 
@@ -193,7 +220,7 @@ class IntegrityApiContractTest extends IntegrityTestSupport {
     @DisplayName("the console's mutation endpoints accept the documented bodies")
     @WithMockUser(username = "operator@aegis-x.test", roles = "ADMIN")
     void mutationEndpointsAnswer() throws Exception {
-        Workspace workspace = newWorkspace();
+        Workspace workspace = newAuthorizedWorkspace();
         String base = "/api/integrity/workspaces/" + workspace.getId();
 
         String created = mockMvc.perform(post(base + "/orders")
@@ -290,6 +317,14 @@ class IntegrityApiContractTest extends IntegrityTestSupport {
     @WithMockUser(username = "merchant@aegis-x.test", roles = "MERCHANT")
     void merchantCannotAccessIntegrityWorkspaceData() throws Exception {
         Workspace workspace = newWorkspace();
+        User merchant = userRepository.findByEmail("merchant@aegis-x.test")
+                .orElseGet(() -> userRepository.save(User.builder()
+                        .fullName("Integrity API Contract Merchant")
+                        .email("merchant@aegis-x.test")
+                        .passwordHash("not-used-by-mock-authentication")
+                        .role(Role.MERCHANT)
+                        .build()));
+        membershipService.addMember(merchant.getId(), workspace.getId(), WorkspaceMemberRole.OWNER);
         String base = "/api/integrity/workspaces/" + workspace.getId();
 
         mockMvc.perform(get("/api/integrity/workspaces"))
