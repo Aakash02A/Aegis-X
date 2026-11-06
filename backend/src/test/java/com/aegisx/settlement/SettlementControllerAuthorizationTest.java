@@ -51,7 +51,7 @@ class SettlementControllerAuthorizationTest {
                 .version(0L)
                 .build());
         var settlement = settlementService.initiateSettlement(SettlementRequest.createBasic(
-                transaction.getId(), PaymentProcessor.MOCK, new BigDecimal("1000.00"), "USD"), owner.getEmail());
+                transaction.getId(), PaymentProcessor.SIMULATED, new BigDecimal("1000.00"), "USD"), owner.getEmail());
 
         String settlementPath = "/api/v1/settlements/" + settlement.getId();
         String referencePath = "/api/v1/settlements/reference/" + settlement.getSettlementReference();

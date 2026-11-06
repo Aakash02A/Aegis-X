@@ -20,7 +20,9 @@ import java.util.UUID;
  * Implements settlement tracking according to TAS Section 9.2.
  */
 @Entity
-@Table(name = "settlements")
+@Table(name = "settlements", uniqueConstraints = {
+        @UniqueConstraint(name = "uq_settlements_transaction_id", columnNames = "transaction_id")
+})
 @Data
 @Builder
 @NoArgsConstructor

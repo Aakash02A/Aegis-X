@@ -93,7 +93,9 @@ export const SettlementPage = {
           ${Utils.escapeHtml(st.settlementReference || st.id)}
           <div class="text-[10px] text-ink-soft font-mono-data mt-0.5">TX: ${Utils.escapeHtml(st.transactionReference || st.transactionId)}</div>
         </td>
-        <td class="font-serif text-sm text-ink font-medium py-3.5 px-2">${Utils.escapeHtml(st.processorDisplayName || st.paymentProcessor || '—')}</td>
+        <td class="font-serif text-sm text-ink font-medium py-3.5 px-2">${st.paymentProcessor === 'SIMULATED'
+          ? '<span class="editorial-badge badge-brass">SIMULATED - NO MONEY MOVED</span>'
+          : Utils.escapeHtml(st.processorDisplayName || st.paymentProcessor || '—')}</td>
         <td class="font-mono-data text-ink font-medium py-3.5 px-2">${Utils.formatCurrency(st.settlementAmount, st.settlementCurrency)}</td>
         <td class="font-mono-data text-rust font-medium py-3.5 px-2">${st.processingFees == null ? '—' : Utils.formatCurrency(st.processingFees, st.settlementCurrency)}</td>
         <td class="py-3.5 px-2">${this.renderSettlementBadge(st.status)}</td>
@@ -145,7 +147,7 @@ export const SettlementPage = {
     if (button) button.disabled = true;
     try {
       await API.request('/v1/settlements/reconciliation/process', { method: 'POST' });
-      Toast.success('Settlement reconciliation completed.');
+      Toast.success('Reconciliation checks completed. Provider evidence is required to reconcile.');
       await this.loadSettlements();
     } catch (error) {
       Toast.error('Reconciliation failed: ' + error.message);

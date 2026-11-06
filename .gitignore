@@ -33,6 +33,11 @@ frontend/dist/
 **/.env.*
 !.env.example
 !**/src/**
+# Re-ignore environment files after source-tree exceptions above.
+**/.env
+**/.env.*
+!.env.example
+!**/.env.example
 application-local.properties
 application-local.yml
 **/application-local.yml

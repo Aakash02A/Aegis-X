@@ -69,7 +69,7 @@ razorpayx:
   read-timeout: ${RAZORPAYX_READ_TIMEOUT:15s}
 
 settlement:
-  mock-enabled: ${SETTLEMENT_MOCK_ENABLED:false}
+  simulated-enabled: ${SETTLEMENT_SIMULATED_ENABLED:false}
 
 server:
   port: ${PORT:8080}

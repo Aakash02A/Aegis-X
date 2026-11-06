@@ -2,6 +2,7 @@ package com.aegisx.settlement.service;
 
 import com.aegisx.settlement.entity.PaymentProcessor;
 import com.aegisx.settlement.entity.Settlement;
+import com.aegisx.settlement.entity.SettlementStatus;
 import com.aegisx.settlement.service.SettlementService.SettlementProcessorResult;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -13,9 +14,7 @@ import org.springframework.core.env.Environment;
 import org.springframework.core.env.Profiles;
 import org.springframework.stereotype.Service;
 
-import java.time.LocalDateTime;
 import java.util.Arrays;
-import java.util.UUID;
 
 @Slf4j
 @Service
@@ -26,13 +25,13 @@ public class SettlementProcessorService {
     private final Environment environment;
     private final ObjectMapper objectMapper;
 
-    @Value("${settlement.mock-enabled:false}")
-    private boolean mockEnabled;
+    @Value("${settlement.simulated-enabled:false}")
+    private boolean simulatedEnabled;
 
     public SettlementProcessorResult submitSettlement(Settlement settlement) {
         return switch (settlement.getPaymentProcessor()) {
             case RAZORPAYX -> razorpayXClient.submitPayout(settlement);
-            case MOCK -> submitMockSettlement(settlement);
+            case SIMULATED -> submitSimulatedSettlement();
             default -> throw new IllegalStateException(
                     "No live settlement integration is configured for " + settlement.getPaymentProcessor());
         };
@@ -55,29 +54,23 @@ public class SettlementProcessorService {
     public boolean validateProcessorConnection(PaymentProcessor processor) {
         return switch (processor) {
             case RAZORPAYX -> razorpayXClient.isConfigured();
-            case MOCK -> mockEnabled && isDevelopmentProfile();
+            case SIMULATED -> simulatedEnabled && isDevelopmentProfile();
             default -> false;
         };
     }
 
-    private SettlementProcessorResult submitMockSettlement(Settlement settlement) {
-        if (!validateProcessorConnection(PaymentProcessor.MOCK)) {
-            throw new IllegalStateException("Mock settlement processing is disabled");
+    private SettlementProcessorResult submitSimulatedSettlement() {
+        if (!validateProcessorConnection(PaymentProcessor.SIMULATED)) {
+            throw new IllegalStateException("Simulated settlement processing is disabled");
         }
         ObjectNode metadata = objectMapper.createObjectNode();
-        metadata.put("messageType", "MOCK");
-        metadata.put("environment", "TEST");
-        metadata.put("processor", "MOCK_PROCESSOR");
-        String processorTransactionId = "MOCK" + UUID.randomUUID().toString().substring(0, 8);
-        metadata.put("processorTransactionId", processorTransactionId);
-        metadata.put("status", "ACCEPTED");
-        metadata.put("submittedAt", LocalDateTime.now().toString());
-        metadata.put("testMode", true);
-        log.info("Test-only mock settlement submitted: {}", settlement.getSettlementReference());
+        metadata.put("executionMode", "SIMULATED");
+        metadata.put("moneyMoved", false);
+        metadata.put("status", "PENDING");
+        log.info("Settlement marked SIMULATED; no funds moved");
         return SettlementProcessorResult.builder()
-                .processorTransactionId(processorTransactionId)
-                .expectedCompletion(LocalDateTime.now().plusMinutes(1))
                 .metadata(metadata)
+                .initialStatus(SettlementStatus.PENDING)
                 .success(true)
                 .build();
     }

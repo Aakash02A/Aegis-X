@@ -52,18 +52,42 @@ public class SettlementService {
     /**
      * Initiates a new settlement for a transaction.
      */
+    @Transactional(noRollbackFor = IllegalArgumentException.class)
     public SettlementResponse initiateSettlement(SettlementRequest request, String initiatedBy) {
+        if (request == null) {
+            throw new IllegalArgumentException("Settlement request is required");
+        }
         log.info("Initiating settlement for transaction: {}", request.getTransactionId());
-        
-        // Validate request
-        request.validate();
-        
+
+        if (request.getTransactionId() == null) {
+            request.validate();
+        }
+
         // Check if transaction exists and is eligible for settlement
         Transaction transaction = transactionRepository.findById(request.getTransactionId())
                 .orElseThrow(() -> new IllegalArgumentException("Transaction not found"));
-        
+
+        if (request.getSettlementAmount() != null
+                && request.getSettlementAmount().compareTo(BigDecimal.ZERO) <= 0) {
+            auditRejectedAmount(transaction.getId(), "Settlement amount must be positive");
+            throw new IllegalArgumentException("Settlement amount must be positive");
+        }
+
+        request.validate();
+
         if (!isTransactionEligibleForSettlement(transaction)) {
             throw new IllegalStateException("Transaction is not eligible for settlement");
+        }
+
+        if (request.getSettlementAmount().compareTo(transaction.getAmount()) > 0) {
+            auditRejectedAmount(transaction.getId(),
+                    "Settlement amount exceeds the approved transaction amount");
+            throw new IllegalArgumentException(
+                    "Settlement amount cannot exceed the approved transaction amount");
+        }
+
+        if (!request.getPaymentProcessor().supportsNewSettlements()) {
+            throw new IllegalArgumentException("No settlement integration is available for this processor");
         }
 
         if (request.getPaymentProcessor() == PaymentProcessor.RAZORPAYX
@@ -138,11 +162,21 @@ public class SettlementService {
                 throw new IllegalStateException(result.getErrorMessage() == null
                         ? "Settlement provider rejected the request" : result.getErrorMessage());
             }
-            
+
+            SettlementStatus initialStatus = result.getInitialStatus() == null
+                    ? SettlementStatus.PENDING : result.getInitialStatus();
+            if (settlement.getPaymentProcessor() == PaymentProcessor.SIMULATED) {
+                if (initialStatus != SettlementStatus.PENDING || result.getProcessorTransactionId() != null) {
+                    throw new IllegalStateException("Simulated settlement returned provider execution evidence");
+                }
+            } else if (settlement.getPaymentProcessor() != PaymentProcessor.RAZORPAYX
+                    || result.getProcessorTransactionId() == null
+                    || result.getProcessorTransactionId().isBlank()) {
+                throw new IllegalStateException("Settlement response lacks real provider evidence");
+            }
+
             // Update settlement with processor details
             settlement.setProcessorDetails(result.getProcessorTransactionId(), result.getMetadata());
-            SettlementStatus initialStatus = result.getInitialStatus() == null
-                    ? SettlementStatus.SUBMITTED : result.getInitialStatus();
             if (!isValidStatusTransition(settlement.getStatus(), initialStatus)) {
                 throw new IllegalStateException("Settlement provider returned an unsupported status");
             }
@@ -154,12 +188,15 @@ public class SettlementService {
             
             Settlement updated = settlementRepository.save(settlement);
             
-            // Audit log
-            auditService.logEvent(AuditEventType.SETTLEMENT_SUBMITTED, AuditModule.SETTLEMENT,
-                    "Settlement submitted to processor", settlement.getTransaction().getId());
-            
-            log.info("Settlement submitted: {} with processor ID: {}", 
-                    settlement.getSettlementReference(), result.getProcessorTransactionId());
+            AuditEventType eventType = initialStatus == SettlementStatus.SUBMITTED
+                    ? AuditEventType.SETTLEMENT_SUBMITTED : AuditEventType.SETTLEMENT_STATUS_UPDATED;
+            String description = settlement.getPaymentProcessor() == PaymentProcessor.SIMULATED
+                    ? "Settlement marked SIMULATED; no money moved"
+                    : "Provider returned settlement status " + initialStatus;
+            auditService.logEvent(eventType, AuditModule.SETTLEMENT,
+                    description, settlement.getTransaction().getId());
+
+            log.info("Settlement {} recorded with status {}", settlement.getSettlementReference(), initialStatus);
             
             return SettlementResponse.fromEntity(updated);
             
@@ -257,6 +294,10 @@ public class SettlementService {
                                                     String reason,
                                                     JsonNode processorData) {
         log.info("Updating settlement status: {} to {}", settlementReference, newStatus);
+
+        if (newStatus == SettlementStatus.SUBMITTED || newStatus == SettlementStatus.RECONCILED) {
+            throw new IllegalStateException("Settlement status requires real provider evidence");
+        }
         
         Settlement settlement = settlementRepository.findBySettlementReference(settlementReference)
                 .orElseThrow(() -> new IllegalArgumentException("Settlement not found"));
@@ -531,6 +572,11 @@ public class SettlementService {
     }
 
     // Helper methods
+
+    private void auditRejectedAmount(UUID transactionId, String reason) {
+        auditService.logEvent(AuditEventType.SETTLEMENT_FAILED, AuditModule.SETTLEMENT,
+                "Settlement request rejected: " + reason, transactionId);
+    }
     
     private Settlement getSettlementById(UUID settlementId) {
         return settlementRepository.findById(settlementId)

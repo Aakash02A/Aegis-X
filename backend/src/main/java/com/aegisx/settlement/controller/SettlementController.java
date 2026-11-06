@@ -426,11 +426,10 @@ public class SettlementController {
         try {
             settlementService.processReconciliation();
             
-            auditService.logEvent(AuditEventType.SETTLEMENT_RECONCILED, AuditModule.SETTLEMENT,
-                    "Settlement reconciliation processed");
-            
-            return ResponseEntity.ok(ApiResponse.success("Reconciliation completed", 
-                    "Settlement reconciliation processed successfully"));
+            auditService.logEvent(AuditEventType.SETTLEMENT_STATUS_UPDATED, AuditModule.SETTLEMENT,
+                    "Settlement reconciliation checks processed");
+            return ResponseEntity.ok(ApiResponse.success("Reconciliation checks completed",
+                    "Settlement reconciliation checks processed"));
             
         } catch (Exception e) {
             log.error("Failed to process reconciliation", e);

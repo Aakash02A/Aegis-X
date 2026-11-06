@@ -262,15 +262,9 @@ public class SettlementResponse {
      */
     public String getProcessorIcon() {
         return switch (paymentProcessor) {
-            case SWIFT -> "swift";
-            case RIPPLE -> "ripple";
-            case VISA_DIRECT -> "visa";
-            case MASTERCARD_SEND -> "mastercard";
-            case ACH -> "ach";
-            case SEPA -> "sepa";
-            case FASTER_PAYMENTS -> "fps";
             case RAZORPAYX -> "razorpay";
-            case MOCK -> "test";
+            case SIMULATED, MOCK -> "simulated";
+            default -> "unsupported";
         };
     }
 

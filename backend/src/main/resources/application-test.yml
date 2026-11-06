@@ -23,7 +23,7 @@ app:
     max-file-size-mb: 20
 
 settlement:
-  mock-enabled: true
+  simulated-enabled: true
 
 logging:
   level:
