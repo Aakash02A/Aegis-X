@@ -21,7 +21,7 @@ public class IntegrityDashboardController {
     private final DashboardService dashboardService;
 
     @GetMapping
-    @PreAuthorize("isAuthenticated()")
+    @PreAuthorize("hasAnyRole('ADMIN','COMPLIANCE_OFFICER','SETTLEMENT_OPERATOR')")
     public ResponseEntity<ApiResponse<DashboardService.DashboardSummary>> summary(@PathVariable UUID workspaceId) {
         return ResponseEntity.ok(ApiResponse.success(dashboardService.summary(workspaceId),
                 "Dashboard summary computed from persisted data"));

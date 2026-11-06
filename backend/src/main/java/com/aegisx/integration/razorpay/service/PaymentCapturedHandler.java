@@ -19,6 +19,9 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
+import java.math.BigDecimal;
+import java.util.Currency;
+import java.util.Locale;
 import java.util.Optional;
 
 @Slf4j
@@ -43,37 +46,34 @@ public class PaymentCapturedHandler implements RazorpayEventHandler {
         String paymentId = payload.getPaymentId();
         event.setPaymentId(paymentId);
 
-        // Phase 06 MVP Multi-Tiered Transaction Lookup:
-        // 1. Direct reference number matching
-        // 2. Razorpay order_id (preferred long-term mapping)
-        // 3. notes.transaction_reference (fallback for MVP)
-        // TODO Phase 06 MVP: Using notes.transaction_reference. Replace with persisted Razorpay Order mapping in future.
-        String referenceHint = payload.getTransactionReferenceFromNotes();
-        if (referenceHint == null) {
-            referenceHint = payload.getOrderId();
-        }
+        String providerOrderId = payload.getOrderId();
+        log.info("[{}] Processing '{}' for paymentId: '{}', orderId: '{}'",
+                correlationId, EVENT_TYPE, paymentId, providerOrderId);
 
-        log.info("[{}] Processing '{}' for paymentId: '{}', referenceHint: '{}'",
-                correlationId, EVENT_TYPE, paymentId, referenceHint);
-
-        if (referenceHint == null || referenceHint.isBlank()) {
-            log.warn("[{}] No reference number or orderId found in payment.captured payload for paymentId: '{}'",
+        if (providerOrderId == null || providerOrderId.isBlank()) {
+            log.warn("[{}] No Razorpay order ID found in payment.captured payload for paymentId: '{}'",
                     correlationId, paymentId);
             event.setProcessingStatus(WebhookProcessingStatus.FAILED);
             return;
         }
 
-        Optional<Transaction> transactionOpt = transactionRepository.findByReferenceNumber(referenceHint);
+        Optional<Transaction> transactionOpt = transactionRepository.findByRazorpayOrderId(providerOrderId);
         if (transactionOpt.isEmpty()) {
-            log.warn("[{}] Unknown transaction reference '{}' received for paymentId '{}'",
-                    correlationId, referenceHint, paymentId);
-            event.setTransactionReference(referenceHint);
+            log.warn("[{}] Unknown Razorpay order ID '{}' received for paymentId '{}'",
+                    correlationId, providerOrderId, paymentId);
             event.setProcessingStatus(WebhookProcessingStatus.FAILED);
             return;
         }
 
         Transaction transaction = transactionOpt.get();
         event.setTransactionReference(transaction.getReferenceNumber());
+
+        if (!matchesExpectedAmountAndCurrency(transaction, payload)) {
+            log.warn("[{}] Captured payment {} does not match expected amount/currency for transaction {}",
+                    correlationId, paymentId, transaction.getReferenceNumber());
+            event.setProcessingStatus(WebhookProcessingStatus.FAILED);
+            return;
+        }
 
         // Out-of-Order Webhook Resilience:
         // Razorpay webhook delivery order is not strictly guaranteed (e.g. payment.captured arriving
@@ -136,11 +136,34 @@ public class PaymentCapturedHandler implements RazorpayEventHandler {
             );
 
             event.setProcessingStatus(WebhookProcessingStatus.PROCESSED);
+        } else if (transaction.getStatus() == TransactionStatus.PAYMENT_FAILED) {
+            log.error("[{}] Captured payment {} conflicts with terminal PAYMENT_FAILED transaction {}",
+                    correlationId, paymentId, transaction.getReferenceNumber());
+            event.setProcessingStatus(WebhookProcessingStatus.FAILED);
         } else {
             log.info("[{}] Out-of-order / replay event: Transaction {} ({}) is already at status '{}'; skipping transition",
                     correlationId, transaction.getId(), transaction.getReferenceNumber(), transaction.getStatus());
             event.setProcessingStatus(WebhookProcessingStatus.PROCESSED);
         }
     }
-}
 
+    private boolean matchesExpectedAmountAndCurrency(Transaction transaction, RazorpayWebhookPayload payload) {
+        BigDecimal providerAmountMinor = payload.getAmount();
+        String providerCurrency = payload.getCurrency();
+        String transactionCurrency = transaction.getCurrency();
+        if (providerAmountMinor == null || providerCurrency == null || transactionCurrency == null
+                || !transactionCurrency.equalsIgnoreCase(providerCurrency)) {
+            return false;
+        }
+
+        try {
+            int fractionDigits = Currency.getInstance(transactionCurrency.toUpperCase(Locale.ROOT))
+                    .getDefaultFractionDigits();
+            return fractionDigits >= 0
+                    && transaction.getAmount() != null
+                    && transaction.getAmount().compareTo(providerAmountMinor.movePointLeft(fractionDigits)) == 0;
+        } catch (IllegalArgumentException e) {
+            return false;
+        }
+    }
+}

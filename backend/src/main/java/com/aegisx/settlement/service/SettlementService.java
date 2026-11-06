@@ -20,6 +20,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
@@ -42,6 +43,7 @@ public class SettlementService {
     private final SettlementProcessorService settlementProcessorService;
     private final AuditService auditService;
     private final ObjectMapper objectMapper;
+    private final RazorpayXClient razorpayXClient;
 
     /**
      * Initiates a new settlement for a transaction.
@@ -58,6 +60,14 @@ public class SettlementService {
         
         if (!isTransactionEligibleForSettlement(transaction)) {
             throw new IllegalStateException("Transaction is not eligible for settlement");
+        }
+
+        if (request.getPaymentProcessor() == PaymentProcessor.RAZORPAYX
+                && (!"INR".equals(transaction.getCurrency())
+                || !"INR".equals(request.getSettlementCurrency())
+                || request.getSettlementAmount().compareTo(transaction.getAmount()) > 0)) {
+            throw new IllegalArgumentException(
+                    "RazorpayX settlement must be INR and cannot exceed the transaction amount");
         }
         
         // Check if settlement already exists
@@ -85,6 +95,10 @@ public class SettlementService {
         
         // Save settlement
         Settlement saved = settlementRepository.save(settlement);
+        if (request.getPaymentProcessor() == PaymentProcessor.RAZORPAYX) {
+            saved.setProcessorDetails(null, razorpayXClient.createBeneficiaryFundAccount(saved, request));
+            saved = settlementRepository.save(saved);
+        }
         
         // Audit log
         auditService.logEvent(AuditEventType.SETTLEMENT_INITIATED, AuditModule.SETTLEMENT,
@@ -99,6 +113,7 @@ public class SettlementService {
     /**
      * Processes a settlement by submitting to payment processor.
      */
+    @Transactional(noRollbackFor = SettlementProcessingException.class)
     public SettlementResponse processSettlement(UUID settlementId) {
         log.info("Processing settlement: {}", settlementId);
         
@@ -115,10 +130,19 @@ public class SettlementService {
             
             // Submit to payment processor
             SettlementProcessorResult result = settlementProcessorService.submitSettlement(settlement);
+            if (!result.isSuccess()) {
+                throw new IllegalStateException(result.getErrorMessage() == null
+                        ? "Settlement provider rejected the request" : result.getErrorMessage());
+            }
             
             // Update settlement with processor details
             settlement.setProcessorDetails(result.getProcessorTransactionId(), result.getMetadata());
-            settlement.updateStatus(SettlementStatus.SUBMITTED, null);
+            SettlementStatus initialStatus = result.getInitialStatus() == null
+                    ? SettlementStatus.SUBMITTED : result.getInitialStatus();
+            if (!isValidStatusTransition(settlement.getStatus(), initialStatus)) {
+                throw new IllegalStateException("Settlement provider returned an unsupported status");
+            }
+            settlement.updateStatus(initialStatus, null);
             
             if (result.getExpectedCompletion() != null) {
                 settlement.setExpectedCompletion(result.getExpectedCompletion());
@@ -136,7 +160,7 @@ public class SettlementService {
             return SettlementResponse.fromEntity(updated);
             
         } catch (Exception e) {
-            log.error("Failed to process settlement: {}", settlementId, e);
+            log.error("Failed to process settlement {}: {}", settlementId, e.getMessage());
             
             settlement.updateStatus(SettlementStatus.FAILED, e.getMessage());
             settlementRepository.save(settlement);
@@ -144,8 +168,81 @@ public class SettlementService {
             auditService.logEvent(AuditEventType.SETTLEMENT_FAILED, AuditModule.SETTLEMENT,
                     "Settlement processing failed: " + e.getMessage(), settlement.getTransaction().getId());
             
-            throw new RuntimeException("Settlement processing failed", e);
+            throw new SettlementProcessingException("Settlement processing failed", e);
         }
+    }
+
+    @Transactional
+    public String applyRazorpayXPayoutWebhook(String payoutId,
+                                               String settlementReference,
+                                               BigDecimal amountMinor,
+                                               String currency,
+                                               String providerStatus,
+                                               String reason,
+                                               String utr) {
+        Settlement settlement = settlementRepository.findBySettlementReference(settlementReference)
+                .orElseThrow(() -> new IllegalArgumentException("Unknown RazorpayX settlement reference"));
+        if (settlement.getPaymentProcessor() != PaymentProcessor.RAZORPAYX
+                || payoutId == null || payoutId.isBlank()
+                || (settlement.getProcessorTransactionId() != null
+                && !settlement.getProcessorTransactionId().equals(payoutId))
+                || amountMinor == null
+                || amountMinor.compareTo(settlement.getSettlementAmount().movePointRight(2)) != 0
+                || !"INR".equals(currency)) {
+            throw new IllegalArgumentException("RazorpayX payout webhook does not match the stored settlement");
+        }
+
+        SettlementStatus newStatus = switch (providerStatus == null ? ""
+                : providerStatus.toLowerCase(java.util.Locale.ROOT)) {
+            case "queued", "pending", "processing", "initiated" -> SettlementStatus.PENDING;
+            case "processed" -> SettlementStatus.COMPLETED;
+            case "failed", "reversed" -> SettlementStatus.FAILED;
+            case "rejected" -> SettlementStatus.REJECTED;
+            case "cancelled" -> SettlementStatus.CANCELLED;
+            default -> SettlementStatus.MANUAL_REVIEW;
+        };
+        if ((settlement.getStatus() == SettlementStatus.COMPLETED
+                && newStatus == SettlementStatus.PENDING)
+                || (settlement.getStatus() == SettlementStatus.RECONCILED
+                && (newStatus == SettlementStatus.PENDING || newStatus == SettlementStatus.COMPLETED))) {
+            return settlement.getTransaction().getReferenceNumber();
+        }
+        if (settlement.getStatus() == SettlementStatus.RECONCILED && newStatus == SettlementStatus.FAILED) {
+            newStatus = SettlementStatus.RECONCILIATION_FAILED;
+        }
+        if (settlement.getStatus() != newStatus) {
+            boolean providerOutcomeCorrection = (settlement.getProcessorTransactionId() == null
+                    && (settlement.getStatus() == SettlementStatus.INITIATED
+                    || settlement.getStatus() == SettlementStatus.PROCESSING
+                    || settlement.getStatus() == SettlementStatus.FAILED
+                    || settlement.getStatus() == SettlementStatus.REJECTED
+                    || settlement.getStatus() == SettlementStatus.MANUAL_REVIEW))
+                    || settlement.getStatus() == SettlementStatus.FAILED
+                    || settlement.getStatus() == SettlementStatus.REJECTED
+                    || settlement.getStatus() == SettlementStatus.MANUAL_REVIEW
+                    || (settlement.getStatus() == SettlementStatus.COMPLETED
+                    && newStatus == SettlementStatus.FAILED)
+                    || (settlement.getStatus() == SettlementStatus.RECONCILED
+                    && newStatus == SettlementStatus.RECONCILIATION_FAILED);
+            if (!isValidStatusTransition(settlement.getStatus(), newStatus) && !providerOutcomeCorrection) {
+                throw new IllegalStateException("Invalid RazorpayX payout status transition");
+            }
+            settlement.updateStatus(newStatus, reason);
+        }
+        com.fasterxml.jackson.databind.node.ObjectNode metadata = settlement.getProcessorMetadata()
+                instanceof com.fasterxml.jackson.databind.node.ObjectNode existing
+                ? existing.deepCopy() : objectMapper.createObjectNode();
+        metadata.put("payoutId", payoutId);
+        metadata.put("payoutStatus", providerStatus);
+        if (utr != null && !utr.isBlank()) {
+            metadata.put("utr", utr);
+        }
+        settlement.setProcessorDetails(payoutId, metadata);
+        settlementRepository.save(settlement);
+        auditService.logEvent(mapStatusToAuditEvent(newStatus), AuditModule.SETTLEMENT,
+                "RazorpayX payout status updated to " + newStatus,
+                settlement.getTransaction().getId());
+        return settlement.getTransaction().getReferenceNumber();
     }
 
     /**
@@ -295,8 +392,9 @@ public class SettlementService {
         
         Settlement settlement = getSettlementById(settlementId);
         
-        if (settlement.isFinal()) {
-            throw new IllegalStateException("Cannot cancel settlement in final status");
+        if (settlement.getStatus() != SettlementStatus.INITIATED) {
+            throw new IllegalStateException(
+                    "Only an unsubmitted settlement can be cancelled; provider-submitted payouts require provider confirmation");
         }
         
         settlement.updateStatus(SettlementStatus.CANCELLED, reason);
@@ -334,21 +432,48 @@ public class SettlementService {
         List<Settlement> settlements = settlementRepository.findSettlementsPendingReconciliation();
         
         for (Settlement settlement : settlements) {
+            if (settlement.getPaymentProcessor() != PaymentProcessor.RAZORPAYX) {
+                settlement.updateStatus(SettlementStatus.MANUAL_REVIEW,
+                        "No live provider reconciliation is configured for this processor");
+                settlementRepository.save(settlement);
+                continue;
+            }
             try {
                 settlement.updateStatus(SettlementStatus.RECONCILING, null);
                 settlementRepository.save(settlement);
-                
-                // Perform reconciliation logic here
-                // This would typically involve calling bank APIs or processing files
-                
-                settlement.updateStatus(SettlementStatus.RECONCILED, null);
+
+                JsonNode providerPayout = settlementProcessorService.querySettlementStatus(settlement);
+                long expectedAmount = settlement.getSettlementAmount().movePointRight(2).longValueExact();
+                if (!settlement.getProcessorTransactionId().equals(providerPayout.path("id").asText())
+                        || !settlement.getSettlementReference().equals(providerPayout.path("reference_id").asText())
+                        || providerPayout.path("amount").asLong(-1) != expectedAmount
+                        || !"INR".equals(providerPayout.path("currency").asText())) {
+                    throw new IllegalStateException("Provider payout does not match stored settlement");
+                }
+
+                String providerStatus = providerPayout.path("status").asText();
+                com.fasterxml.jackson.databind.node.ObjectNode reconciliationData = objectMapper.createObjectNode();
+                reconciliationData.put("id", providerPayout.path("id").asText());
+                reconciliationData.put("reference_id", providerPayout.path("reference_id").asText());
+                reconciliationData.put("amount", expectedAmount);
+                reconciliationData.put("currency", providerPayout.path("currency").asText());
+                reconciliationData.put("status", providerStatus);
+                if (providerPayout.hasNonNull("utr")) {
+                    reconciliationData.put("utr", providerPayout.path("utr").asText());
+                }
+                settlement.setProcessorDetails(settlement.getProcessorTransactionId(), reconciliationData);
+                if ("processed".equalsIgnoreCase(providerStatus)) {
+                    settlement.updateStatus(SettlementStatus.RECONCILED, null);
+                } else {
+                    settlement.updateStatus(SettlementStatus.RECONCILIATION_FAILED,
+                            "Provider payout status is " + providerStatus);
+                }
                 settlementRepository.save(settlement);
-                
-                log.info("Settlement reconciled: {}", settlement.getSettlementReference());
+                log.info("RazorpayX payout reconciliation completed for {}", settlement.getSettlementReference());
                 
             } catch (Exception e) {
-                log.error("Reconciliation failed for settlement: {}", 
-                         settlement.getSettlementReference(), e);
+                log.error("Reconciliation failed for settlement {}: {}",
+                        settlement.getSettlementReference(), e.getMessage());
                 
                 settlement.updateStatus(SettlementStatus.RECONCILIATION_FAILED, e.getMessage());
                 settlementRepository.save(settlement);
@@ -413,7 +538,14 @@ public class SettlementService {
         private String processorTransactionId;
         private LocalDateTime expectedCompletion;
         private JsonNode metadata;
+        private SettlementStatus initialStatus;
         private boolean success;
         private String errorMessage;
+    }
+
+    public static class SettlementProcessingException extends RuntimeException {
+        public SettlementProcessingException(String message, Throwable cause) {
+            super(message, cause);
+        }
     }
 }

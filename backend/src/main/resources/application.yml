@@ -54,6 +54,22 @@ razorpay:
   key-id: ${RAZORPAY_KEY_ID:}
   key-secret: ${RAZORPAY_KEY_SECRET:}
   webhook-secret: ${RAZORPAY_WEBHOOK_SECRET:}
+  api-base-url: ${RAZORPAY_API_BASE_URL:https://api.razorpay.com/v1}
+  connect-timeout: ${RAZORPAY_CONNECT_TIMEOUT:5s}
+  read-timeout: ${RAZORPAY_READ_TIMEOUT:15s}
+
+razorpayx:
+  enabled: ${RAZORPAYX_ENABLED:false}
+  key-id: ${RAZORPAYX_KEY_ID:}
+  key-secret: ${RAZORPAYX_KEY_SECRET:}
+  account-number: ${RAZORPAYX_ACCOUNT_NUMBER:}
+  api-base-url: ${RAZORPAYX_API_BASE_URL:https://api.razorpay.com/v1}
+  payout-mode: ${RAZORPAYX_PAYOUT_MODE:NEFT}
+  connect-timeout: ${RAZORPAYX_CONNECT_TIMEOUT:5s}
+  read-timeout: ${RAZORPAYX_READ_TIMEOUT:15s}
+
+settlement:
+  mock-enabled: ${SETTLEMENT_MOCK_ENABLED:false}
 
 server:
   port: ${PORT:8080}

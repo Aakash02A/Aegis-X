@@ -36,6 +36,7 @@ export const TransactionPage = {
     this.setupExport();
     this.setupNotifications();
     this.setupWorkflowActions();
+    await this.loadPaymentConfiguration();
     await this.loadTransaction();
   },
 
@@ -100,11 +101,19 @@ export const TransactionPage = {
     document.getElementById('summary-currency').textContent = tx.currency || '—';
     document.getElementById('summary-current-state').textContent = tx.status || '—';
     document.getElementById('summary-reference').textContent = tx.referenceNumber || tx.id || '—';
-    document.getElementById('local-payment-actions')?.classList.toggle('hidden', tx.status !== 'CREATED');
+    const canAcceptPayment = tx.status === 'CREATED';
+    document.getElementById('local-payment-actions')?.classList.toggle(
+      'hidden', !canAcceptPayment || !this.paymentConfiguration?.localTestEnabled
+    );
+    document.getElementById('razorpay-payment-actions')?.classList.toggle(
+      'hidden', !canAcceptPayment || !this.paymentConfiguration?.checkoutEnabled
+    );
     document.getElementById('document-request-form')?.classList.toggle('hidden', tx.status !== 'EVIDENCE_PENDING');
   },
 
   setupWorkflowActions() {
+    document.getElementById('start-razorpay-payment')?.addEventListener('click', () => this.startRazorpayPayment());
+
     document.getElementById('confirm-local-payment')?.addEventListener('click', async () => {
       try {
         await API.request(`/transactions/${encodeURIComponent(this.transactionId)}/payment/confirm`, { method: 'POST' });
@@ -132,6 +141,67 @@ export const TransactionPage = {
       } catch (error) {
         result.textContent = `Could not request documents: ${error.message}`;
       }
+    });
+  },
+
+  async loadPaymentConfiguration() {
+    if (Auth.getUser()?.role !== 'MERCHANT') {
+      this.paymentConfiguration = { checkoutEnabled: false, localTestEnabled: false };
+      return;
+    }
+    try {
+      this.paymentConfiguration = await API.request('/v1/payments/configuration');
+    } catch (error) {
+      this.paymentConfiguration = { checkoutEnabled: false, localTestEnabled: false };
+      Toast.warning(`Payment options could not be loaded: ${error.message}`);
+    }
+  },
+
+  async startRazorpayPayment() {
+    const button = document.getElementById('start-razorpay-payment');
+    if (button) button.disabled = true;
+    try {
+      const order = await API.request('/v1/payments/orders', {
+        method: 'POST',
+        body: JSON.stringify({ transactionId: this.transactionId })
+      });
+      await this.loadRazorpayCheckout();
+      const checkout = new window.Razorpay({
+        key: order.keyId,
+        amount: order.amount,
+        currency: order.currency,
+        name: 'Aegis-X',
+        order_id: order.orderId,
+        handler: () => {
+          Toast.success('Payment submitted. The transaction will update after server verification.');
+          if (button) button.disabled = false;
+        },
+        modal: {
+          ondismiss: () => {
+            if (button) button.disabled = false;
+          }
+        }
+      });
+      checkout.on('payment.failed', response => {
+        const description = response?.error?.description || 'The payment was not completed.';
+        Toast.error(description);
+        if (button) button.disabled = false;
+      });
+      checkout.open();
+    } catch (error) {
+      Toast.error(`Could not start payment: ${error.message}`);
+      if (button) button.disabled = false;
+    }
+  },
+
+  loadRazorpayCheckout() {
+    if (window.Razorpay) return Promise.resolve();
+    return new Promise((resolve, reject) => {
+      const script = document.createElement('script');
+      script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+      script.onload = resolve;
+      script.onerror = () => reject(new Error('Razorpay Checkout could not be loaded.'));
+      document.head.appendChild(script);
     });
   },
 

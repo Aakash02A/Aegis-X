@@ -38,7 +38,7 @@ class PaymentCapturedHandlerTest {
         Transaction transaction = createTransaction(TransactionStatus.CREATED);
         String eventId = "evt_captured_" + UUID.randomUUID();
 
-        dispatcher.dispatch(capturedPayload(transaction.getReferenceNumber()), eventId, "WHK-TEST01");
+        dispatcher.dispatch(capturedPayload(transaction), eventId, "WHK-TEST01");
 
         Transaction updated = transactionRepository.findById(transaction.getId()).orElseThrow();
         assertThat(updated.getStatus()).isEqualTo(TransactionStatus.EVIDENCE_PENDING);
@@ -60,7 +60,7 @@ class PaymentCapturedHandlerTest {
         Transaction transaction = createTransaction(TransactionStatus.EVIDENCE_PENDING);
         String eventId = "evt_replay_" + UUID.randomUUID();
 
-        dispatcher.dispatch(capturedPayload(transaction.getReferenceNumber()), eventId, "WHK-TEST02");
+        dispatcher.dispatch(capturedPayload(transaction), eventId, "WHK-TEST02");
 
         assertThat(transactionRepository.findById(transaction.getId()).orElseThrow().getStatus())
                 .isEqualTo(TransactionStatus.EVIDENCE_PENDING);
@@ -70,12 +70,72 @@ class PaymentCapturedHandlerTest {
     }
 
     @Test
+    @DisplayName("a capture with a mismatched amount is failed and cannot advance the transaction")
+    void mismatchedAmountIsNotApplied() {
+        Transaction transaction = createTransaction(TransactionStatus.CREATED);
+        String eventId = "evt_amount_mismatch_" + UUID.randomUUID();
+
+        dispatcher.dispatch(capturedPayload(transaction, "100000", "USD"),
+        eventId, "WHK-TEST04");
+
+        assertThat(transactionRepository.findById(transaction.getId()).orElseThrow().getStatus())
+        .isEqualTo(TransactionStatus.CREATED);
+        assertThat(webhookEventRepository.findByEventId(eventId).orElseThrow().getProcessingStatus())
+        .isEqualTo(WebhookProcessingStatus.FAILED);
+    }
+
+    @Test
+    @DisplayName("a capture with a mismatched currency is failed and cannot advance the transaction")
+    void mismatchedCurrencyIsNotApplied() {
+        Transaction transaction = createTransaction(TransactionStatus.CREATED);
+        String eventId = "evt_currency_mismatch_" + UUID.randomUUID();
+
+        dispatcher.dispatch(capturedPayload(transaction, "250000", "INR"),
+        eventId, "WHK-TEST05");
+
+        assertThat(transactionRepository.findById(transaction.getId()).orElseThrow().getStatus())
+        .isEqualTo(TransactionStatus.CREATED);
+        assertThat(webhookEventRepository.findByEventId(eventId).orElseThrow().getProcessingStatus())
+        .isEqualTo(WebhookProcessingStatus.FAILED);
+    }
+
+    @Test
+    @DisplayName("a capture after payment failure is recorded as a conflict, not successful processing")
+    void captureAfterPaymentFailureIsFailed() {
+        Transaction transaction = createTransaction(TransactionStatus.PAYMENT_FAILED);
+        String eventId = "evt_late_capture_" + UUID.randomUUID();
+
+        dispatcher.dispatch(capturedPayload(transaction), eventId, "WHK-TEST06");
+
+        assertThat(transactionRepository.findById(transaction.getId()).orElseThrow().getStatus())
+        .isEqualTo(TransactionStatus.PAYMENT_FAILED);
+        assertThat(webhookEventRepository.findByEventId(eventId).orElseThrow().getProcessingStatus())
+        .isEqualTo(WebhookProcessingStatus.FAILED);
+    }
+
+    @Test
     @DisplayName("A captured payment for an unknown transaction is durably marked failed")
     void unknownTransactionIsMarkedFailed() {
         String eventId = "evt_unknown_" + UUID.randomUUID();
 
-        dispatcher.dispatch(capturedPayload("TXN-UNKNOWN-" + UUID.randomUUID()), eventId, "WHK-TEST03");
+        dispatcher.dispatch(capturedPayload("order_unknown_" + UUID.randomUUID(), "TXN-UNKNOWN-" + UUID.randomUUID()),
+                eventId, "WHK-TEST03");
 
+        assertThat(webhookEventRepository.findByEventId(eventId).orElseThrow().getProcessingStatus())
+                .isEqualTo(WebhookProcessingStatus.FAILED);
+    }
+
+    @Test
+    @DisplayName("a matching transaction note cannot substitute for a persisted Razorpay order ID")
+    void notesCannotReplacePersistedOrderBinding() {
+        Transaction transaction = createTransaction(TransactionStatus.CREATED);
+        String eventId = "evt_unbound_order_" + UUID.randomUUID();
+
+        dispatcher.dispatch(capturedPayload("order_unbound_" + UUID.randomUUID(),
+                transaction.getReferenceNumber()), eventId, "WHK-TEST07");
+
+        assertThat(transactionRepository.findById(transaction.getId()).orElseThrow().getStatus())
+                .isEqualTo(TransactionStatus.CREATED);
         assertThat(webhookEventRepository.findByEventId(eventId).orElseThrow().getProcessingStatus())
                 .isEqualTo(WebhookProcessingStatus.FAILED);
     }
@@ -89,6 +149,7 @@ class PaymentCapturedHandlerTest {
                 .build());
         return transactionRepository.saveAndFlush(Transaction.builder()
                 .referenceNumber("TXN-RZP-" + UUID.randomUUID())
+                .razorpayOrderId("order_" + UUID.randomUUID().toString().replace("-", ""))
                 .merchant(merchant)
                 .amount(new BigDecimal("2500.00"))
                 .currency("USD")
@@ -99,9 +160,22 @@ class PaymentCapturedHandlerTest {
                 .build());
     }
 
-    private String capturedPayload(String referenceNumber) {
+    private String capturedPayload(Transaction transaction) {
+        return capturedPayload(transaction, "250000", "USD");
+    }
+
+    private String capturedPayload(Transaction transaction, String amountMinor, String currency) {
+        return capturedPayload(transaction.getRazorpayOrderId(), transaction.getReferenceNumber(), amountMinor, currency);
+    }
+
+    private String capturedPayload(String orderId, String referenceNumber) {
+        return capturedPayload(orderId, referenceNumber, "250000", "USD");
+    }
+
+    private String capturedPayload(String orderId, String referenceNumber, String amountMinor, String currency) {
         return "{\"event\":\"payment.captured\",\"payload\":{\"payment\":{\"entity\":{" +
-                "\"id\":\"pay_" + UUID.randomUUID() + "\",\"amount\":250000,\"currency\":\"USD\"," +
+                "\"id\":\"pay_" + UUID.randomUUID() + "\",\"amount\":" + amountMinor +
+                ",\"currency\":\"" + currency + "\",\"order_id\":\"" + orderId + "\"," +
                 "\"notes\":{\"transaction_reference\":\"" + referenceNumber + "\"}}}}}";
     }
 }

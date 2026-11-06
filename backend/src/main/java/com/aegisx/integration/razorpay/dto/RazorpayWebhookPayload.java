@@ -44,6 +44,9 @@ public class RazorpayWebhookPayload {
 
         @JsonProperty("order")
         private OrderWrapper order;
+
+        @JsonProperty("payout")
+        private PayoutWrapper payout;
     }
 
     @Data
@@ -87,6 +90,57 @@ public class RazorpayWebhookPayload {
     @NoArgsConstructor
     @AllArgsConstructor
     @JsonIgnoreProperties(ignoreUnknown = true)
+    public static class PayoutWrapper {
+
+        @JsonProperty("entity")
+        private PayoutEntity entity;
+    }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public static class PayoutEntity {
+
+        @JsonProperty("id")
+        private String id;
+
+        @JsonProperty("amount")
+        private BigDecimal amount;
+
+        @JsonProperty("currency")
+        private String currency;
+
+        @JsonProperty("status")
+        private String status;
+
+        @JsonProperty("reference_id")
+        private String referenceId;
+
+        @JsonProperty("utr")
+        private String utr;
+
+        @JsonProperty("status_details")
+        private PayoutStatusDetails statusDetails;
+    }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public static class PayoutStatusDetails {
+
+        @JsonProperty("description")
+        private String description;
+    }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @JsonIgnoreProperties(ignoreUnknown = true)
     public static class PaymentEntity {
 
         @JsonProperty("id")
@@ -121,6 +175,9 @@ public class RazorpayWebhookPayload {
         if (payload != null && payload.getPayment() != null && payload.getPayment().getEntity() != null) {
             return payload.getPayment().getEntity().getId();
         }
+        if (payload != null && payload.getPayout() != null && payload.getPayout().getEntity() != null) {
+            return payload.getPayout().getEntity().getId();
+        }
         return null;
     }
 
@@ -132,6 +189,11 @@ public class RazorpayWebhookPayload {
             return payload.getOrder().getEntity().getId();
         }
         return null;
+    }
+
+    public PayoutEntity getPayout() {
+        return payload != null && payload.getPayout() != null
+                ? payload.getPayout().getEntity() : null;
     }
 
     public BigDecimal getAmount() {

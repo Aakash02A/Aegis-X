@@ -93,6 +93,9 @@ class RazorpayWebhookIntegrationTest {
         UUID txId = txResponse.getId();
 
         assertEquals(TransactionStatus.CREATED, txResponse.getStatus());
+        Transaction transaction = transactionRepository.findById(txId).orElseThrow();
+        transaction.setRazorpayOrderId("order_test_999");
+        transactionRepository.save(transaction);
 
         // 2. Construct signed payment.captured payload
         String paymentId = "pay_" + UUID.randomUUID().toString().replace("-", "").substring(0, 14);

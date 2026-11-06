@@ -52,7 +52,7 @@ public class IntegrityWorkspaceController {
             @NotNull @Min(30) @Max(86400) Long stalenessThresholdSeconds) { }
 
     @GetMapping
-    @PreAuthorize("isAuthenticated()")
+    @PreAuthorize("hasAnyRole('ADMIN','COMPLIANCE_OFFICER','SETTLEMENT_OPERATOR')")
     public ResponseEntity<ApiResponse<List<Workspace>>> list() {
         if (workspaceService.list().isEmpty()) {
             workspaceService.ensureDefaultWorkspace();
@@ -68,14 +68,14 @@ public class IntegrityWorkspaceController {
     }
 
     @GetMapping("/default")
-    @PreAuthorize("isAuthenticated()")
+    @PreAuthorize("hasAnyRole('ADMIN','COMPLIANCE_OFFICER','SETTLEMENT_OPERATOR')")
     public ResponseEntity<ApiResponse<Workspace>> defaultWorkspace() {
         return ResponseEntity.ok(ApiResponse.success(workspaceService.ensureDefaultWorkspace(),
                 "Default workspace ready"));
     }
 
     @GetMapping("/{workspaceId}")
-    @PreAuthorize("isAuthenticated()")
+    @PreAuthorize("hasAnyRole('ADMIN','COMPLIANCE_OFFICER','SETTLEMENT_OPERATOR')")
     public ResponseEntity<ApiResponse<Workspace>> get(@PathVariable UUID workspaceId) {
         return ResponseEntity.ok(ApiResponse.success(workspaceService.get(workspaceId), "Workspace retrieved"));
     }
@@ -84,7 +84,7 @@ public class IntegrityWorkspaceController {
      * Provider configuration status. Reports presence and reachability, never a credential value.
      */
     @GetMapping("/{workspaceId}/configuration")
-    @PreAuthorize("isAuthenticated()")
+    @PreAuthorize("hasAnyRole('ADMIN','COMPLIANCE_OFFICER','SETTLEMENT_OPERATOR')")
     public ResponseEntity<ApiResponse<Map<String, Object>>> configuration(@PathVariable UUID workspaceId) {
         Workspace workspace = workspaceService.refreshCapabilities(workspaceId);
         Map<String, Object> body = new LinkedHashMap<>();

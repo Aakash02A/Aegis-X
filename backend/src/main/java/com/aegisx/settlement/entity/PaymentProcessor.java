@@ -47,7 +47,13 @@ public enum PaymentProcessor {
      */
     FASTER_PAYMENTS("Faster Payments", "UK Faster Payments Service", 
                     false, false, "FPS", 1),
-    
+
+    /**
+     * RazorpayX bank payouts in India.
+     */
+    RAZORPAYX("RazorpayX", "RazorpayX India Payouts",
+              false, false, "PAYOUT", 24),
+
     /**
      * Mock processor for testing and development.
      */

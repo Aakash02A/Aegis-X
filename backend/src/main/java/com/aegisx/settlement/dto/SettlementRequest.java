@@ -116,6 +116,23 @@ public class SettlementRequest {
                     throw new IllegalArgumentException("Valid card number is required for card networks");
                 }
             }
+            case RAZORPAYX -> {
+                if (!"INR".equals(settlementCurrency)) {
+                    throw new IllegalArgumentException("RazorpayX payouts require INR settlement currency");
+                }
+                if (beneficiaryName == null || !beneficiaryName.trim().matches("^[A-Za-z0-9 ._()/'-]{3,50}$")) {
+                    throw new IllegalArgumentException("Valid beneficiary name is required for RazorpayX");
+                }
+                if (beneficiaryAccountNumber == null || !beneficiaryAccountNumber.matches("^[A-Za-z0-9]{5,35}$")) {
+                    throw new IllegalArgumentException("Valid beneficiary bank account number is required for RazorpayX");
+                }
+                if (beneficiaryBankCode == null || !beneficiaryBankCode.matches("^[A-Z]{4}0[A-Z0-9]{6}$")) {
+                    throw new IllegalArgumentException("A valid 11-character IFSC is required for RazorpayX");
+                }
+                if (settlementAmount.compareTo(new BigDecimal("1.00")) < 0) {
+                    throw new IllegalArgumentException("RazorpayX payouts must be at least INR 1.00");
+                }
+            }
             // Add other processor validations as needed
         }
     }

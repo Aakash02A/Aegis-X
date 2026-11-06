@@ -8,6 +8,8 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
+import jakarta.persistence.LockModeType;
+import org.springframework.data.jpa.repository.Lock;
 
 import java.util.List;
 import java.util.Collection;
@@ -31,6 +33,12 @@ public interface TransactionRepository extends JpaRepository<Transaction, UUID> 
 
     @Query("SELECT t FROM Transaction t WHERE t.id = :id AND t.merchant.id = :merchantId")
     Optional<Transaction> findByIdAndMerchantId(@Param("id") UUID id, @Param("merchantId") UUID merchantId);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT t FROM Transaction t WHERE t.id = :id AND t.merchant.id = :merchantId")
+    Optional<Transaction> findByIdAndMerchantIdForUpdate(@Param("id") UUID id, @Param("merchantId") UUID merchantId);
+
+    Optional<Transaction> findByRazorpayOrderId(String razorpayOrderId);
 
     Optional<Transaction> findByReferenceNumber(String referenceNumber);
 

@@ -32,11 +32,16 @@ class ContentSecurityPolicyTest {
     }
 
     @Test
-    @DisplayName("Script, style and font sources stay on the application origin")
-    void resourceDirectivesDoNotAllowThirdPartyOrigins() {
+    @DisplayName("Only the hosted Razorpay Checkout script is allowed outside the application origin")
+    void resourceDirectivesAllowOnlyRazorpayCheckout() {
         String policy = SecurityConfig.CONTENT_SECURITY_POLICY;
 
-        for (String name : List.of("script-src", "style-src", "font-src")) {
+        List<String> scriptHosts = directive(policy, "script-src").stream()
+                .filter(token -> token.contains("://") || token.startsWith("//"))
+                .toList();
+        assertThat(scriptHosts).containsExactly("https://checkout.razorpay.com");
+
+        for (String name : List.of("style-src", "font-src")) {
             List<String> hosts = directive(policy, name).stream()
                     .filter(token -> token.contains("://") || token.startsWith("//"))
                     .toList();
@@ -46,6 +51,7 @@ class ContentSecurityPolicyTest {
         }
 
         assertThat(directive(policy, "default-src")).contains("'self'");
+        assertThat(directive(policy, "script-src")).contains("'self'");
         assertThat(directive(policy, "font-src")).containsExactly("'self'");
         assertThat(directive(policy, "frame-ancestors")).containsExactly("'none'");
     }

@@ -94,6 +94,7 @@ public class DocumentService {
         User uploader = userRepository.findByEmail(userEmail)
                 .orElseThrow(() -> new UsernameNotFoundException("User not found with email: " + userEmail));
 
+        verifyTransactionAccess(transaction, userEmail);
         validateDocument(file, documentType, transaction);
 
         String storagePath;

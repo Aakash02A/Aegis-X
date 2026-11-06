@@ -22,6 +22,9 @@ app:
       - image/png
     max-file-size-mb: 20
 
+settlement:
+  mock-enabled: true
+
 logging:
   level:
     com.aegisx: DEBUG

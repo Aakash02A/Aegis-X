@@ -284,4 +284,20 @@ class IntegrityApiContractTest extends IntegrityTestSupport {
                 .as("an unverified delivery must not be stored, even though this endpoint needs no bearer token")
                 .isZero();
     }
+
+    @Test
+    @DisplayName("merchants cannot enumerate or read shared operations workspaces")
+    @WithMockUser(username = "merchant@aegis-x.test", roles = "MERCHANT")
+    void merchantCannotAccessIntegrityWorkspaceData() throws Exception {
+        Workspace workspace = newWorkspace();
+        String base = "/api/integrity/workspaces/" + workspace.getId();
+
+        mockMvc.perform(get("/api/integrity/workspaces"))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(get(base + "/orders"))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(get(base + "/evidence/documents")
+                        .param("orderId", UUID.randomUUID().toString()))
+                .andExpect(status().isForbidden());
+    }
 }

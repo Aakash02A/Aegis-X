@@ -13,6 +13,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.annotation.Transactional;
@@ -21,6 +22,7 @@ import java.math.BigDecimal;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @SpringBootTest
 @ActiveProfiles("test")
@@ -78,5 +80,23 @@ class DocumentServiceTest {
         assertThat(response.getFulfilledCount()).isZero();
         assertThat(response.getRemainingCount()).isEqualTo(3);
         assertThat(response.isComplete()).isFalse();
+    }
+
+    @Test
+    @DisplayName("a merchant cannot upload evidence to another merchant's transaction")
+    void uploadRejectsTransactionOwnedByAnotherMerchant() {
+        User otherMerchant = userRepository.saveAndFlush(User.builder()
+                .fullName("Other Merchant")
+                .email("document-other-" + UUID.randomUUID() + "@aegis-x.test")
+                .passwordHash("not-used-by-this-service")
+                .role(Role.MERCHANT)
+                .build());
+        MockMultipartFile file = new MockMultipartFile(
+                "file", "invoice.pdf", "application/pdf", new byte[]{1, 2, 3});
+
+        assertThatThrownBy(() -> documentService.uploadDocument(
+                transaction.getId(), file, DocumentType.INVOICE, otherMerchant.getEmail()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Access denied");
     }
 }

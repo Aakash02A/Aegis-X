@@ -32,6 +32,9 @@ public class Transaction extends BaseEntity {
     @Column(name = "reference_number", nullable = false, unique = true, length = 64)
     private String referenceNumber;
 
+    @Column(name = "razorpay_order_id", unique = true, length = 50)
+    private String razorpayOrderId;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "merchant_id", nullable = false)
     private User merchant;
@@ -89,4 +92,3 @@ public class Transaction extends BaseEntity {
     /** Compatibility accessor retained for modules using the earlier transaction contract. */
     public String getPurpose() { return purposeCode; }
 }
-

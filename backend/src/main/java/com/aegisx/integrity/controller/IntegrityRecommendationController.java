@@ -37,14 +37,14 @@ public class IntegrityRecommendationController {
     public record DecisionRequest(@Size(max = 1000) String rationale) { }
 
     @GetMapping
-    @PreAuthorize("isAuthenticated()")
+    @PreAuthorize("hasAnyRole('ADMIN','COMPLIANCE_OFFICER','SETTLEMENT_OPERATOR')")
     public ResponseEntity<ApiResponse<List<RecoveryRecommendation>>> list(@PathVariable UUID workspaceId) {
         return ResponseEntity.ok(ApiResponse.success(recoveryService.list(workspaceId),
                 "Recovery recommendations retrieved"));
     }
 
     @GetMapping("/by-exception/{exceptionId}")
-    @PreAuthorize("isAuthenticated()")
+    @PreAuthorize("hasAnyRole('ADMIN','COMPLIANCE_OFFICER','SETTLEMENT_OPERATOR')")
     public ResponseEntity<ApiResponse<List<RecoveryRecommendation>>> byException(@PathVariable UUID workspaceId,
                                                                                @PathVariable UUID exceptionId) {
         return ResponseEntity.ok(ApiResponse.success(recoveryService.forException(workspaceId, exceptionId),

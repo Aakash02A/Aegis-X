@@ -42,7 +42,7 @@ public class IntegrityBenchmarkController {
     }
 
     @GetMapping("/method")
-    @PreAuthorize("isAuthenticated()")
+    @PreAuthorize("hasAnyRole('ADMIN','COMPLIANCE_OFFICER','SETTLEMENT_OPERATOR')")
     public ResponseEntity<ApiResponse<Map<String, Object>>> method() {
         long evidenceKinds = java.util.Arrays.stream(FaultKind.values())
                 .filter(FaultKind::isEvidenceKind).count();

@@ -5,6 +5,7 @@ import com.aegisx.settlement.dto.SettlementResponse;
 import com.aegisx.settlement.entity.PaymentProcessor;
 import com.aegisx.settlement.entity.SettlementStatus;
 import com.aegisx.settlement.service.SettlementService;
+import com.aegisx.settlement.service.SettlementProcessorService;
 import com.aegisx.common.dto.ApiResponse;
 import com.aegisx.audit.service.AuditService;
 import com.aegisx.audit.entity.AuditModule;
@@ -42,6 +43,7 @@ import java.util.UUID;
 public class SettlementController {
 
     private final SettlementService settlementService;
+    private final SettlementProcessorService settlementProcessorService;
     private final AuditService auditService;
 
     /**
@@ -110,7 +112,7 @@ public class SettlementController {
      * Gets settlement details by ID.
      */
     @GetMapping("/{settlementId}")
-    @PreAuthorize("hasAnyRole('COMPLIANCE_OFFICER', 'SETTLEMENT_OPERATOR', 'MERCHANT')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'COMPLIANCE_OFFICER', 'SETTLEMENT_OPERATOR')")
     @Operation(summary = "Get settlement", 
                description = "Retrieves settlement details by ID")
     public ResponseEntity<ApiResponse<SettlementResponse>> getSettlement(
@@ -139,7 +141,7 @@ public class SettlementController {
      * Gets settlement by reference number.
      */
     @GetMapping("/reference/{reference}")
-    @PreAuthorize("hasAnyRole('COMPLIANCE_OFFICER', 'SETTLEMENT_OPERATOR', 'MERCHANT')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'COMPLIANCE_OFFICER', 'SETTLEMENT_OPERATOR')")
     @Operation(summary = "Get settlement by reference", 
                description = "Retrieves settlement details by reference number")
     public ResponseEntity<ApiResponse<SettlementResponse>> getSettlementByReference(
@@ -168,7 +170,7 @@ public class SettlementController {
      * Gets all settlements for a transaction.
      */
     @GetMapping("/transaction/{transactionId}")
-    @PreAuthorize("hasAnyRole('COMPLIANCE_OFFICER', 'SETTLEMENT_OPERATOR', 'MERCHANT')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'COMPLIANCE_OFFICER', 'SETTLEMENT_OPERATOR')")
     @Operation(summary = "Get transaction settlements", 
                description = "Retrieves all settlements for a specific transaction")
     public ResponseEntity<ApiResponse<List<SettlementResponse>>> getTransactionSettlements(
@@ -442,7 +444,7 @@ public class SettlementController {
         log.debug("Getting available payment processors");
         
         try {
-            PaymentProcessor[] processors = PaymentProcessor.values();
+            PaymentProcessor[] processors = settlementProcessorService.getConfiguredProcessors();
             
             return ResponseEntity.ok(ApiResponse.success(processors, 
                     "Retrieved " + processors.length + " payment processors"));

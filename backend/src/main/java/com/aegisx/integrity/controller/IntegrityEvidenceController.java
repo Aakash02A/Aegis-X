@@ -56,7 +56,8 @@ import java.util.UUID;
 @RestController
 @RequestMapping("/api/integrity/workspaces/{workspaceId}/evidence")
 @RequiredArgsConstructor
-@org.springframework.security.access.prepost.PreAuthorize("isAuthenticated()")
+@org.springframework.security.access.prepost.PreAuthorize(
+        "hasAnyRole('ADMIN','COMPLIANCE_OFFICER','SETTLEMENT_OPERATOR')")
 @Tag(name = "Evidence intelligence",
         description = "Supporting documents, extraction, consistency checks and evidence readiness")
 public class IntegrityEvidenceController {

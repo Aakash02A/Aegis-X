@@ -3,14 +3,22 @@ package com.aegisx.integration.razorpay.service;
 import com.aegisx.integration.razorpay.dto.RazorpayWebhookPayload;
 import com.aegisx.integration.razorpay.entity.WebhookEvent;
 import com.aegisx.integration.razorpay.entity.WebhookProcessingStatus;
+import com.aegisx.transaction.entity.Transaction;
+import com.aegisx.transaction.repository.TransactionRepository;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
+import java.util.Optional;
+
 @Slf4j
 @Component
+@RequiredArgsConstructor
 public class PaymentFailedHandler implements RazorpayEventHandler {
 
     public static final String EVENT_TYPE = "payment.failed";
+
+    private final TransactionRepository transactionRepository;
 
     @Override
     public boolean supports(String eventType) {
@@ -20,13 +28,19 @@ public class PaymentFailedHandler implements RazorpayEventHandler {
     @Override
     public void handle(RazorpayWebhookPayload payload, WebhookEvent event, String correlationId) {
         String paymentId = payload.getPaymentId();
-        String referenceHint = payload.getTransactionReferenceFromNotes();
-        if (referenceHint == null) {
-            referenceHint = payload.getOrderId();
-        }
-
         event.setPaymentId(paymentId);
-        event.setTransactionReference(referenceHint);
+        String providerOrderId = payload.getOrderId();
+        if (providerOrderId == null || providerOrderId.isBlank()) {
+            event.setProcessingStatus(WebhookProcessingStatus.FAILED);
+            return;
+        }
+        Optional<Transaction> transaction = transactionRepository.findByRazorpayOrderId(providerOrderId);
+        if (transaction.isEmpty()) {
+            event.setProcessingStatus(WebhookProcessingStatus.FAILED);
+            return;
+        }
+        String transactionReference = transaction.get().getReferenceNumber();
+        event.setTransactionReference(transactionReference);
         event.setProcessingStatus(WebhookProcessingStatus.PROCESSED);
 
         String errorCode = null;
@@ -38,6 +52,6 @@ public class PaymentFailedHandler implements RazorpayEventHandler {
         }
 
         log.warn("[{}] Recorded '{}' for paymentId: '{}', reference: '{}', errorCode: '{}', reason: '{}'",
-                correlationId, EVENT_TYPE, paymentId, referenceHint, errorCode, errorDescription);
+                correlationId, EVENT_TYPE, paymentId, transactionReference, errorCode, errorDescription);
     }
 }

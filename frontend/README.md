@@ -77,7 +77,7 @@ Every protected page executes an immediate authorization check against the backe
 | `settlement.html` | `SETTLEMENT_OPERATOR`, `COMPLIANCE_OFFICER`, `ADMIN` | `login.html` |
 | `operations.html` | `ADMIN` | `login.html` |
 | `transaction.html` | All Authenticated Users | `login.html` |
-| `integrity*.html` | All Authenticated Users (scoped by workspace) | `login.html` |
+| `integrity*.html` | `ADMIN`, `COMPLIANCE_OFFICER`, `SETTLEMENT_OPERATOR` | `login.html` |
 
 ---
 
@@ -110,4 +110,3 @@ npm run preview
 2. **Session-Scoped Tokens:** JWT tokens are stored exclusively in `sessionStorage` (cleared when the browser tab is closed).
 3. **Correlation Tracking:** Every API request automatically generates and attaches an `X-Correlation-ID` header.
 4. **Enveloped Error Handling:** Any backend error envelope (`success: false`) is trapped and displayed with user-friendly actionable feedback.
-

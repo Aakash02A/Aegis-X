@@ -65,10 +65,10 @@ class SettlementServiceTest {
     @Test
     @DisplayName("initiates a settlement and writes its audit record")
     void shouldInitiateSettlementSuccessfully() {
-        SettlementResponse result = service.initiateSettlement(request(PaymentProcessor.SWIFT), "integration-test");
+        SettlementResponse result = service.initiateSettlement(request(PaymentProcessor.MOCK), "integration-test");
 
         assertThat(result.getTransactionId()).isEqualTo(transaction.getId());
-        assertThat(result.getPaymentProcessor()).isEqualTo(PaymentProcessor.SWIFT);
+        assertThat(result.getPaymentProcessor()).isEqualTo(PaymentProcessor.MOCK);
         assertThat(result.getSettlementAmount()).isEqualByComparingTo("1000.00");
         assertThat(result.getStatus()).isEqualTo(SettlementStatus.INITIATED);
         assertThat(settlementRepository.findById(result.getId())).isPresent();
@@ -77,7 +77,7 @@ class SettlementServiceTest {
     @Test
     @DisplayName("rejects missing, ineligible and duplicate settlement transactions")
     void rejectsInvalidInitiation() {
-        SettlementRequest missingTransaction = request(PaymentProcessor.SWIFT);
+        SettlementRequest missingTransaction = request(PaymentProcessor.MOCK);
         missingTransaction.setTransactionId(UUID.randomUUID());
         assertThatThrownBy(() -> service.initiateSettlement(missingTransaction, "test"))
                 .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("Transaction not found");
@@ -91,33 +91,44 @@ class SettlementServiceTest {
                 .purposeCode("P0101")
                 .status(TransactionStatus.COMPLIANCE_HOLD)
                 .build());
-        SettlementRequest ineligible = request(PaymentProcessor.SWIFT);
+        SettlementRequest ineligible = request(PaymentProcessor.MOCK);
         ineligible.setTransactionId(held.getId());
         assertThatThrownBy(() -> service.initiateSettlement(ineligible, "test"))
                 .isInstanceOf(IllegalStateException.class).hasMessageContaining("not eligible");
 
-        service.initiateSettlement(request(PaymentProcessor.SWIFT), "test");
-        assertThatThrownBy(() -> service.initiateSettlement(request(PaymentProcessor.SWIFT), "test"))
+        service.initiateSettlement(request(PaymentProcessor.MOCK), "test");
+        assertThatThrownBy(() -> service.initiateSettlement(request(PaymentProcessor.MOCK), "test"))
                 .isInstanceOf(IllegalStateException.class).hasMessageContaining("already exists");
     }
 
     @Test
-    @DisplayName("submits an initiated settlement through the real local processor implementation")
+    @DisplayName("submits an initiated settlement through the test-only mock processor")
     void shouldProcessSettlementSuccessfully() {
-        SettlementResponse initiated = service.initiateSettlement(request(PaymentProcessor.SWIFT), "test");
+        SettlementResponse initiated = service.initiateSettlement(request(PaymentProcessor.MOCK), "test");
         SettlementResponse processed = service.processSettlement(initiated.getId());
 
         assertThat(processed.getStatus()).isEqualTo(SettlementStatus.SUBMITTED);
-        assertThat(processed.getProcessorTransactionId()).startsWith("SW");
-        assertThat(processed.getPublicMetadata().get("messageType").asText()).isEqualTo("MT103");
+        assertThat(processed.getProcessorTransactionId()).startsWith("MOCK");
+        assertThat(processed.getPublicMetadata().get("messageType").asText()).isEqualTo("MOCK");
         assertThatThrownBy(() -> service.processSettlement(initiated.getId()))
                 .isInstanceOf(IllegalStateException.class).hasMessageContaining("not in INITIATED status");
     }
 
     @Test
+    @DisplayName("does not simulate settlement submission for an unconfigured live rail")
+    void refusesUnsupportedLiveProcessor() {
+        SettlementResponse initiated = service.initiateSettlement(request(PaymentProcessor.SWIFT), "test");
+
+        assertThatThrownBy(() -> service.processSettlement(initiated.getId()))
+                .isInstanceOf(SettlementService.SettlementProcessingException.class);
+        assertThat(settlementRepository.findById(initiated.getId()).orElseThrow().getStatus())
+                .isEqualTo(SettlementStatus.FAILED);
+    }
+
+    @Test
     @DisplayName("retrieves persisted settlements by id, reference, transaction and status")
     void readsPersistedSettlements() {
-        SettlementResponse initiated = service.initiateSettlement(request(PaymentProcessor.SWIFT), "test");
+        SettlementResponse initiated = service.initiateSettlement(request(PaymentProcessor.MOCK), "test");
 
         assertThat(service.getSettlement(initiated.getId()).getId()).isEqualTo(initiated.getId());
         assertThat(service.getSettlementByReference(initiated.getSettlementReference())
@@ -130,7 +141,7 @@ class SettlementServiceTest {
     @Test
     @DisplayName("persists retry and cancel transitions and refuses transitions from terminal states")
     void retryAndCancelTransitionsPersist() {
-        SettlementResponse initiated = service.initiateSettlement(request(PaymentProcessor.SWIFT), "test");
+        SettlementResponse initiated = service.initiateSettlement(request(PaymentProcessor.MOCK), "test");
         Settlement failed = settlementRepository.findById(initiated.getId()).orElseThrow();
         failed.updateStatus(SettlementStatus.FAILED, "Local processor timeout");
         settlementRepository.saveAndFlush(failed);
@@ -148,7 +159,7 @@ class SettlementServiceTest {
     @Test
     @DisplayName("updates legal statuses and rejects a reversal from a terminal status")
     void updatesSettlementStatusWithTransitionValidation() {
-        SettlementResponse initiated = service.initiateSettlement(request(PaymentProcessor.SWIFT), "test");
+        SettlementResponse initiated = service.initiateSettlement(request(PaymentProcessor.MOCK), "test");
         SettlementResponse processing = service.updateSettlementStatus(
                 initiated.getSettlementReference(), SettlementStatus.PROCESSING, null, null);
         assertThat(processing.getStatus()).isEqualTo(SettlementStatus.PROCESSING);
@@ -166,9 +177,9 @@ class SettlementServiceTest {
     }
 
     @Test
-    @DisplayName("processes completed settlements through reconciliation")
-    void reconcilesCompletedSettlement() {
-        SettlementResponse initiated = service.initiateSettlement(request(PaymentProcessor.SWIFT), "test");
+    @DisplayName("does not mark a settlement reconciled without a live provider check")
+    void refusesUnverifiedReconciliation() {
+        SettlementResponse initiated = service.initiateSettlement(request(PaymentProcessor.MOCK), "test");
         Settlement settlement = settlementRepository.findById(initiated.getId()).orElseThrow();
         settlement.updateStatus(SettlementStatus.COMPLETED, null);
         settlementRepository.saveAndFlush(settlement);
@@ -176,7 +187,8 @@ class SettlementServiceTest {
         service.processReconciliation();
 
         Settlement reconciled = settlementRepository.findById(initiated.getId()).orElseThrow();
-        assertThat(reconciled.getReconciledAt()).isNotNull();
+        assertThat(reconciled.getStatus()).isEqualTo(SettlementStatus.MANUAL_REVIEW);
+        assertThat(reconciled.getReconciledAt()).isNull();
     }
 
     @Test

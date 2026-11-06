@@ -62,7 +62,7 @@ public class IntegrityReconciliationController {
     }
 
     @GetMapping("/methods")
-    @PreAuthorize("isAuthenticated()")
+    @PreAuthorize("hasAnyRole('ADMIN','COMPLIANCE_OFFICER','SETTLEMENT_OPERATOR')")
     public ResponseEntity<ApiResponse<List<Map<String, String>>>> methods() {
         List<Map<String, String>> methods = methodRegistry.all().stream().map(method -> {
             Map<String, String> entry = new LinkedHashMap<>();
@@ -74,14 +74,14 @@ public class IntegrityReconciliationController {
     }
 
     @GetMapping("/runs")
-    @PreAuthorize("isAuthenticated()")
+    @PreAuthorize("hasAnyRole('ADMIN','COMPLIANCE_OFFICER','SETTLEMENT_OPERATOR')")
     public ResponseEntity<ApiResponse<List<ReconciliationRun>>> runs(@PathVariable UUID workspaceId) {
         return ResponseEntity.ok(ApiResponse.success(
                 runRepository.findAllByWorkspaceIdOrderByStartedAtDesc(workspaceId), "Reconciliation runs retrieved"));
     }
 
     @GetMapping("/runs/{runId}/findings")
-    @PreAuthorize("isAuthenticated()")
+    @PreAuthorize("hasAnyRole('ADMIN','COMPLIANCE_OFFICER','SETTLEMENT_OPERATOR')")
     public ResponseEntity<ApiResponse<List<ReconciliationFinding>>> findings(@PathVariable UUID workspaceId,
                                                                             @PathVariable UUID runId) {
         return ResponseEntity.ok(ApiResponse.success(findingRepository.findByRunIdOrderByCreatedAtAsc(runId),
@@ -89,7 +89,7 @@ public class IntegrityReconciliationController {
     }
 
     @GetMapping("/findings")
-    @PreAuthorize("isAuthenticated()")
+    @PreAuthorize("hasAnyRole('ADMIN','COMPLIANCE_OFFICER','SETTLEMENT_OPERATOR')")
     public ResponseEntity<ApiResponse<List<ReconciliationFinding>>> recentFindings(
             @PathVariable UUID workspaceId,
             @RequestParam(defaultValue = "50") int limit) {
