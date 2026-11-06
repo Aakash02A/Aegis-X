@@ -88,13 +88,8 @@ public class DocumentService {
 
     @Transactional
     public DocumentResponse uploadDocument(UUID transactionId, MultipartFile file, DocumentType documentType, String userEmail) {
-        Transaction transaction = transactionRepository.findById(transactionId)
-                .orElseThrow(() -> new IllegalArgumentException("Transaction not found: " + transactionId));
-
-        User uploader = userRepository.findByEmail(userEmail)
-                .orElseThrow(() -> new UsernameNotFoundException("User not found with email: " + userEmail));
-
-        verifyTransactionAccess(transaction, userEmail);
+        User uploader = findUser(userEmail);
+        Transaction transaction = findAuthorizedTransaction(transactionId, uploader);
         validateDocument(file, documentType, transaction);
 
         String storagePath;
@@ -152,11 +147,7 @@ public class DocumentService {
 
     @Transactional(readOnly = true)
     public EvidenceStatusResponse getEvidenceStatus(UUID transactionId, String userEmail) {
-        Transaction transaction = transactionRepository.findById(transactionId)
-                .orElseThrow(() -> new IllegalArgumentException("Transaction not found: " + transactionId));
-
-        // Security: Verify user has access to this transaction
-        verifyTransactionAccess(transaction, userEmail);
+        Transaction transaction = findAuthorizedTransaction(transactionId, findUser(userEmail));
 
         List<RequiredDocument> allRequired = requiredDocumentRepository.findByTransactionId(transactionId);
         if (allRequired.isEmpty()) {
@@ -210,14 +201,6 @@ public class DocumentService {
         Document document = documentRepository.findByIdAndTransactionId(documentId, transactionId)
                 .orElseThrow(() -> new IllegalArgumentException("Document not found for transaction: " + transactionId));
         return storageService.load(document.getStoragePath());
-    }
-
-    private void verifyTransactionAccess(Transaction transaction, String userEmail) {
-        User user = findUser(userEmail);
-        if (user.getRole() == Role.MERCHANT && !transaction.getMerchantId().equals(user.getId())) {
-            throw new IllegalArgumentException("Access denied: transaction not owned by user");
-        }
-        // COMPLIANCE_OFFICER and ADMIN have access to all transactions
     }
 
     private User findUser(String userEmail) {

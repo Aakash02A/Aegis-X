@@ -112,16 +112,17 @@ public class SettlementController {
      * Gets settlement details by ID.
      */
     @GetMapping("/{settlementId}")
-    @PreAuthorize("hasAnyRole('ADMIN', 'COMPLIANCE_OFFICER', 'SETTLEMENT_OPERATOR')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'COMPLIANCE_OFFICER', 'SETTLEMENT_OPERATOR', 'MERCHANT')")
     @Operation(summary = "Get settlement", 
                description = "Retrieves settlement details by ID")
     public ResponseEntity<ApiResponse<SettlementResponse>> getSettlement(
-            @Parameter(description = "Settlement ID") @PathVariable UUID settlementId) {
+            @Parameter(description = "Settlement ID") @PathVariable UUID settlementId,
+            Authentication authentication) {
         
         log.debug("Getting settlement: {}", settlementId);
         
         try {
-            SettlementResponse response = settlementService.getSettlement(settlementId);
+            SettlementResponse response = settlementService.getSettlement(settlementId, authentication);
             
             auditService.logEvent(AuditEventType.SETTLEMENT_VIEW, AuditModule.SETTLEMENT,
                     "Viewed settlement: " + settlementId);
@@ -141,16 +142,18 @@ public class SettlementController {
      * Gets settlement by reference number.
      */
     @GetMapping("/reference/{reference}")
-    @PreAuthorize("hasAnyRole('ADMIN', 'COMPLIANCE_OFFICER', 'SETTLEMENT_OPERATOR')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'COMPLIANCE_OFFICER', 'SETTLEMENT_OPERATOR', 'MERCHANT')")
     @Operation(summary = "Get settlement by reference", 
                description = "Retrieves settlement details by reference number")
     public ResponseEntity<ApiResponse<SettlementResponse>> getSettlementByReference(
-            @Parameter(description = "Settlement reference") @PathVariable String reference) {
+            @Parameter(description = "Settlement reference") @PathVariable String reference,
+            Authentication authentication) {
         
         log.debug("Getting settlement by reference: {}", reference);
         
         try {
-            SettlementResponse response = settlementService.getSettlementByReference(reference);
+            SettlementResponse response = settlementService.getSettlementByReference(
+                    reference, authentication);
             
             auditService.logEvent(AuditEventType.SETTLEMENT_VIEW, AuditModule.SETTLEMENT,
                     "Viewed settlement by reference: " + reference);
@@ -170,16 +173,18 @@ public class SettlementController {
      * Gets all settlements for a transaction.
      */
     @GetMapping("/transaction/{transactionId}")
-    @PreAuthorize("hasAnyRole('ADMIN', 'COMPLIANCE_OFFICER', 'SETTLEMENT_OPERATOR')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'COMPLIANCE_OFFICER', 'SETTLEMENT_OPERATOR', 'MERCHANT')")
     @Operation(summary = "Get transaction settlements", 
                description = "Retrieves all settlements for a specific transaction")
     public ResponseEntity<ApiResponse<List<SettlementResponse>>> getTransactionSettlements(
-            @Parameter(description = "Transaction ID") @PathVariable UUID transactionId) {
+            @Parameter(description = "Transaction ID") @PathVariable UUID transactionId,
+            Authentication authentication) {
         
         log.debug("Getting settlements for transaction: {}", transactionId);
         
         try {
-            List<SettlementResponse> settlements = settlementService.getTransactionSettlements(transactionId);
+            List<SettlementResponse> settlements = settlementService.getTransactionSettlements(
+                    transactionId, authentication);
             
             auditService.logEvent(AuditEventType.SETTLEMENT_VIEW, AuditModule.SETTLEMENT,
                     "Viewed settlements for transaction: " + transactionId);
@@ -187,6 +192,8 @@ public class SettlementController {
             return ResponseEntity.ok(ApiResponse.success(settlements, 
                     "Retrieved " + settlements.size() + " settlements"));
             
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.notFound().build();
         } catch (Exception e) {
             log.error("Failed to get settlements for transaction: {}", transactionId, e);
             return ResponseEntity.internalServerError()

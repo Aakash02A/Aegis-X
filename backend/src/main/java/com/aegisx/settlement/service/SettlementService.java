@@ -1,5 +1,7 @@
 package com.aegisx.settlement.service;
 
+import com.aegisx.auth.entity.User;
+import com.aegisx.auth.repository.UserRepository;
 import com.aegisx.settlement.dto.SettlementRequest;
 import com.aegisx.settlement.dto.SettlementResponse;
 import com.aegisx.settlement.entity.PaymentProcessor;
@@ -17,6 +19,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -40,6 +43,7 @@ public class SettlementService {
 
     private final SettlementRepository settlementRepository;
     private final TransactionRepository transactionRepository;
+    private final UserRepository userRepository;
     private final SettlementProcessorService settlementProcessorService;
     private final AuditService auditService;
     private final ObjectMapper objectMapper;
@@ -295,6 +299,16 @@ public class SettlementService {
         return SettlementResponse.fromEntity(settlement);
     }
 
+    @Transactional(readOnly = true)
+    public SettlementResponse getSettlement(UUID settlementId, Authentication authentication) {
+        User requester = requireRequester(authentication);
+        Settlement settlement = isMerchant(authentication)
+                ? settlementRepository.findByIdAndMerchantId(settlementId, requester.getId())
+                        .orElseThrow(() -> new IllegalArgumentException("Settlement not found"))
+                : getSettlementById(settlementId);
+        return SettlementResponse.fromEntity(settlement);
+    }
+
     /**
      * Gets settlement by reference number.
      */
@@ -302,6 +316,17 @@ public class SettlementService {
     public SettlementResponse getSettlementByReference(String reference) {
         Settlement settlement = settlementRepository.findBySettlementReference(reference)
                 .orElseThrow(() -> new IllegalArgumentException("Settlement not found"));
+        return SettlementResponse.fromEntity(settlement);
+    }
+
+    @Transactional(readOnly = true)
+    public SettlementResponse getSettlementByReference(String reference, Authentication authentication) {
+        User requester = requireRequester(authentication);
+        Settlement settlement = isMerchant(authentication)
+                ? settlementRepository.findByReferenceAndMerchantId(reference, requester.getId())
+                        .orElseThrow(() -> new IllegalArgumentException("Settlement not found"))
+                : settlementRepository.findBySettlementReference(reference)
+                        .orElseThrow(() -> new IllegalArgumentException("Settlement not found"));
         return SettlementResponse.fromEntity(settlement);
     }
 
@@ -314,6 +339,30 @@ public class SettlementService {
         return settlements.stream()
                 .map(SettlementResponse::fromEntity)
                 .collect(Collectors.toList());
+    }
+
+    @Transactional(readOnly = true)
+    public List<SettlementResponse> getTransactionSettlements(UUID transactionId, Authentication authentication) {
+        User requester = requireRequester(authentication);
+        if (isMerchant(authentication)
+                && transactionRepository.findByIdAndMerchantId(transactionId, requester.getId()).isEmpty()) {
+            throw new IllegalArgumentException("Transaction not found");
+        }
+        return getTransactionSettlements(transactionId);
+    }
+
+    private User requireRequester(Authentication authentication) {
+        if (authentication == null || !authentication.isAuthenticated()
+                || authentication.getName() == null || authentication.getName().isBlank()) {
+            throw new IllegalArgumentException("Settlement not found");
+        }
+        return userRepository.findByEmail(authentication.getName())
+                .orElseThrow(() -> new IllegalArgumentException("Settlement not found"));
+    }
+
+    private boolean isMerchant(Authentication authentication) {
+        return authentication.getAuthorities().stream()
+                .anyMatch(authority -> "ROLE_MERCHANT".equals(authority.getAuthority()));
     }
 
     /**

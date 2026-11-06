@@ -27,6 +27,15 @@ public interface SettlementRepository extends JpaRepository<Settlement, UUID> {
      */
     Optional<Settlement> findBySettlementReference(String settlementReference);
 
+    @Query("SELECT s FROM Settlement s WHERE s.id = :settlementId AND s.transaction.merchant.id = :merchantId")
+    Optional<Settlement> findByIdAndMerchantId(@Param("settlementId") UUID settlementId,
+                                               @Param("merchantId") UUID merchantId);
+
+    @Query("SELECT s FROM Settlement s WHERE s.settlementReference = :reference "
+            + "AND s.transaction.merchant.id = :merchantId")
+    Optional<Settlement> findByReferenceAndMerchantId(@Param("reference") String reference,
+                                                       @Param("merchantId") UUID merchantId);
+
     /**
      * Finds settlement by processor transaction ID.
      */
