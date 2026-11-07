@@ -13,6 +13,8 @@ public interface ReconciliationRunRepository extends JpaRepository<Reconciliatio
 
     List<ReconciliationRun> findAllByWorkspaceIdOrderByStartedAtDesc(UUID workspaceId);
 
+    Optional<ReconciliationRun> findByIdAndWorkspaceId(UUID id, UUID workspaceId);
+
     Optional<ReconciliationRun> findTopByWorkspaceIdOrderByStartedAtDesc(UUID workspaceId);
 
     long countByWorkspaceId(UUID workspaceId);

@@ -5,6 +5,7 @@ import com.aegisx.integrity.domain.ReconciliationStrategy;
 import com.aegisx.integrity.domain.ReconciliationTrigger;
 import com.aegisx.integrity.entity.ReconciliationFinding;
 import com.aegisx.integrity.entity.ReconciliationRun;
+import com.aegisx.integrity.exception.IntegrityNotFoundException;
 import com.aegisx.integrity.reconciliation.ReconciliationMethodRegistry;
 import com.aegisx.integrity.reconciliation.ReconciliationService;
 import com.aegisx.integrity.repository.ReconciliationFindingRepository;
@@ -84,7 +85,10 @@ public class IntegrityReconciliationController {
     @PreAuthorize("hasAnyRole('ADMIN','COMPLIANCE_OFFICER','SETTLEMENT_OPERATOR')")
     public ResponseEntity<ApiResponse<List<ReconciliationFinding>>> findings(@PathVariable UUID workspaceId,
                                                                             @PathVariable UUID runId) {
-        return ResponseEntity.ok(ApiResponse.success(findingRepository.findByRunIdOrderByCreatedAtAsc(runId),
+        runRepository.findByIdAndWorkspaceId(runId, workspaceId)
+                .orElseThrow(() -> new IntegrityNotFoundException("Reconciliation run not found"));
+        return ResponseEntity.ok(ApiResponse.success(
+                findingRepository.findByRunIdAndWorkspaceIdOrderByCreatedAtAsc(runId, workspaceId),
                 "Findings for run " + runId + " retrieved"));
     }
 

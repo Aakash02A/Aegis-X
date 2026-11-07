@@ -4,6 +4,13 @@ import com.aegisx.auth.entity.Role;
 import com.aegisx.auth.entity.User;
 import com.aegisx.auth.repository.UserRepository;
 import com.aegisx.integrity.domain.WorkspaceMemberRole;
+import com.aegisx.integrity.domain.CertaintyLevel;
+import com.aegisx.integrity.domain.ExceptionSeverity;
+import com.aegisx.integrity.domain.FindingType;
+import com.aegisx.integrity.domain.ReconciliationStrategy;
+import com.aegisx.integrity.domain.ReconciliationTrigger;
+import com.aegisx.integrity.entity.ReconciliationFinding;
+import com.aegisx.integrity.entity.ReconciliationRun;
 import com.aegisx.integrity.entity.Workspace;
 import com.aegisx.integrity.service.WorkspaceMembershipService;
 import com.aegisx.integrity.support.IntegrityTestSupport;
@@ -17,6 +24,7 @@ import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequ
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -84,6 +92,38 @@ class WorkspaceMembershipAuthorizationTest extends IntegrityTestSupport {
         assertThat(exceptionCaseRepository.count()).isEqualTo(exceptionsBefore);
         assertThat(evidenceDocumentRepository.count()).isEqualTo(documentsBefore);
         assertThat(auditEventRepository.count()).isEqualTo(auditBefore);
+    }
+
+    @Test
+    @DisplayName("a member cannot read findings for another workspace's reconciliation run")
+    void memberCannotReadFindingsForAnotherWorkspacesRun() throws Exception {
+        User member = createAdmin("reconciliation-reader-" + UUID.randomUUID() + "@aegis-x.test");
+        Workspace memberWorkspace = newWorkspace();
+        Workspace otherWorkspace = newWorkspace();
+        membershipService.addMember(member.getId(), memberWorkspace.getId(), WorkspaceMemberRole.OWNER);
+
+        ReconciliationRun otherRun = runRepository.save(ReconciliationRun.builder()
+                .workspaceId(otherWorkspace.getId())
+                .trigger(ReconciliationTrigger.MANUAL)
+                .strategy(ReconciliationStrategy.PROPOSED_EVIDENCE_BASED)
+                .startedAt(Instant.now())
+                .providerReachable(false)
+                .findingsCount(1)
+                .build());
+        findingRepository.save(ReconciliationFinding.builder()
+                .runId(otherRun.getId())
+                .workspaceId(otherWorkspace.getId())
+                .findingType(FindingType.AMOUNT_MISMATCH)
+                .severity(ExceptionSeverity.HIGH)
+                .certainty(CertaintyLevel.CERTAIN)
+                .summary("Other workspace finding")
+                .build());
+
+        mockMvc.perform(get("/api/integrity/workspaces/" + memberWorkspace.getId()
+                        + "/reconciliation/runs/" + otherRun.getId() + "/findings")
+                        .with(user(member.getEmail()).roles("ADMIN")))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.message").value("Reconciliation run not found"));
     }
 
     private User createAdmin(String email) {

@@ -15,6 +15,8 @@ public interface ReconciliationFindingRepository extends JpaRepository<Reconcili
 
     List<ReconciliationFinding> findByRunIdOrderByCreatedAtAsc(UUID runId);
 
+    List<ReconciliationFinding> findByRunIdAndWorkspaceIdOrderByCreatedAtAsc(UUID runId, UUID workspaceId);
+
     List<ReconciliationFinding> findByExceptionIdOrderByCreatedAtDesc(UUID exceptionId);
 
     Page<ReconciliationFinding> findByWorkspaceIdOrderByCreatedAtDesc(UUID workspaceId, Pageable pageable);
