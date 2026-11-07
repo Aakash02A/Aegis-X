@@ -238,3 +238,44 @@ The PowerShell prelude for each MySQL command loaded `.env` into process memory,
 
 ### Open items
 No Phase 2b code or test item remains open. The inherited `README.md` inclusion in `0f4bf8b` remains an audit finding; do not rewrite the existing commit history.
+
+## Phase 3: payment ingestion (2026-11-07)
+
+### Verdict
+**COMPLETE for the simulated provider path.** The conditional real Razorpay test-mode transaction is **NOT VERIFIED**: `.env` contains placeholder Razorpay credentials, so no external order or webhook call was made. The user instruction is to continue when no usable `rzp_test` key exists.
+
+### Evidence and changes
+- `OrderService.create` creates an internal order, calls the adapter selected for the workspace, and records the provider result (`backend/src/main/java/com/aegisx/integrity/service/OrderService.java:71`). The ingestion fixtures exercise the SIMULATED adapter and do not move money.
+- `IntegrityWebhookIngestionService.ingest` verifies the exact raw body before parsing, uses the event ID, reserves it under the workspace/provider scope, and records repeat deliveries (`.../IntegrityWebhookIngestionService.java:86`). Existing duplicate and raw-signature tests remain strict.
+- A payment event that names a different provider order from the order already linked to its payment is now retained as an orphan observation and not applied to the payment or order (`.../IntegrityWebhookIngestionService.java:217`). Its result now reports `applied=false`; the existing `IGNORED_TERMINAL` persisted state is documented to also cover binding mismatches.
+- `ProposedMethod.detectOrderSettlementMismatches` reports both captured-total amount shortfalls and captured payments whose currency differs from the order (`.../ProposedMethod.java:256`).
+- `IntegrityWebhookIngestionTest` covers unknown events (line 77), a distinct re-signed event without a second capture (line 98), mismatched order binding (line 279), and amount/currency discrepancies (line 310), as well as the prior signature, duplicate, late, delayed, and no-refund/transfer tests.
+
+### Commands and results
+For each MySQL command, `.env` was loaded into process memory, the URL schema was rewritten to `aegisx_audit`, verification variables were set in memory, and `INTEGRITY_ALLOW_FINANCIAL_EXECUTION=false`. No credential values were printed.
+
+- Focused command: direct Maven launcher with `-B -Dtest=IntegrityWebhookIngestionTest,IntegrityReconciliationWorkflowTest test`.
+  ```text
+  IntegrityWebhookIngestionTest: Tests run: 12, Failures: 0, Errors: 0, Skipped: 0
+  Tests run: 19, Failures: 0, Errors: 0, Skipped: 0
+  BUILD SUCCESS
+  ```
+  An earlier focused run exposed that the result flag stayed true on a rejected order binding. That was corrected; a follow-up compile attempt caught a local variable scope issue, also corrected before this passing run.
+- MySQL command: direct Maven launcher with `-B -Dtest=MySql*Test test`.
+  ```text
+  Tests run: 34, Failures: 0, Errors: 0, Skipped: 1
+  BUILD SUCCESS
+  ```
+  The single skip was `MySqlDdlGenerateTest`.
+- Required clean randomized command: direct Maven launcher with `-B clean test -Dsurefire.runOrder=random`.
+  ```text
+  Tests run: 439, Failures: 0, Errors: 0, Skipped: 1
+  BUILD SUCCESS
+  ```
+  The single skip was `MySqlDdlGenerateTest`.
+
+### Phase commit
+`3484df5 Harden webhook resource binding and mismatch checks`
+
+### Open items
+- Real Razorpay test-mode order and deliberately mismatched webhook: **NOT VERIFIED** because `.env` has no usable test credentials. Continue using simulated provider results for local verification; no real key is requested.
