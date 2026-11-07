@@ -403,3 +403,44 @@ The MySQL-enabled full-suite command loaded `.env` in process memory, mapped its
 - Expired-data boundary: **NOT SUPPORTED**, not a defect, per the user’s decision; list it as an open item in `BUILD_STATUS.md` during Phase 11.
 - Phase 8 still requires the reconciliation root-cause review and three consecutive randomized MySQL-enabled full-suite passes.
 - Phase 5 live external LLM request remains **NOT VERIFIED**.
+
+## Phase 7: execution safety (2026-11-07)
+
+### Verdict
+**COMPLETE for the implemented Test Mode execution boundary and simulated execution tests.** No payment-capture or refund API exists in Aegis-X. The only implemented outbound money-moving operation is RazorpayX payout submission, which is disabled by default and accepts only a `rzp_test_` key ID. An external Razorpay/RazorpayX payout was **NOT VERIFIED**; this run replaced provider configuration in process memory with offline placeholders and made no external provider request.
+
+### Money-moving and payment code paths
+- `RazorpayOrderClient.createOrder` POSTs an order (`backend/src/main/java/com/aegisx/integration/razorpay/service/RazorpayOrderClient.java:52`); it does not capture payment. `PaymentProviderAdapter` exposes `createOrder` plus read/verification operations, but no capture, refund, or payout method (`backend/src/main/java/com/aegisx/integrity/provider/PaymentProviderAdapter.java:34`). `RazorpayTestAdapter.createOrder` rejects non-test key IDs before any request (`backend/src/main/java/com/aegisx/integrity/provider/RazorpayTestAdapter.java:116`, `:229-235`).
+- `PaymentCapturedHandler` handles the inbound `payment.captured` event (`backend/src/main/java/com/aegisx/integration/razorpay/service/PaymentCapturedHandler.java:33`, `:47`); it records a provider-side capture and does not call a capture API. The integrity recovery execute endpoint delegates to `RecoveryService.executeReadOnly`, which only re-reads provider state (`backend/src/main/java/com/aegisx/integrity/controller/IntegrityRecommendationController.java:78-84`, `backend/src/main/java/com/aegisx/integrity/service/RecoveryService.java:117`).
+- The only outbound money-moving code path is `POST /api/v1/settlements/{settlementId}/process`, role-limited to `SETTLEMENT_OPERATOR` or `SYSTEM` (`backend/src/main/java/com/aegisx/settlement/controller/SettlementController.java:86-97`) → `SettlementService.processSettlement` → `SettlementProcessorService.submitSettlement` → `RazorpayXClient.submitPayout`, which POSTs `/payouts` (`backend/src/main/java/com/aegisx/settlement/service/SettlementService.java:149-171`, `backend/src/main/java/com/aegisx/settlement/service/SettlementProcessorService.java:32-39`, `backend/src/main/java/com/aegisx/settlement/service/RazorpayXClient.java:75-94`). `SettlementService.initiateSettlement` can create RazorpayX contacts and fund accounts (`RazorpayXClient.java:47-68`); those are beneficiary setup calls, not payouts. The simulated path records `moneyMoved=false` (`SettlementProcessorService.java:67-80`).
+
+### Decision and exactly-once gates
+- Persisted `APPROVED` is the legacy state for policy `ALLOWED`; `COMPLIANCE_HOLD` maps to `ESCALATED`; `REJECTED` maps to `BLOCKED`. Settlement initiation and processing require `APPROVED` (`SettlementService.java:82`, `:602-604`). Processing acquires a pessimistic settlement lock (`backend/src/main/java/com/aegisx/settlement/repository/SettlementRepository.java:32-35`), refreshes and locks the transaction row, and rechecks the decision before entering the execution call (`SettlementService.java:152-161`). `SettlementProcessorService` repeats the `APPROVED` check before dispatch (`:32-39`).
+- Direct API tests create settlements while approved, transition the transaction to both `COMPLIANCE_HOLD` and `REJECTED`, then call the process endpoint and assert HTTP 400 with the settlement still `INITIATED` (`backend/src/test/java/com/aegisx/settlement/SettlementControllerAuthorizationTest.java:88-114`). The execution-module unit test separately proves both states are rejected before the RazorpayX client is touched (`backend/src/test/java/com/aegisx/settlement/service/SettlementProcessorServiceDecisionTest.java:32-46`).
+- Concurrent H2 and MySQL tests block the first dispatch while a second process call overlaps; exactly one call succeeds, the stored status becomes `PENDING`, and a subsequent duplicate call cannot dispatch again (`backend/src/test/java/com/aegisx/settlement/service/SettlementServiceTest.java:327-390`, `backend/src/test/java/com/aegisx/settlement/MySqlSettlementExecutionConcurrencyTest.java:52-130`). Provider idempotency uses a stable key derived from the settlement ID, and a fake loopback RazorpayX server confirms the header is unchanged across retry counts (`backend/src/main/java/com/aegisx/settlement/service/RazorpayXClient.java:84-85`, `:122-128`, `backend/src/test/java/com/aegisx/settlement/service/RazorpayXClientIdempotencyTest.java:27-79`). A retry is refused when a provider payout ID already exists, avoiding a second payout after an ambiguous local failure (`SettlementService.java:468-479`; `SettlementServiceTest.java:181-197`). Automatic retry after provider assignment is unsupported and requires manual resolution.
+- All outbound Razorpay configurations now require the exact `rzp_test_` key-ID prefix: legacy Orders properties (`backend/src/main/java/com/aegisx/integration/razorpay/config/RazorpayProperties.java:14-25`), the integrity adapter (`RazorpayTestAdapter.java:51`, `:229-235`), and RazorpayX (`backend/src/main/java/com/aegisx/settlement/config/RazorpayXProperties.java:14-31`). Fake-key tests prove live and malformed prefixes are rejected before network calls (`backend/src/test/java/com/aegisx/integration/razorpay/service/RazorpayOrderClientTest.java:12-31`, `backend/src/test/java/com/aegisx/integrity/RazorpayTestAdapterModeTest.java:16-30`, `backend/src/test/java/com/aegisx/settlement/service/RazorpayXTestModeTest.java:21-43`).
+- A prior full-suite attempt exposed an order-sensitive fixture in `ComplianceReviewControllerTest.returnsReviewerStatistics`. Its assertion remains `totalReviews == 1`; the fixture now writes a review one day inside the 30-day window and first asserts that the persisted row is returned by the repository range query (`backend/src/test/java/com/aegisx/review/controller/ComplianceReviewControllerTest.java:160-174`). The randomized class and final full suite both passed.
+
+### Commands and results
+Commands used the direct Maven 3.9.10 launcher. For the required full suite, `.env` was read into process memory, its JDBC schema was rewritten to local `aegisx_audit`, and provider settings were replaced in memory with offline placeholders; `INTEGRITY_ALLOW_FINANCIAL_EXECUTION=false`, `RAZORPAYX_ENABLED=false`, and `SPRING_PROFILES_ACTIVE=test`. No `.env` values were printed or written, and no real provider calls were made.
+
+- Focused command: `-B -Dtest=SettlementServiceTest,SettlementServiceProcessorTest,SettlementControllerAuthorizationTest,SettlementProcessorServiceDecisionTest,RazorpayXTestModeTest,RazorpayXClientIdempotencyTest,RazorpayTestAdapterModeTest,RazorpayOrderClientTest test`.
+  ```text
+  Tests run: 24, Failures: 0, Errors: 0, Skipped: 0
+  BUILD SUCCESS
+  ```
+- Required clean randomized full suite: `-B clean test -Dsurefire.runOrder=random`, with JUnit class and method order randomized and MySQL integration tests enabled against `aegisx_audit`.
+  ```text
+  Tests run: 472, Failures: 0, Errors: 0, Skipped: 1
+  BUILD SUCCESS
+  ```
+  The only skip was `MySqlDdlGenerateTest`. The MySQL settlement concurrency test ran and passed.
+
+### Phase commit
+`5e1ef98 Harden approved payout execution and idempotency`
+
+### Open items
+- External Test Mode Razorpay order, webhook, and RazorpayX payout: **NOT VERIFIED**; the run was offline and credentials were replaced in memory.
+- Automatic retry after RazorpayX assigned a payout ID: **NOT SUPPORTED**; operator-side manual resolution is required to avoid a possible duplicate payout.
+- Phase 8 reconciliation investigation and three consecutive clean randomized MySQL-backed runs remain open.
+- The user's uncommitted `README.md` changes remain unstaged and uncommitted.
