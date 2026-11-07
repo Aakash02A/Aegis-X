@@ -279,3 +279,44 @@ For each MySQL command, `.env` was loaded into process memory, the URL schema wa
 
 ### Open items
 - Real Razorpay test-mode order and deliberately mismatched webhook: **NOT VERIFIED** because `.env` has no usable test credentials. Continue using simulated provider results for local verification; no real key is requested.
+
+## Phase 4: evidence (2026-11-07)
+
+### Verdict
+**COMPLETE for the configured local-storage path.** Upload limits, byte-based MIME detection, path-safe filenames, duplicate detection, versioning, download ownership, transaction rollback cleanup, partial-write cleanup, and PDF round-trip behavior were exercised. The S3 implementation is still a stub and remains a Phase 10 item; it was not used or verified here.
+
+### Evidence and changes
+- `EvidenceDocumentService.receive` validates the payload size, detects MIME from the byte array itself, and passes the exact validated bytes to storage. It registers rollback cleanup as soon as storage succeeds; a failed transaction removes the file after completion (`backend/src/main/java/com/aegisx/integrity/evidence/EvidenceDocumentService.java:83`, `:284`). `EvidenceIntelligenceService.receiveAndProcess` reads the multipart content once and delegates validation/storage (`.../EvidenceIntelligenceService.java:115`).
+- `LocalStorageService.store` normalizes both slash styles, keeps filenames inside the order/type directory, bounds the stored basename, closes the input stream, and deletes a partial target if copying fails (`backend/src/main/java/com/aegisx/storage/service/LocalStorageService.java:24`).
+- The content endpoint scopes the document lookup to the supplied workspace and emits a standards-built attachment header (`backend/src/main/java/com/aegisx/integrity/controller/IntegrityEvidenceController.java:108`). `IntegrityApiContractTest` uploads a PDF with a traversal filename, asserts its sanitized basename and storage-root containment, downloads it, and compares the response bytes and media type. It also rejects text mislabeled as PDF; `crossWorkspaceEvidenceAccessIsRefusedOverHttp` covers download ownership (`backend/src/test/java/com/aegisx/integrity/IntegrityApiContractTest.java:138`, `:207`, `:228`).
+- `IntegrityEvidenceIntelligenceTest` retains the existing SHA-256 duplicate and supersession/history assertions (`:257`) and adds a size-cap check and an encompassing-transaction rollback check that verifies both the row and file are removed (`:309`, `:336`). `LocalStorageServiceTest` proves a failed input stream leaves no partial file (`backend/src/test/java/com/aegisx/storage/service/LocalStorageServiceTest.java:43`). The MySQL duplicate-upload race asserts that only the winning upload has a file (`backend/src/test/java/com/aegisx/integrity/MySqlEvidenceConcurrencyTest.java:109`).
+
+### Commands and results
+Each Maven test command loaded `.env` into process memory, rewrote the JDBC schema to `aegisx_audit`, set the MySQL verification variables, isolated upload output under `target/storage-test`, and set `INTEGRITY_ALLOW_FINANCIAL_EXECUTION=false`. No environment values were printed.
+
+- Focused evidence command: direct Maven launcher with `-B -Dtest=IntegrityApiContractTest,IntegrityEvidenceIntelligenceTest,LocalStorageServiceTest test`.
+  ```text
+  IntegrityApiContractTest: Tests run: 7, Failures: 0, Errors: 0, Skipped: 0
+  IntegrityEvidenceIntelligenceTest: Tests run: 20, Failures: 0, Errors: 0, Skipped: 0
+  LocalStorageServiceTest: Tests run: 2, Failures: 0, Errors: 0, Skipped: 0
+  Tests run: 29, Failures: 0, Errors: 0, Skipped: 0
+  BUILD SUCCESS
+  ```
+- MySQL command: direct Maven launcher with `-B -Dtest=MySql*Test test`.
+  ```text
+  Tests run: 34, Failures: 0, Errors: 0, Skipped: 1
+  BUILD SUCCESS
+  ```
+  The only skip was `MySqlDdlGenerateTest`.
+- Required final clean randomized command: direct Maven launcher with `-B clean test -Dsurefire.runOrder=random`.
+  ```text
+  Tests run: 443, Failures: 0, Errors: 0, Skipped: 1
+  BUILD SUCCESS
+  ```
+  The only skip was `MySqlDdlGenerateTest`.
+
+### Phase commit
+`81dd017 Harden evidence validation and storage rollback`
+
+### Open items
+- S3 storage: **NOT VERIFIED**; `S3StorageService` remains an unimplemented template, scheduled for the Phase 10 startup-fail-fast check.
