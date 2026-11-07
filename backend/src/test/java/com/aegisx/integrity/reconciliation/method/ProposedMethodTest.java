@@ -218,6 +218,26 @@ class ProposedMethodTest {
     }
 
     @Test
+    @DisplayName("pending-payment staleness is false under and at the threshold and true just over it")
+    void stalePaymentThresholdBoundaryIsStrictlyGreaterThan() {
+        Instant exactBoundary = NOW.minus(THRESHOLD);
+
+        List<FindingCandidate> justUnder = method.evaluate(pack(
+                List.of(), List.of(pendingPayment(exactBoundary.plusNanos(1))), List.of(), List.of(),
+                List.of(), List.of(), true, true));
+        List<FindingCandidate> exactlyAt = method.evaluate(pack(
+                List.of(), List.of(pendingPayment(exactBoundary)), List.of(), List.of(),
+                List.of(), List.of(), true, true));
+        List<FindingCandidate> justOver = method.evaluate(pack(
+                List.of(), List.of(pendingPayment(exactBoundary.minusNanos(1))), List.of(), List.of(),
+                List.of(), List.of(), true, true));
+
+        assertThat(detected(justUnder)).doesNotContain(FindingType.STALE_PAYMENT);
+        assertThat(detected(exactlyAt)).doesNotContain(FindingType.STALE_PAYMENT);
+        assertThat(detected(justOver)).contains(FindingType.STALE_PAYMENT);
+    }
+
+    @Test
     @DisplayName("a refund of the wrong amount is a discrepancy even when both records say processed")
     void refundAmountMismatchIsDetected() {
         List<FindingCandidate> findings = method.evaluate(pack(
@@ -300,6 +320,12 @@ class ProposedMethodTest {
         return new EvidencePack.PaymentView(PAYMENT, ORDER, "pay_test", amount, "INR",
                 internal, provider, EvidenceSource.INTERNAL_RECORD.rank(),
                 NOW.minusSeconds(600), NOW.minusSeconds(120), false);
+    }
+
+    private static EvidencePack.PaymentView pendingPayment(Instant lastObservedAt) {
+        return new EvidencePack.PaymentView(PAYMENT, ORDER, "pay_test", 100_000, "INR",
+                PaymentState.AUTHORIZED, PaymentState.AUTHORIZED, EvidenceSource.INTERNAL_RECORD.rank(),
+                lastObservedAt, lastObservedAt, false);
     }
 
     @Test

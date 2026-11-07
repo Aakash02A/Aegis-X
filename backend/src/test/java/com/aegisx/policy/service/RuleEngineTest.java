@@ -18,6 +18,8 @@ import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -94,6 +96,93 @@ class RuleEngineTest {
         assertEquals(5, result.getRuleResults().size());
         assertTrue(result.getRuleResults().stream().noneMatch(rule ->
                 rule.getRuleName().equals("OCR_CONFIDENCE") || rule.getRuleName().equals("AI_CONFIDENCE")));
+    }
+
+    @Test
+    @DisplayName("decimal scale alone does not create an amount mismatch")
+    void exactAmountIgnoresDecimalScale() {
+        var extracted = new ObjectMapper().createObjectNode()
+                .put("beneficiary", "XYZ Imports")
+                .put("amount", "50000.000")
+                .put("currency", "USD");
+        RuleContext context = RuleContext.builder()
+                .transaction(passingContext.getTransaction())
+                .requiredDocuments(passingContext.getRequiredDocuments())
+                .documentExtraction(DocumentExtraction.builder().extractedData(extracted).build())
+                .build();
+
+        PolicyEngineResult result = ruleEngine.evaluate(context);
+
+        assertEquals("APPROVED", result.getFinalDecision());
+        assertTrue(result.getRuleResults().stream()
+                .filter(rule -> rule.getRuleName().equals("AMOUNT_CONSISTENCY"))
+                .allMatch(rule -> rule.getPassed()));
+    }
+
+    @Test
+    @DisplayName("a one-cent amount difference fails the exact amount rule")
+    void oneCentAmountDifferenceFails() {
+        var extracted = new ObjectMapper().createObjectNode()
+                .put("beneficiary", "XYZ Imports")
+                .put("amount", "50000.01")
+                .put("currency", "USD");
+        RuleContext context = RuleContext.builder()
+                .transaction(passingContext.getTransaction())
+                .requiredDocuments(passingContext.getRequiredDocuments())
+                .documentExtraction(DocumentExtraction.builder().extractedData(extracted).build())
+                .build();
+
+        PolicyEngineResult result = ruleEngine.evaluate(context);
+
+        assertEquals("COMPLIANCE_HOLD", result.getFinalDecision());
+        assertTrue(result.getRuleResults().stream()
+                .filter(rule -> rule.getRuleName().equals("AMOUNT_CONSISTENCY"))
+                .noneMatch(rule -> rule.getPassed()));
+    }
+
+    @Test
+    @DisplayName("a duplicate checklist entry cannot replace a missing required document type")
+    void duplicateDocumentTypeDoesNotSatisfyAnotherRequirement() {
+        RuleContext context = RuleContext.builder()
+                .transaction(passingContext.getTransaction())
+                .requiredDocuments(List.of(
+                        requiredDocument(DocumentType.INVOICE, true),
+                        requiredDocument(DocumentType.INVOICE, true),
+                        requiredDocument(DocumentType.SHIPPING_PROOF, true)))
+                .documentExtraction(passingContext.getDocumentExtraction())
+                .build();
+
+        PolicyEngineResult result = ruleEngine.evaluate(context);
+        var completeness = result.getRuleResults().stream()
+                .filter(rule -> rule.getRuleName().equals("DOCUMENT_COMPLETENESS"))
+                .findFirst().orElseThrow();
+
+        assertEquals("COMPLIANCE_HOLD", result.getFinalDecision());
+        assertFalse(completeness.getPassed());
+        assertTrue(completeness.getEvidence().contains("EXPORT_DECLARATION"));
+    }
+
+    @Test
+    @DisplayName("conflicting structured evidence fails only the corresponding comparison rules")
+    void conflictingStructuredEvidenceIsHeld() {
+        var extracted = new ObjectMapper().createObjectNode()
+                .put("beneficiary", "Different Imports")
+                .put("amount", "50000.01")
+                .put("currency", "EUR");
+        RuleContext context = RuleContext.builder()
+                .transaction(passingContext.getTransaction())
+                .requiredDocuments(passingContext.getRequiredDocuments())
+                .documentExtraction(DocumentExtraction.builder().extractedData(extracted).build())
+                .build();
+
+        PolicyEngineResult result = ruleEngine.evaluate(context);
+        Set<String> failedRules = result.getRuleResults().stream()
+                .filter(rule -> !rule.getPassed())
+                .map(rule -> rule.getRuleName())
+                .collect(Collectors.toSet());
+
+        assertEquals("COMPLIANCE_HOLD", result.getFinalDecision());
+        assertEquals(Set.of("BENEFICIARY_MATCH", "AMOUNT_CONSISTENCY", "CURRENCY_CONSISTENCY"), failedRules);
     }
 
     @Test

@@ -3,6 +3,8 @@ package com.aegisx.policy.rules;
 import com.fasterxml.jackson.databind.JsonNode;
 import org.springframework.stereotype.Component;
 
+import java.util.Locale;
+
 /**
  * CurrencyConsistencyRule verifies that transaction currency matches OCR extracted currency.
  * 
@@ -26,7 +28,7 @@ public class CurrencyConsistencyRule implements PolicyRule {
         if (context.getTransaction() == null || context.getTransaction().getCurrency() == null) {
             return fail("Transaction currency missing");
         }
-        String txnCurrency = context.getTransaction().getCurrency().toUpperCase().trim();
+        String txnCurrency = context.getTransaction().getCurrency().trim().toUpperCase(Locale.ROOT);
         
         // Get OCR currency
         String ocrCurrency = null;
@@ -35,7 +37,7 @@ public class CurrencyConsistencyRule implements PolicyRule {
             JsonNode currencyNode = ocrData.get("currency");
             
             if (currencyNode != null && currencyNode.isTextual()) {
-                ocrCurrency = currencyNode.asText().toUpperCase().trim();
+                ocrCurrency = currencyNode.asText().trim().toUpperCase(Locale.ROOT);
             }
         }
         

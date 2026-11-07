@@ -425,6 +425,8 @@ OCR structured values are inputs to comparison rules, but the OCR confidence val
 | PR-04 | `CURRENCY_CONSISTENCY` | Transaction currency must equal OCR `currency` after trimming and uppercasing | Yes | No | `COMPLIANCE_HOLD` |
 | PR-05 | `PURPOSE_CODE` | Transaction purpose must be one of `P0101`, `P0102`, `P0105`, `P0103`, `P0104`, `P0201`, `P0202`, `P0301`, or `P0401` | No | No | `COMPLIANCE_HOLD` |
 
+Boundary behavior is explicit: amount equality uses decimal numeric equality with zero tolerance (scale alone does not differ; any nonzero amount difference fails); currency and purpose comparisons trim and normalize case using a locale-independent rule; and duplicate checklist rows for one document type do not satisfy a different required type. The separate evidence checks flag duplicate current document content and mismatched structured evidence. The policy data model has no document/evidence expiry field and no approved validity cutoff, so an expired-data boundary is **NOT SUPPORTED**. The provider-payment staleness check is separate from these five policy rules: it uses `INTEGRITY_STALENESS_THRESHOLD` (default 15 minutes) and reports a pending payment as stale only when its age is strictly greater than the configured threshold; age exactly at the threshold is not stale.
+
 ### 8.4 Evaluation Logic
 
 The implementation evaluates the five rules in the order above. Each result contains a rule name, pass flag, reason, and evidence. The engine aggregates the result list without reading AI or confidence metadata: all pass means `APPROVED`; any failure means `COMPLIANCE_HOLD`.

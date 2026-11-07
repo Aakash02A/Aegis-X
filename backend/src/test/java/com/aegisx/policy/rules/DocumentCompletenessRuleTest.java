@@ -128,4 +128,20 @@ class DocumentCompletenessRuleTest {
         
         assertFalse(result.getPassed());
     }
+
+    @Test
+    @DisplayName("multiple missing types are reported in stable required-document order")
+    void missingTypesAreReportedInStableOrder() {
+        RuleContext context = contextBuilder
+            .requiredDocuments(Arrays.asList(
+                RequiredDocument.builder().documentType(DocumentType.INVOICE).fulfilled(false).build(),
+                RequiredDocument.builder().documentType(DocumentType.SHIPPING_PROOF).fulfilled(false).build(),
+                RequiredDocument.builder().documentType(DocumentType.EXPORT_DECLARATION).fulfilled(false).build()))
+            .build();
+
+        RuleEvaluationResult result = rule.evaluate(context);
+
+        assertFalse(result.getPassed());
+        assertEquals("Missing: INVOICE, SHIPPING_PROOF, EXPORT_DECLARATION", result.getEvidence());
+    }
 }
