@@ -320,3 +320,51 @@ Each Maven test command loaded `.env` into process memory, rewrote the JDBC sche
 
 ### Open items
 - S3 storage: **NOT VERIFIED**; `S3StorageService` remains an unimplemented template, scheduled for the Phase 10 startup-fail-fast check.
+
+## Phase 5: AI advisory only (2026-11-07)
+
+### Verdict
+**COMPLETE for the deterministic policy path.** AI is optional advisory data and does not affect a policy verdict or score. A live external LLM call is **NOT VERIFIED**; tests kept provider calls offline.
+
+### Evidence and changes
+- The policy gate now contains five deterministic rules in fixed order: `DOCUMENT_COMPLETENESS`, `BENEFICIARY_MATCH`, `AMOUNT_CONSISTENCY`, `CURRENCY_CONSISTENCY`, and `PURPOSE_CODE` (`backend/src/main/java/com/aegisx/policy/service/RuleEngine.java:53`). `AiConfidenceRule` and `OcrConfidenceRule` were removed. `RuleContext` no longer accepts AI output or confidence (`backend/src/main/java/com/aegisx/policy/rules/RuleContext.java:41`). The SRS records the exact five rules and inputs at `docs/SRS_Aegis_X.md:422`.
+- `PolicyEvaluationService` evaluates without an AI record and does not report AI confidence as the policy score (`backend/src/main/java/com/aegisx/policy/service/PolicyEvaluationService.java:109`, `:139`). Failed AI analysis can transition to deterministic policy evaluation (`backend/src/main/java/com/aegisx/transaction/service/TransactionStateMachine.java:70`); the existing `AI_FAILED` review filter shows failed analyses, and `AiFailureReviewQueueTest` confirms that an `AI_ANALYSIS_FAILED` transaction cannot be approved or rejected from that state (`backend/src/test/java/com/aegisx/review/service/AiFailureReviewQueueTest.java:42`).
+- Parser validation now rejects malformed required fields and out-of-range confidence values, serializes only the fixed advisory schema, and drops model-supplied `decision` fields (`backend/src/main/java/com/aegisx/ai/service/AIResponseParser.java:74`). OCR text and JSON are framed as untrusted data and delimiter characters in extracted text are escaped (`backend/src/main/java/com/aegisx/ai/prompt/RegulatoryPromptBuilder.java:66`).
+- Extraction confidence is labeled `HEURISTIC`; human-confirmed and unavailable values are labeled separately (`backend/src/main/java/com/aegisx/integrity/entity/EvidenceExtraction.java:107`, `backend/src/main/java/com/aegisx/document/dto/ExtractionResponse.java:73`). Neither OCR confidence nor AI confidence is a policy input.
+- `PolicyEvaluationServiceTest.policyDecisionIsIndependentOfAiState` exercises identical verified fields with high/low AI confidence, AI disabled, failed, timed out, and rejected garbage; each produces the same approved result. A malformed legacy AI record containing a forged decision also cannot change it (`backend/src/test/java/com/aegisx/policy/service/PolicyEvaluationServiceTest.java:130`, `:161`).
+
+### Test expectation changes
+- `ConfidenceNormalizerTest` previously expected values above 100 and below 0 to be clamped. It now requires rejection (`backend/src/test/java/com/aegisx/ai/service/ConfidenceNormalizerTest.java:44`): clamping malformed model output could make invalid advisory data appear valid.
+- `AIResponseParserTest` previously expected an overall confidence of 150 and an out-of-range finding confidence to be normalized. It now requires `InvalidAIResponseException` (`backend/src/test/java/com/aegisx/ai/service/AIResponseParserTest.java:182`), keeping the schema boundary strict.
+- `PolicyEvaluationServiceTest.testMissingEvidenceFailsClosed` previously described both OCR extraction and AI assessment as required. It now asserts that missing OCR still fails closed while optional AI absence does not block a deterministic verdict (`backend/src/test/java/com/aegisx/policy/service/PolicyEvaluationServiceTest.java:89`).
+- `RuleEngineTest` changes the expected rule count from seven to five because the AI and OCR confidence rules were removed; the missing-document failure assertion remains and the test explicitly checks that neither confidence rule appears (`backend/src/test/java/com/aegisx/policy/service/RuleEngineTest.java:74`, `:81`, `:116`).
+
+### Commands and results
+Each test command loaded `.env` into process memory, mapped `DB_URL`/`DB_USERNAME`/`DB_PASSWORD` to the MySQL test variables, rewrote the URL schema to `aegisx_audit`, set `SPRING_PROFILES_ACTIVE=test` and `INTEGRITY_ALLOW_FINANCIAL_EXECUTION=false`, and did not print environment values.
+
+- Focused AI/policy command: direct Maven launcher with `-Dtest=AIAnalysisControllerTest,RegulatoryPromptBuilderTest,AIResponseParserTest,ConfidenceNormalizerTest,ExtractionResponseConfidenceTest,EvidenceExtractionConfidenceKindTest,PolicyEvaluationServiceTest,RuleEngineTest,TransactionStateMachineTest test`.
+  ```text
+  Tests run: 64, Failures: 0, Errors: 0, Skipped: 0
+  BUILD SUCCESS
+  ```
+- MySQL integration command: direct Maven launcher with `-Dtest=MySql*Test test`.
+  ```text
+  Tests run: 34, Failures: 0, Errors: 0, Skipped: 1
+  BUILD SUCCESS
+  ```
+  The one skip was `MySqlDdlGenerateTest`.
+- Final clean randomized full-suite command: direct Maven launcher with `-B clean test -Dsurefire.runOrder=random` and randomized JUnit class/method order. The MySQL cases were enabled against `aegisx_audit`.
+  ```text
+  Tests run: 455, Failures: 0, Errors: 0, Skipped: 1
+  BUILD SUCCESS
+  ```
+  The one skip was `MySqlDdlGenerateTest`.
+- A preliminary randomized H2-only run was inadvertently executed before noticing that the request requires MySQL enabled for every full-suite run; it is not counted as verification. It reported one transient `STATUS_MISMATCH` in `IntegrityReconciliationWorkflowTest.resolutionIsVerifiedByALaterRun`. The isolated test and two subsequent MySQL-enabled randomized full runs passed. The reconciliation flake remains tracked for the Phase 8 root-cause investigation and three-consecutive-run gate.
+
+### Phase commit
+`0b436d6 Make AI strictly advisory and harden parser boundaries`
+
+### Open items
+- Live external LLM request: **NOT VERIFIED**; offline tests prove the parser, failure handling, and deterministic policy boundary.
+- Phase 8 reconciliation flake: **OPEN** pending root-cause review and three consecutive randomized full runs.
+- `README.md` was updated in the working tree to align its AI claims, but was intentionally excluded from the Phase 5 commit per the explicit instruction.
