@@ -191,3 +191,50 @@ removed root filename remain.
 
 ### Latest Commit
 `0f4bf8b Harden authorization and tenant isolation across controllers and routes`
+
+## Phase 2b: auth and tenancy fix-up (2026-11-07)
+
+### Verdict
+**COMPLETE.** The workspace reconciliation findings route was the only newly identified cross-workspace ID leak. It now verifies that the requested run belongs to the supplied workspace and queries findings by both IDs. The endpoint matrix and full Phase 2 test diffs are recorded in [`ENDPOINT_MATRIX.md`](ENDPOINT_MATRIX.md) and [`PHASE_2B_TEST_DIFF.md`](PHASE_2B_TEST_DIFF.md).
+
+### Commit audit
+- `git show --stat` for `0f4bf8b` showed that it includes `README.md` (11 insertions, 1 deletion), contrary to the Phase 2b instruction not to commit README changes. The user was told and explicitly instructed us to continue this goal; no history rewrite or README edit was made during this phase.
+- `1aa82d9` changes `docs/HANDOFF.md` only. Neither commit includes `.env`, `audit-output/`, or credential-shaped files.
+- The `.gitignore` change in `0f4bf8b` adds `audit-output/` so generated audit artifacts are not accidentally staged or committed.
+
+### Test diff and exception-handler review
+- The complete diffs of the existing Phase 2 tests are in `PHASE_2B_TEST_DIFF.md`. `EvidenceControllerTest.returnsEmptyChecklist` now uses a real owned transaction instead of a random nonexistent UUID and still asserts an empty checklist; all merchant `@WithMockUser` fixtures now use the actual merchant identity. No assertion was weakened.
+- `JwtServiceTest` already had fixed-clock expired-token coverage and Phase 2 added a tampered-signature test. Phase 2b adds the wrong-signing-key test for both `isTokenValid` overloads.
+- `WorkspaceMembershipAuthorizationTest` now proves by HTTP that a valid workspace member receives 404 for another workspace's reconciliation run ID.
+- `GlobalExceptionHandler.handleTransactionNotFound` maps `TransactionNotFoundException` to 404 (line 36), ahead of its `IllegalArgumentException` handler (line 85); the generic `Exception` handler at line 139 is its ancestor catch-all. `IntegrityExceptionHandler.handleIllegalArgument` maps generic `IllegalArgumentException` to 400 (line 67), but `TransactionNotFoundException` is not used by integrity controllers. The real HTTP tenancy tests cover cross-merchant 404 responses.
+- The endpoint matrix classifies 124 controller mappings, every dynamic path variable, public webhook signature checks, and the configured actuator endpoints. Staff-wide global routes are called out explicitly. The new reconciliation scope is at `IntegrityReconciliationController.java:87` and the composite repository methods are in `ReconciliationRunRepository.java:16` and `ReconciliationFindingRepository.java:18`.
+
+### Commands and results
+The PowerShell prelude for each MySQL command loaded `.env` into process memory, rewrote only the JDBC schema to `aegisx_audit`, set the MySQL verification variables, and kept `INTEGRITY_ALLOW_FINANCIAL_EXECUTION=false`. No environment values were printed.
+
+- Focused authorization/JWT command: direct Maven launcher with `-B -Dtest=WorkspaceMembershipAuthorizationTest,JwtServiceTest test`.
+  ```text
+  JwtServiceTest: Tests run: 7, Failures: 0, Errors: 0, Skipped: 0
+  WorkspaceMembershipAuthorizationTest: Tests run: 2, Failures: 0, Errors: 0, Skipped: 0
+  Tests run: 9, Failures: 0, Errors: 0, Skipped: 0
+  BUILD SUCCESS
+  ```
+- MySQL command: direct Maven launcher with `-B -Dtest=MySql*Test test`.
+  ```text
+  Tests run: 34, Failures: 0, Errors: 0, Skipped: 1
+  BUILD SUCCESS
+  ```
+  The one skip was `MySqlDdlGenerateTest`.
+- Required clean randomized command: direct Maven launcher with `-B clean test -Dsurefire.runOrder=random`.
+  ```text
+  Tests run: 435, Failures: 0, Errors: 0, Skipped: 1
+  BUILD SUCCESS
+  ```
+  The one skip was `MySqlDdlGenerateTest`.
+- A separate temporary MySQL startup attempt reproduced an InnoDB undo tablespace collision and was stopped. The process exited and only the temporary datadir created for that attempt was removed. The verification tests above ran successfully against the configured rewritten test database.
+
+### Phase commit
+`49f4ee0 Harden reconciliation workspace scope and phase 2b evidence`
+
+### Open items
+No Phase 2b code or test item remains open. The inherited `README.md` inclusion in `0f4bf8b` remains an audit finding; do not rewrite the existing commit history.
