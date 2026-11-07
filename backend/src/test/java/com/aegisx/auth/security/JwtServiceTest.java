@@ -99,6 +99,14 @@ class JwtServiceTest {
     }
 
     @Test
+    void isTokenValidReturnsFalseForTamperedSignature() {
+        String token = jwtService.generateToken(testUser);
+        String tamperedToken = token.substring(0, token.lastIndexOf('.') + 1) + "invalidsignature";
+        assertFalse(jwtService.isTokenValid(tamperedToken));
+        assertFalse(jwtService.isTokenValid(tamperedToken, userDetails));
+    }
+
+    @Test
     void getExpirationTimeInSecondsCalculatesCorrectly() {
         assertEquals(3600L, jwtService.getExpirationTimeInSeconds());
     }

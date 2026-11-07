@@ -674,7 +674,9 @@ cp .env.example .env
 
 For how to obtain each credential (Razorpay Test Mode, Meta WhatsApp Cloud API, OpenAI), where each
 variable must be placed for `docker compose` versus a local Maven run, and how to verify the app
-picked it up, see **[docs/CREDENTIALS_SETUP.md](docs/CREDENTIALS_SETUP.md)**.
+picked it up, see **[docs/CREDENTIALS_SETUP.md](docs/CREDENTIALS_SETUP.md)**. For the backend-created
+Razorpay checkout and RazorpayX India payout setup, see
+**[docs/razorpay-production-setup.md](docs/razorpay-production-setup.md)**.
 
 ### **Required Environment Variables**
 
@@ -708,6 +710,13 @@ OPENAI_API_KEY=your_openai_api_key_here
 RAZORPAY_KEY_ID=rzp_test_your_key_id_here
 RAZORPAY_KEY_SECRET=your_razorpay_key_secret_here
 RAZORPAY_WEBHOOK_SECRET=your_razorpay_webhook_secret_here
+
+# RazorpayX payout credentials; keep disabled until account and webhook setup are verified
+RAZORPAYX_ENABLED=false
+RAZORPAYX_KEY_ID=
+RAZORPAYX_KEY_SECRET=
+RAZORPAYX_ACCOUNT_NUMBER=
+RAZORPAYX_PAYOUT_MODE=NEFT
 
 # WhatsApp Business API (Required for Document Requests)
 WHATSAPP_PHONE_NUMBER_ID=your_whatsapp_phone_number_id

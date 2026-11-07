@@ -1,6 +1,7 @@
 package com.aegisx.integration.razorpay.controller;
 
 import com.aegisx.common.dto.ApiResponse;
+import com.aegisx.common.exception.TransactionNotFoundException;
 import com.aegisx.integration.razorpay.dto.CreatePaymentOrderResponse;
 import com.aegisx.integration.razorpay.service.RazorpayOrderClient.RazorpayOrderProviderException;
 import com.aegisx.integration.razorpay.service.RazorpayOrderService;
@@ -48,6 +49,8 @@ public class RazorpayOrderController {
             return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.success(
                     razorpayOrderService.createOrder(request.transactionId(), authentication.getName()),
                     "Payment order created"));
+        } catch (TransactionNotFoundException e) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(ApiResponse.error(e.getMessage()));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(ApiResponse.error(e.getMessage()));
         } catch (IllegalStateException e) {

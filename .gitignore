@@ -43,6 +43,7 @@ application-local.yml
 **/application-local.yml
 **/application-local.properties
 
+audit-output/
 # Sensitive config files
 **/application-secret.yml
 **/application-secret.properties

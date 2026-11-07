@@ -138,3 +138,53 @@ These were intentionally not deleted:
 `5d29511 Remove duplicate root Compose file` keeps the root `compose.yaml` and removes the identical
 `docker-compose.yml`. `docs/TAS_Aegis_X.md` now names `compose.yaml`; no explicit references to the
 removed root filename remain.
+
+## Open items
+
+- Low priority: idx_settlements_transaction_id is redundant with uq_settlements_transaction_id; drop in a future migration.
+
+## Phase 2: Auth and Tenancy Verification & Hardening
+
+### Module Verdicts
+- **Registration & Login**: COMPLETE (`com.aegisx.auth.controller.AuthController`, `AuthService`, `RealHttpTenancyAndAuthorizationTest`)
+- **Password Hashing**: COMPLETE (BCryptPasswordEncoder in `SecurityConfig`, verified in `RealHttpTenancyAndAuthorizationTest`)
+- **JWT Expiry & Signature Verification**: COMPLETE (`JwtService`, `JwtAuthenticationFilter`, verified in `JwtServiceTest` including tampered signature test)
+- **Role-based Access Control on Controllers**: COMPLETE (`PerformanceController` restricted to `ADMIN`/`COMPLIANCE_OFFICER`; `SettlementController`, `ComplianceReviewController`, `ReviewNoteController` enforcing role checks)
+- **Tenant & Merchant Isolation on {id} Routes**: COMPLETE (`TransactionService.getAuthorizedTransaction()`, `EvidenceController`, `PolicyEvaluationController`, `PolicyViolationController`, `AIAnalysisController`, `NotificationController`, `RazorpayOrderController`, `DocumentService`)
+- **Workspace Isolation**: COMPLETE (`WorkspaceMembershipInterceptor`, `WorkspaceMembershipService`, verified across real HTTP)
+- **Denial Side Effect Freedom**: COMPLETE (Entity counts for transactions, workspaces, orders, evidence documents, and audit events verified unchanged in `RealHttpTenancyAndAuthorizationTest`)
+
+### Changes Made
+- Added `TransactionService.getAuthorizedTransaction(UUID, Authentication)` and `TransactionService.getAuthorizedTransaction(UUID, String, Role)` to centrally enforce tenant boundary checks (merchants restricted to own transactions via `findByIdAndMerchantId`, staff roles permitted via `findById`).
+- Secured previously unisolated controller endpoints with role and merchant boundary validation:
+  - `com.aegisx.evidence.controller.EvidenceController`: Enforce transaction tenant authorization on checklist, missing documents, document upload, completeness, and summary endpoints.
+  - `com.aegisx.policy.controller.PolicyEvaluationController`: Enforce role checks and merchant isolation on evaluation queries and trigger endpoints.
+  - `com.aegisx.policy.controller.PolicyViolationController`: Enforce merchant isolation on violation listings and critical violation checks.
+  - `com.aegisx.ai.controller.AIAnalysisController`: Restrict to authorized roles and enforce merchant isolation on analysis triggers and retrieval.
+  - `com.aegisx.notification.controller.NotificationController`: Enforce merchant isolation on WhatsApp notification dispatch and manual triggers.
+  - `com.aegisx.performance.PerformanceController`: Add class-level `@PreAuthorize("hasAnyRole('ADMIN', 'COMPLIANCE_OFFICER')")` to prevent unprivileged merchant access.
+  - `com.aegisx.integration.razorpay.controller.RazorpayOrderController`: Map `TransactionNotFoundException` to HTTP 404.
+  - `com.aegisx.document.service.DocumentService`: Throw `TransactionNotFoundException` on cross-tenant access.
+- Subclassed `TransactionNotFoundException` from `IllegalArgumentException` so legacy callers/tests catching `IllegalArgumentException` remain valid while `GlobalExceptionHandler` maps it specifically to HTTP 404 NOT FOUND.
+- Added `isTokenValidReturnsFalseForTamperedSignature()` to `JwtServiceTest`.
+- Added `RealHttpTenancyAndAuthorizationTest` covering two users, two workspaces, cross-merchant reads/writes (404/403), admin/operator path lockouts (403), and assertion that database counts remain unchanged after rejection.
+
+### Test Commands and Results
+- Targeted auth and tenancy test:
+  ```text
+  cd backend; .\mvnw.cmd test '-Dtest=RealHttpTenancyAndAuthorizationTest,JwtServiceTest,AuthIntegrationTest'
+  [INFO] Tests run: 8, Failures: 0, Errors: 0, Skipped: 0
+  [INFO] BUILD SUCCESS
+  ```
+- Cross-module regression check:
+  ```text
+  cd backend; .\mvnw.cmd test '-Dtest=RealHttpTenancyAndAuthorizationTest,DocumentServiceTest,RazorpayOrderServiceTest,EvidenceControllerTest'
+  [INFO] Tests run: 21, Failures: 0, Errors: 0, Skipped: 0
+  [INFO] BUILD SUCCESS
+  ```
+- Full test suite:
+  ```text
+  cd backend; .\mvnw.cmd test
+  [INFO] Tests run: 433, Failures: 0, Errors: 0, Skipped: 34
+  [INFO] BUILD SUCCESS
+  ```

@@ -8,6 +8,7 @@ import com.aegisx.auth.entity.User;
 import com.aegisx.auth.entity.Role;
 import com.aegisx.auth.repository.UserRepository;
 import com.aegisx.common.exception.InvalidDocumentException;
+import com.aegisx.common.exception.TransactionNotFoundException;
 import com.aegisx.common.filter.CorrelationIdFilter;
 import com.aegisx.document.dto.DocumentResponse;
 import com.aegisx.document.dto.EvidenceStatusResponse;
@@ -211,10 +212,10 @@ public class DocumentService {
     private Transaction findAuthorizedTransaction(UUID transactionId, User user) {
         if (user.getRole() == Role.MERCHANT) {
             return transactionRepository.findByIdAndMerchantId(transactionId, user.getId())
-                    .orElseThrow(() -> new IllegalArgumentException("Transaction not found: " + transactionId));
+                    .orElseThrow(() -> new TransactionNotFoundException(transactionId));
         }
         return transactionRepository.findById(transactionId)
-                .orElseThrow(() -> new IllegalArgumentException("Transaction not found: " + transactionId));
+                .orElseThrow(() -> new TransactionNotFoundException(transactionId));
     }
 
     private void validateDocument(MultipartFile file, DocumentType documentType, Transaction transaction) {

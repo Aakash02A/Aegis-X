@@ -93,19 +93,48 @@ public class TransactionService {
     }
 
     @Transactional(readOnly = true)
-    public TransactionResponse getTransaction(UUID transactionId, String userEmail, Role role) {
-        User user = userRepository.findByEmail(userEmail)
-                .orElseThrow(() -> new UsernameNotFoundException("User not found with email: " + userEmail));
-
-        Transaction transaction;
+    public Transaction getAuthorizedTransaction(UUID transactionId, String userEmail, Role role) {
         if (role == Role.MERCHANT) {
-            transaction = transactionRepository.findByIdAndMerchantId(transactionId, user.getId())
+            User user = userRepository.findByEmail(userEmail)
+                    .orElseThrow(() -> new TransactionNotFoundException(transactionId));
+            return transactionRepository.findByIdAndMerchantId(transactionId, user.getId())
                     .orElseThrow(() -> new TransactionNotFoundException(transactionId));
         } else {
-            transaction = transactionRepository.findById(transactionId)
+            return transactionRepository.findById(transactionId)
                     .orElseThrow(() -> new TransactionNotFoundException(transactionId));
         }
+    }
 
+    @Transactional(readOnly = true)
+    public Transaction getAuthorizedTransaction(UUID transactionId, org.springframework.security.core.Authentication authentication) {
+        if (authentication == null) {
+            throw new TransactionNotFoundException(transactionId);
+        }
+        String email = authentication.getName();
+        Role role = Role.MERCHANT;
+        if (authentication.getAuthorities() != null) {
+            for (var authority : authentication.getAuthorities()) {
+                String auth = authority.getAuthority();
+                if ("ROLE_ADMIN".equals(auth)) {
+                    role = Role.ADMIN;
+                    break;
+                }
+                if ("ROLE_COMPLIANCE_OFFICER".equals(auth)) {
+                    role = Role.COMPLIANCE_OFFICER;
+                    break;
+                }
+                if ("ROLE_SETTLEMENT_OPERATOR".equals(auth)) {
+                    role = Role.SETTLEMENT_OPERATOR;
+                    break;
+                }
+            }
+        }
+        return getAuthorizedTransaction(transactionId, email, role);
+    }
+
+    @Transactional(readOnly = true)
+    public TransactionResponse getTransaction(UUID transactionId, String userEmail, Role role) {
+        Transaction transaction = getAuthorizedTransaction(transactionId, userEmail, role);
         return TransactionResponse.from(transaction);
     }
 

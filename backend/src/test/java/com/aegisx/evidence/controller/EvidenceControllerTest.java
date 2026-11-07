@@ -42,16 +42,19 @@ class EvidenceControllerTest {
     @Autowired private TransactionRepository transactionRepository;
     @Autowired private EvidenceChecklistRepository checklistRepository;
 
+    private static final String MERCHANT_EMAIL = "evidence-test-merchant@aegisx.test";
     private UUID transactionId;
+    private User merchant;
 
     @BeforeEach
     void setUp() {
-        User merchant = userRepository.saveAndFlush(User.builder()
-                .fullName("Evidence Test Merchant")
-                .email("evidence-" + UUID.randomUUID() + "@aegisx.test")
-                .passwordHash("not-used-by-this-service")
-                .role(Role.MERCHANT)
-                .build());
+        merchant = userRepository.findByEmail(MERCHANT_EMAIL)
+                .orElseGet(() -> userRepository.saveAndFlush(User.builder()
+                        .fullName("Evidence Test Merchant")
+                        .email(MERCHANT_EMAIL)
+                        .passwordHash("not-used-by-this-service")
+                        .role(Role.MERCHANT)
+                        .build()));
         Transaction transaction = transactionRepository.saveAndFlush(Transaction.builder()
                 .referenceNumber("TXN-EVIDENCE-" + UUID.randomUUID())
                 .merchant(merchant)
@@ -68,7 +71,7 @@ class EvidenceControllerTest {
 
     @Test
     @DisplayName("Reads the persisted evidence checklist")
-    @WithMockUser(authorities = "ROLE_MERCHANT")
+    @WithMockUser(username = MERCHANT_EMAIL, roles = "MERCHANT")
     void getsChecklist() throws Exception {
         mockMvc.perform(get("/api/v1/evidence/checklist/{transactionId}", transactionId))
                 .andExpect(status().isOk())
@@ -81,9 +84,20 @@ class EvidenceControllerTest {
 
     @Test
     @DisplayName("Returns a successful empty checklist response when none exists")
-    @WithMockUser(authorities = "ROLE_MERCHANT")
+    @WithMockUser(username = MERCHANT_EMAIL, roles = "MERCHANT")
     void returnsEmptyChecklist() throws Exception {
-        mockMvc.perform(get("/api/v1/evidence/checklist/{transactionId}", UUID.randomUUID()))
+        Transaction noChecklistTxn = transactionRepository.saveAndFlush(Transaction.builder()
+                .referenceNumber("TXN-EVIDENCE-EMPTY-" + UUID.randomUUID())
+                .merchant(merchant)
+                .amount(new BigDecimal("500.00"))
+                .currency("USD")
+                .beneficiaryName("Test Beneficiary")
+                .purposeCode("P0101")
+                .status(TransactionStatus.EVIDENCE_PENDING)
+                .version(0L)
+                .build());
+
+        mockMvc.perform(get("/api/v1/evidence/checklist/{transactionId}", noChecklistTxn.getId()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data").doesNotExist());
@@ -91,7 +105,7 @@ class EvidenceControllerTest {
 
     @Test
     @DisplayName("Lists persisted missing documents")
-    @WithMockUser(authorities = "ROLE_MERCHANT")
+    @WithMockUser(username = MERCHANT_EMAIL, roles = "MERCHANT")
     void listsMissingDocuments() throws Exception {
         checklistRepository.findByTransactionId(transactionId).orElseThrow().setShippingBillRequired(true);
         checklistRepository.flush();
@@ -127,7 +141,7 @@ class EvidenceControllerTest {
 
     @Test
     @DisplayName("Persists a document-uploaded checklist state")
-    @WithMockUser(authorities = "ROLE_MERCHANT")
+    @WithMockUser(username = MERCHANT_EMAIL, roles = "MERCHANT")
     void marksDocumentUploaded() throws Exception {
         mockMvc.perform(post("/api/v1/evidence/uploaded/{transactionId}", transactionId)
                         .with(csrf())
@@ -140,7 +154,7 @@ class EvidenceControllerTest {
 
     @Test
     @DisplayName("Reports evidence completeness from the persisted checklist")
-    @WithMockUser(authorities = "ROLE_MERCHANT")
+    @WithMockUser(username = MERCHANT_EMAIL, roles = "MERCHANT")
     void checksEvidenceCompleteness() throws Exception {
         checklistRepository.findByTransactionId(transactionId).orElseThrow().markDocumentUploaded(DocumentType.COMMERCIAL_INVOICE);
         checklistRepository.flush();
@@ -162,7 +176,7 @@ class EvidenceControllerTest {
 
     @Test
     @DisplayName("Returns the merchant evidence summary")
-    @WithMockUser(authorities = "ROLE_MERCHANT")
+    @WithMockUser(username = MERCHANT_EMAIL, roles = "MERCHANT")
     void returnsSummary() throws Exception {
         mockMvc.perform(get("/api/v1/evidence/summary/{transactionId}", transactionId))
                 .andExpect(status().isOk())
@@ -181,7 +195,7 @@ class EvidenceControllerTest {
 
     @Test
     @DisplayName("Rejects requirement updates for merchants")
-    @WithMockUser(authorities = "ROLE_MERCHANT")
+    @WithMockUser(username = MERCHANT_EMAIL, roles = "MERCHANT")
     void rejectsWrongRole() throws Exception {
         var request = com.aegisx.evidence.dto.EvidenceRequirementRequest.builder()
                 .transactionId(transactionId).invoiceRequired(true).build();
@@ -203,6 +217,20 @@ class EvidenceControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @DisplayName("Rejects cross-merchant checklist access with 404")
+    @WithMockUser(username = "other-merchant@aegisx.test", roles = "MERCHANT")
+    void rejectsCrossMerchantChecklistAccess() throws Exception {
+        userRepository.saveAndFlush(User.builder()
+                .fullName("Other Merchant")
+                .email("other-merchant@aegisx.test")
+                .passwordHash("not-used")
+                .role(Role.MERCHANT)
+                .build());
+        mockMvc.perform(get("/api/v1/evidence/checklist/{transactionId}", transactionId))
+                .andExpect(status().isNotFound());
     }
 
     private EvidenceChecklist checklist(Transaction transaction, boolean invoiceRequired,

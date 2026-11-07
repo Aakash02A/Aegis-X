@@ -6,6 +6,7 @@ import com.aegisx.ai.repository.AIAnalysisRepository;
 import com.aegisx.ai.service.AIAnalysisService;
 import com.aegisx.ai.service.AIProcessingCoordinator;
 import com.aegisx.common.exception.AIAnalysisException;
+import com.aegisx.common.exception.TransactionNotFoundException;
 import com.aegisx.document.entity.Document;
 import com.aegisx.document.entity.DocumentExtraction;
 import com.aegisx.document.repository.DocumentExtractionRepository;
@@ -20,6 +21,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.HashMap;
@@ -73,14 +75,13 @@ public class AIAnalysisController {
      * @return Analysis response with findings or error details
      */
     @PostMapping("/{id}/ai-analysis")
-    @PreAuthorize("isAuthenticated()")
-    public ResponseEntity<?> triggerAnalysis(@PathVariable("id") UUID transactionId) {
+    @PreAuthorize("hasAnyRole('MERCHANT', 'COMPLIANCE_OFFICER', 'ADMIN')")
+    public ResponseEntity<?> triggerAnalysis(@PathVariable("id") UUID transactionId, Authentication authentication) {
         try {
             log.info("Triggering AI analysis for transaction: {}", transactionId);
             
-            // Retrieve transaction
-            Transaction transaction = transactionRepository.findById(transactionId)
-                .orElseThrow(() -> new IllegalArgumentException("Transaction not found: " + transactionId));
+            // Retrieve transaction and verify caller authorization
+            Transaction transaction = transactionService.getAuthorizedTransaction(transactionId, authentication);
             
             // Retrieve latest OCR extraction
             DocumentExtraction extraction = documentExtractionRepository.findLatestByTransactionId(transactionId)
@@ -121,6 +122,8 @@ public class AIAnalysisController {
             log.info("AI analysis triggered successfully for transaction: {}", transactionId);
             return ResponseEntity.ok(response);
             
+        } catch (TransactionNotFoundException e) {
+            throw e;
         } catch (IllegalArgumentException e) {
             log.warn("Invalid request for AI analysis: {}", e.getMessage());
             return ResponseEntity.badRequest().body(Map.of(
@@ -152,14 +155,13 @@ public class AIAnalysisController {
      * @return Latest AI analysis with findings and audit trail
      */
     @GetMapping("/{id}/ai-analysis")
-    @PreAuthorize("isAuthenticated()")
-    public ResponseEntity<?> getLatestAnalysis(@PathVariable("id") UUID transactionId) {
+    @PreAuthorize("hasAnyRole('MERCHANT', 'COMPLIANCE_OFFICER', 'ADMIN')")
+    public ResponseEntity<?> getLatestAnalysis(@PathVariable("id") UUID transactionId, Authentication authentication) {
         try {
             log.info("Retrieving latest AI analysis for transaction: {}", transactionId);
             
-            // Verify transaction exists
-            transactionRepository.findById(transactionId)
-                .orElseThrow(() -> new IllegalArgumentException("Transaction not found: " + transactionId));
+            // Verify transaction exists and caller is authorized
+            transactionService.getAuthorizedTransaction(transactionId, authentication);
             
             // Retrieve latest analysis
             var analysis = aiProcessingCoordinator.getLatestAnalysis(transactionId);

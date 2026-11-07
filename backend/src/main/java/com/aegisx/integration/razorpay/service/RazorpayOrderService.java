@@ -6,6 +6,7 @@ import com.aegisx.audit.entity.AuditEventType;
 import com.aegisx.audit.entity.AuditModule;
 import com.aegisx.audit.service.AuditService;
 import com.aegisx.integration.razorpay.config.RazorpayProperties;
+import com.aegisx.common.exception.TransactionNotFoundException;
 import com.aegisx.integration.razorpay.dto.CreatePaymentOrderResponse;
 import com.aegisx.transaction.entity.Transaction;
 import com.aegisx.transaction.entity.TransactionStatus;
@@ -41,7 +42,7 @@ public class RazorpayOrderService {
         User merchant = userRepository.findByEmail(merchantEmail)
                 .orElseThrow(() -> new UsernameNotFoundException("User not found"));
         Transaction transaction = transactionRepository.findByIdAndMerchantIdForUpdate(transactionId, merchant.getId())
-                .orElseThrow(() -> new IllegalArgumentException("Transaction not found"));
+                .orElseThrow(() -> new TransactionNotFoundException("Transaction not found"));
 
         if (transaction.getStatus() != TransactionStatus.CREATED) {
             throw new IllegalStateException("A payment order can only be created for a transaction in CREATED status");

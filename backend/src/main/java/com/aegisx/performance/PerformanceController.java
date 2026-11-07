@@ -1,5 +1,6 @@
 package com.aegisx.performance;
 
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -16,6 +17,7 @@ import java.util.concurrent.TimeUnit;
  */
 @RestController
 @RequestMapping("/api/performance")
+@PreAuthorize("hasAnyRole('ADMIN', 'COMPLIANCE_OFFICER')")
 public class PerformanceController {
     
     private final MeterRegistry meterRegistry;
