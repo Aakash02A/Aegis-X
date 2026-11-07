@@ -11,8 +11,8 @@ public enum WebhookProcessingState {
     /** Business processing failed; the event row remains for retry/observability. */
     FAILED,
     /**
-     * The event referenced a resource that is already in a terminal state and contradicts it,
-     * so it was recorded as evidence but deliberately not applied as a transition.
+     * The event contradicted a terminal state or its provider order id did not match the known
+     * payment binding, so it was recorded as evidence but deliberately not applied as a transition.
      */
     IGNORED_TERMINAL
 }

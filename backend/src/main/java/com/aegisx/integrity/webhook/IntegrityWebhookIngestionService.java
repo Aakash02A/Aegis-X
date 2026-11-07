@@ -171,11 +171,12 @@ public class IntegrityWebhookIngestionService {
         // 4. Apply the business effect for the first delivery only.
         WebhookProcessingState state;
         String message;
+        boolean ignored;
         try {
-            boolean ignored = applyEvent(workspace, payload, simulated);
+            ignored = applyEvent(workspace, payload, simulated);
             state = ignored ? WebhookProcessingState.IGNORED_TERMINAL : WebhookProcessingState.PROCESSED;
             message = ignored
-                    ? "Event recorded but not applied: it contradicted a terminal state"
+                    ? "Event recorded but not applied: it contradicted a terminal state or provider order binding"
                     : "Event accepted and applied";
         } catch (RuntimeException e) {
             log.warn("Webhook processing failed for event {}: {}", providerEventId, e.getClass().getSimpleName());
@@ -191,7 +192,7 @@ public class IntegrityWebhookIngestionService {
         event.setDuplicateOf(null);
         eventRepository.save(event);
 
-        return new IngestionResult(providerEventId, false, true, state, message);
+        return new IngestionResult(providerEventId, false, !ignored, state, message);
     }
 
     /**
@@ -210,23 +211,40 @@ public class IntegrityWebhookIngestionService {
             PaymentState observedState = parsePayment(payload.state());
             if (payment.isPresent()) {
                 PaymentRecord record = payment.get();
-                observationService.recordObservation(workspaceId, ResourceType.PAYMENT, record.getId(),
-                        payload.providerPaymentId(), EvidenceSource.PROVIDER_WEBHOOK,
-                        String.valueOf(observedState), payload.amountMinor(), payload.currency(),
-                        null, payload.providerCreatedAt(), simulated);
-                TransitionDecision decision = observationService.applyPaymentObservation(
-                        record, observedState, EvidenceSource.PROVIDER_WEBHOOK, actor);
-                paymentRepository.save(record);
-                contradictedTerminal[0] |= decision.conflict() && !decision.applied();
+                PaymentOrder linkedOrder = orderRepository.findById(record.getOrderId())
+                        .filter(candidate -> workspaceId.equals(candidate.getWorkspaceId()))
+                        .orElse(null);
+                boolean orderBindingMismatch = linkedOrder == null
+                        || (payload.providerOrderId() != null
+                        && !payload.providerOrderId().equals(linkedOrder.getProviderOrderId()));
+                if (orderBindingMismatch) {
+                    String expectedOrderId = linkedOrder == null
+                            ? "missing-in-workspace"
+                            : String.valueOf(linkedOrder.getProviderOrderId());
+                    observationService.recordObservation(workspaceId, ResourceType.PAYMENT, null,
+                            payload.providerPaymentId(), EvidenceSource.PROVIDER_WEBHOOK,
+                            String.valueOf(observedState), payload.amountMinor(), payload.currency(),
+                            "order_binding_mismatch: expected=" + expectedOrderId
+                                    + ", observed=" + payload.providerOrderId(),
+                            payload.providerCreatedAt(), simulated);
+                    contradictedTerminal[0] = true;
+                } else {
+                    observationService.recordObservation(workspaceId, ResourceType.PAYMENT, record.getId(),
+                            payload.providerPaymentId(), EvidenceSource.PROVIDER_WEBHOOK,
+                            String.valueOf(observedState), payload.amountMinor(), payload.currency(),
+                            null, payload.providerCreatedAt(), simulated);
+                    TransitionDecision decision = observationService.applyPaymentObservation(
+                            record, observedState, EvidenceSource.PROVIDER_WEBHOOK, actor);
+                    paymentRepository.save(record);
+                    contradictedTerminal[0] |= decision.conflict() && !decision.applied();
 
-                orderRepository.findById(record.getOrderId()).ifPresent(order -> {
-                    OrderState orderState = observedState.isConfirmedSuccess() ? OrderState.PAID : order.getState();
-                    if (orderState != order.getState()) {
-                        observationService.applyOrderObservation(order, orderState,
+                    OrderState orderState = observedState.isConfirmedSuccess() ? OrderState.PAID : linkedOrder.getState();
+                    if (orderState != linkedOrder.getState()) {
+                        observationService.applyOrderObservation(linkedOrder, orderState,
                                 EvidenceSource.PROVIDER_WEBHOOK, actor);
-                        orderRepository.save(order);
+                        orderRepository.save(linkedOrder);
                     }
-                });
+                }
             } else if (payload.hasOrder()) {
                 // A payment originates with the customer, so the provider is the source of truth for
                 // its existence. Aegis-X therefore creates its own record from the first delivery.

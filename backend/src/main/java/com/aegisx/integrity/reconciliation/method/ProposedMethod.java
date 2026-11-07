@@ -268,20 +268,37 @@ public class ProposedMethod extends BaselineTwoMethod {
             }
             long settledTotal = settled.stream().mapToLong(EvidencePack.PaymentView::amountMinor).sum();
             if (settledTotal == order.expectedAmountMinor()) {
-                continue;
+                // The aggregate amount can be correct while a provider payment is denominated in
+                // the wrong currency. Check each captured payment against its order independently.
+            } else {
+                findings.add(CandidateFactory.of(
+                        FindingType.AMOUNT_MISMATCH, CertaintyLevel.LIKELY,
+                        order.orderId(), settled.get(0).paymentId(), null, null, order.orderId().toString(),
+                        "Order " + order.reference() + " expected " + order.expectedAmountMinor()
+                                + " " + order.currency() + " minor units, but the captured payments on it total "
+                                + settledTotal,
+                        List.of("internal expected amount = " + order.expectedAmountMinor(),
+                                "total of captured payments for this order = " + settledTotal,
+                                "captured payments considered = " + settled.size(),
+                                "payments attached to the order = " + payments.size()),
+                        List.of("an authoritative provider payment listing for this order, to confirm what was "
+                                + "actually captured before any money is moved in either direction")));
             }
-            findings.add(CandidateFactory.of(
-                    FindingType.AMOUNT_MISMATCH, CertaintyLevel.LIKELY,
-                    order.orderId(), settled.get(0).paymentId(), null, null, order.orderId().toString(),
-                    "Order " + order.reference() + " expected " + order.expectedAmountMinor()
-                            + " " + order.currency() + " minor units, but the captured payments on it total "
-                            + settledTotal,
-                    List.of("internal expected amount = " + order.expectedAmountMinor(),
-                            "total of captured payments for this order = " + settledTotal,
-                            "captured payments considered = " + settled.size(),
-                            "payments attached to the order = " + payments.size()),
-                    List.of("an authoritative provider payment listing for this order, to confirm what was "
-                            + "actually captured before any money is moved in either direction")));
+
+            settled.stream()
+                    .filter(payment -> payment.currency() != null
+                            && !payment.currency().equalsIgnoreCase(order.currency()))
+                    .sorted(java.util.Comparator.comparing(payment -> payment.paymentId().toString()))
+                    .forEach(payment -> findings.add(CandidateFactory.of(
+                            FindingType.CURRENCY_MISMATCH, CertaintyLevel.LIKELY,
+                            order.orderId(), payment.paymentId(), null, null,
+                            order.orderId() + ":currency:" + payment.paymentId(),
+                            "Captured payment " + payment.providerPaymentId() + " uses " + payment.currency()
+                                    + " but its order expects " + order.currency(),
+                            List.of("payment currency = " + payment.currency(),
+                                    "order currency = " + order.currency(),
+                                    "provider payment id = " + payment.providerPaymentId()),
+                            List.of("confirmation of the currency in which the payment was captured"))));
         }
     }
 
