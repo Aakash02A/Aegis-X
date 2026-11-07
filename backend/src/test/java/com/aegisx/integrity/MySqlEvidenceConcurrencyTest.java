@@ -12,6 +12,8 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -140,6 +142,15 @@ class MySqlEvidenceConcurrencyTest extends MySqlIntegrityTestSupport {
                 Integer.class, order.getId().toString()))
                 .as("a refused duplicate must leave no row behind at all")
                 .isEqualTo(1);
+
+        EvidenceDocument persisted = evidenceService.documents(workspace.getId(), order.getId(), false)
+                .get(0);
+        Path evidenceDirectory = Path.of(persisted.getStoragePath()).getParent();
+        try (var files = Files.list(evidenceDirectory)) {
+            assertThat(files.filter(Files::isRegularFile).count())
+                    .as("the losing concurrent transactions must remove their files after rollback")
+                    .isEqualTo(1);
+        }
     }
 
     // ------------------------------------------------------------------ helpers

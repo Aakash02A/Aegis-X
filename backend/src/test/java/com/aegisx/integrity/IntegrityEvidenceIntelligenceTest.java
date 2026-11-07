@@ -15,12 +15,19 @@ import com.aegisx.integrity.entity.PaymentOrder;
 import com.aegisx.integrity.entity.PaymentRecord;
 import com.aegisx.integrity.entity.Workspace;
 import com.aegisx.integrity.evidence.EvidenceCheckService;
+import com.aegisx.integrity.evidence.EvidenceDocumentService;
 import com.aegisx.integrity.evidence.EvidenceIntelligenceService;
+import com.aegisx.integrity.exception.IntegrityConflictException;
 import com.aegisx.integrity.exception.IntegrityNotFoundException;
 import com.aegisx.integrity.support.EvidenceFixtures;
 import com.aegisx.integrity.support.IntegrityTestSupport;
+import com.aegisx.storage.service.StorageService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.util.List;
 
@@ -43,6 +50,10 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  */
 @DisplayName("Evidence intelligence")
 class IntegrityEvidenceIntelligenceTest extends IntegrityTestSupport {
+
+    @Autowired private EvidenceDocumentService evidenceDocumentService;
+    @Autowired private StorageService storageService;
+    @Autowired private PlatformTransactionManager transactionManager;
 
     private static final long ORDER_AMOUNT = 150_000L; // 1500.00 INR
     private static final String ORDER_CURRENCY = "INR";
@@ -291,6 +302,53 @@ class IntegrityEvidenceIntelligenceTest extends IntegrityTestSupport {
                 .as("the superseded invoice is retained, so the replacement is visible rather than hidden")
                 .hasSize(2)
                 .anyMatch(document -> document.getSupersededByDocumentId() != null);
+    }
+
+    @Test
+    @DisplayName("a database transaction rollback removes the uploaded evidence file")
+    void rolledBackEvidenceUploadRemovesStoredFile() {
+        Workspace workspace = newWorkspace();
+        PaymentOrder order = newOrderWithProviderOrder(workspace, ORDER_AMOUNT);
+        byte[] invoice = EvidenceFixtures.invoicePdf("INV-ROLLBACK", order.getInternalReference(),
+                ORDER_CURRENCY, "1500.00");
+        EvidenceDocument[] attemptedDocument = new EvidenceDocument[1];
+
+        new TransactionTemplate(transactionManager).execute(status -> {
+            attemptedDocument[0] = evidenceService.receiveAndProcess(workspace.getId(), order.getId(),
+                    DocumentType.COMMERCIAL_INVOICE,
+                    new MockMultipartFile("file", "invoice-rollback.pdf", "application/pdf", invoice),
+                    OPERATOR).document();
+            status.setRollbackOnly();
+            return null;
+        });
+
+        assertThat(attemptedDocument[0]).isNotNull();
+        assertThat(evidenceDocumentRepository.findById(attemptedDocument[0].getId()))
+                .as("the database row must roll back")
+                .isEmpty();
+        assertThat(storageService.exists(attemptedDocument[0].getStoragePath()))
+                .as("the file written before the database rollback must be removed")
+                .isFalse();
+    }
+
+    @Test
+    @DisplayName("an upload over the configured size limit is rejected before writing a row or file")
+    void uploadOverConfiguredLimitIsRejectedBeforeStorage() {
+        Workspace workspace = newWorkspace();
+        PaymentOrder order = newOrderWithProviderOrder(workspace, ORDER_AMOUNT);
+        int oversizedLength = Math.toIntExact(properties.getEvidence().getMaxDocumentBytes() + 1);
+        byte[] oversized = new byte[oversizedLength];
+        MockMultipartFile file = new MockMultipartFile("file", "oversized.pdf", "application/pdf", oversized);
+
+        assertThatThrownBy(() -> evidenceDocumentService.receive(workspace.getId(), order.getId(),
+                DocumentType.COMMERCIAL_INVOICE, file, "oversized.pdf", oversized,
+                OPERATOR.label(), OPERATOR.userId(), false))
+                .isInstanceOf(IntegrityConflictException.class)
+                .hasMessageContaining("exceeds the configured limit");
+
+        assertThat(evidenceDocumentRepository.findAllByOrderIdOrderByCreatedAtDesc(order.getId()))
+                .as("an oversized upload must not create a row")
+                .isEmpty();
     }
 
     // 8 ------------------------------------------------------------------------

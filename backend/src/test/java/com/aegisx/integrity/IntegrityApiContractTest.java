@@ -3,12 +3,15 @@ package com.aegisx.integrity;
 import com.aegisx.auth.entity.Role;
 import com.aegisx.auth.entity.User;
 import com.aegisx.auth.repository.UserRepository;
+import com.aegisx.integrity.entity.EvidenceDocument;
 import com.aegisx.integrity.entity.PaymentOrder;
 import com.aegisx.integrity.entity.Workspace;
 import com.aegisx.integrity.support.IntegrityScenarioFixtures;
 import com.aegisx.integrity.support.IntegrityTestSupport;
 import com.aegisx.integrity.domain.WorkspaceMemberRole;
 import com.aegisx.integrity.service.WorkspaceMembershipService;
+import com.aegisx.storage.config.StorageProperties;
+import com.aegisx.storage.service.StorageService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -46,6 +49,8 @@ class IntegrityApiContractTest extends IntegrityTestSupport {
     @Autowired private MockMvc mockMvc;
     @Autowired private UserRepository userRepository;
     @Autowired private WorkspaceMembershipService membershipService;
+    @Autowired private StorageProperties storageProperties;
+    @Autowired private StorageService storageService;
 
     private User operator;
 
@@ -135,16 +140,29 @@ class IntegrityApiContractTest extends IntegrityTestSupport {
                 .andExpect(jsonPath("$.data.limitation").isNotEmpty());
 
         // Upload a real PDF through the multipart endpoint the console uses.
+        byte[] invoiceBytes = com.aegisx.integrity.support.EvidenceFixtures.invoicePdf(
+                "INV-CONTRACT-1", order.getInternalReference(), "INR", "1500.00");
         String uploaded = mockMvc.perform(multipart(base + "/documents")
-                        .file(new org.springframework.mock.web.MockMultipartFile("file", "invoice-0001.pdf",
-                                "application/pdf", com.aegisx.integrity.support.EvidenceFixtures.invoicePdf(
-                                        "INV-CONTRACT-1", order.getInternalReference(), "INR", "1500.00")))
+                        .file(new org.springframework.mock.web.MockMultipartFile("file", "../../invoice-0001.pdf",
+                                "application/pdf", invoiceBytes))
                         .param("orderId", order.getId().toString())
                         .param("documentType", "COMMERCIAL_INVOICE"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.extractionFailed").value(false))
+                .andExpect(jsonPath("$.data.document.originalFilename").value("invoice-0001.pdf"))
                 .andReturn().getResponse().getContentAsString();
         String documentId = com.jayway.jsonpath.JsonPath.read(uploaded, "$.data.document.id");
+        EvidenceDocument storedDocument = evidenceDocumentRepository.findById(UUID.fromString(documentId))
+                .orElseThrow();
+        java.nio.file.Path storageRoot = java.nio.file.Path.of(storageProperties.getRootPath())
+                .toAbsolutePath().normalize();
+        java.nio.file.Path storedPath = java.nio.file.Path.of(storedDocument.getStoragePath())
+                .toAbsolutePath().normalize();
+        assertThat(storedPath)
+                .as("the multipart filename must not move the stored file outside the configured root")
+                .startsWith(storageRoot);
+        assertThat(storageService.exists(storedDocument.getStoragePath())).isTrue();
+        assertThat(storedPath.getFileName().toString()).doesNotContain("..");
 
         mockMvc.perform(get(base + "/documents").param("orderId", order.getId().toString()))
                 .andExpect(status().isOk())
@@ -156,6 +174,10 @@ class IntegrityApiContractTest extends IntegrityTestSupport {
 
         mockMvc.perform(get(base + "/documents/" + documentId + "/content"))
                 .andExpect(status().isOk())
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.content()
+                        .contentType(MediaType.APPLICATION_PDF))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.content()
+                        .bytes(invoiceBytes))
                 .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.header()
                         .string("Content-Disposition", org.hamcrest.Matchers.containsString("invoice-0001.pdf")));
 
@@ -183,6 +205,27 @@ class IntegrityApiContractTest extends IntegrityTestSupport {
                 // is unchanged by it: a document upload cannot restate a provider-confirmed payment.
                 .andExpect(jsonPath("$.data.documentsPresent").value(1))
                 .andExpect(jsonPath("$.data.documentsExpected").value(1));
+    }
+
+    @Test
+    @DisplayName("an upload whose bytes contradict its claimed PDF type is rejected before storage")
+    @WithMockUser(username = "operator@aegis-x.test", roles = "ADMIN")
+    void evidenceUploadRejectsSpoofedPdfContentType() throws Exception {
+        Workspace workspace = newAuthorizedWorkspace();
+        PaymentOrder order = newOrderWithProviderOrder(workspace, 150_000);
+        String base = "/api/integrity/workspaces/" + workspace.getId() + "/evidence";
+
+        mockMvc.perform(multipart(base + "/documents")
+                        .file(new org.springframework.mock.web.MockMultipartFile("file", "invoice.pdf",
+                                "application/pdf", "plain text, not a PDF".getBytes(java.nio.charset.StandardCharsets.UTF_8)))
+                        .param("orderId", order.getId().toString())
+                        .param("documentType", "COMMERCIAL_INVOICE"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.success").value(false));
+
+        assertThat(evidenceDocumentRepository.findAllByOrderIdOrderByCreatedAtDesc(order.getId()))
+                .as("a rejected content type must not create a database row")
+                .isEmpty();
     }
 
     @Test
