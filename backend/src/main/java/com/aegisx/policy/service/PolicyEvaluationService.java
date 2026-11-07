@@ -66,9 +66,7 @@ public class PolicyEvaluationService {
         "BENEFICIARY_MATCH",    new RuleMetadata("PR-02", ViolationSeverity.CRITICAL),
         "AMOUNT_CONSISTENCY",   new RuleMetadata("PR-03", ViolationSeverity.CRITICAL),
         "CURRENCY_CONSISTENCY", new RuleMetadata("PR-04", ViolationSeverity.HIGH),
-        "PURPOSE_CODE",         new RuleMetadata("PR-05", ViolationSeverity.HIGH),
-        "OCR_CONFIDENCE",       new RuleMetadata("PR-06", ViolationSeverity.HIGH),
-        "AI_CONFIDENCE",        new RuleMetadata("PR-07", ViolationSeverity.MEDIUM)
+        "PURPOSE_CODE",         new RuleMetadata("PR-05", ViolationSeverity.HIGH)
     );
 
     private record RuleMetadata(String ruleId, ViolationSeverity severity) { }
@@ -96,16 +94,15 @@ public class PolicyEvaluationService {
             var documentExtraction = documentExtractionRepository.findLatestByTransactionId(transactionId)
                 .orElseThrow(() -> new MissingEvidenceException("No OCR extraction found for transaction: " + transactionId));
             
-            // Load latest AI analysis
-            var aiAnalysis = aiAnalysisRepository.findLatestByTransactionId(transactionId)
-                .orElseThrow(() -> new MissingEvidenceException("No AI analysis found for transaction: " + transactionId));
+            // AI is advisory and optional. A missing, failed or rejected analysis cannot change
+            // whether the deterministic policy rules run or what they decide.
+            var aiAnalysis = aiAnalysisRepository.findLatestByTransactionId(transactionId).orElse(null);
             
             // Build RuleContext
             RuleContext context = RuleContext.builder()
                 .transaction(transaction)
                 .requiredDocuments(requiredDocuments)
                 .documentExtraction(documentExtraction)
-                .aiAnalysis(aiAnalysis)
                 .build();
             
             // Execute rules
@@ -139,7 +136,8 @@ public class PolicyEvaluationService {
                     .count())
                 .evaluatedAt(LocalDateTime.now())
                 .finalDecision(result.getFinalDecision())
-                .overallScore(aiAnalysis.getConfidenceScore())
+                // AI confidence is advisory metadata, never a policy score or decision input.
+                .overallScore(null)
                 .evaluationJson(evaluationJson)
                 .processingDurationMs(result.getProcessingDurationMs())
                 .build();
@@ -171,6 +169,12 @@ public class PolicyEvaluationService {
                 case "COMPLIANCE_HOLD" -> TransactionStatus.COMPLIANCE_HOLD;
                 default -> throw new PolicyEvaluationException("Unsupported policy decision: " + result.getFinalDecision());
             };
+            if (transaction.getStatus() == TransactionStatus.AI_ANALYSIS
+                    || transaction.getStatus() == TransactionStatus.AI_ANALYSIS_FAILED) {
+                transactionService.transitionStatus(transactionId, TransactionStatus.POLICY_EVALUATION,
+                        "POLICY_ENGINE", "AI analysis is advisory and is not required for policy evaluation");
+                transaction = transactionRepository.findById(transactionId).orElseThrow();
+            }
             if (transaction.getStatus() == TransactionStatus.POLICY_EVALUATION) {
                 transactionService.transitionStatus(transactionId, nextStatus, "POLICY_ENGINE", "Policy evaluation decision: " + result.getFinalDecision());
             }

@@ -1,15 +1,12 @@
 package com.aegisx.policy.service;
 
-import com.aegisx.ai.entity.AIAnalysis;
 import com.aegisx.document.entity.DocumentExtraction;
 import com.aegisx.document.entity.DocumentType;
 import com.aegisx.document.entity.RequiredDocument;
-import com.aegisx.policy.rules.AiConfidenceRule;
 import com.aegisx.policy.rules.AmountConsistencyRule;
 import com.aegisx.policy.rules.BeneficiaryMatchRule;
 import com.aegisx.policy.rules.CurrencyConsistencyRule;
 import com.aegisx.policy.rules.DocumentCompletenessRule;
-import com.aegisx.policy.rules.OcrConfidenceRule;
 import com.aegisx.policy.rules.PurposeCodeRule;
 import com.aegisx.policy.rules.RuleContext;
 import com.aegisx.transaction.entity.Transaction;
@@ -35,9 +32,7 @@ class RuleEngineTest {
             new BeneficiaryMatchRule(),
             new AmountConsistencyRule(),
             new CurrencyConsistencyRule(),
-            new PurposeCodeRule(),
-            new OcrConfidenceRule(),
-            new AiConfidenceRule());
+            new PurposeCodeRule());
 
     private RuleContext passingContext;
 
@@ -67,7 +62,6 @@ class RuleEngineTest {
                         requiredDocument(DocumentType.SHIPPING_PROOF, true),
                         requiredDocument(DocumentType.EXPORT_DECLARATION, true)))
                 .documentExtraction(extraction)
-                .aiAnalysis(AIAnalysis.builder().confidenceScore(new BigDecimal("88.0")).build())
                 .build();
     }
 
@@ -77,8 +71,39 @@ class RuleEngineTest {
         PolicyEngineResult result = ruleEngine.evaluate(passingContext);
 
         assertEquals("APPROVED", result.getFinalDecision());
-        assertEquals(7, result.getRuleResults().size());
+        assertEquals(5, result.getRuleResults().size());
         assertTrue(result.getRuleResults().stream().allMatch(rule -> rule.getPassed()));
+    }
+
+    @Test
+    @DisplayName("low heuristic OCR confidence does not gate matching structured values")
+    void heuristicOcrConfidenceDoesNotGatePolicy() {
+        var extractionWithoutScore = DocumentExtraction.builder()
+                .extractedData(passingContext.getDocumentExtraction().getExtractedData())
+                .confidenceScore(0.0)
+                .build();
+        RuleContext context = RuleContext.builder()
+                .transaction(passingContext.getTransaction())
+                .requiredDocuments(passingContext.getRequiredDocuments())
+                .documentExtraction(extractionWithoutScore)
+                .build();
+
+        PolicyEngineResult result = ruleEngine.evaluate(context);
+
+        assertEquals("APPROVED", result.getFinalDecision());
+        assertEquals(5, result.getRuleResults().size());
+        assertTrue(result.getRuleResults().stream().noneMatch(rule ->
+                rule.getRuleName().equals("OCR_CONFIDENCE") || rule.getRuleName().equals("AI_CONFIDENCE")));
+    }
+
+    @Test
+    @DisplayName("repeated evaluations of identical rule inputs return identical rule results")
+    void repeatedEvaluationsAreDeterministic() {
+        var expected = ruleEngine.evaluate(passingContext).getRuleResults();
+
+        for (int attempt = 0; attempt < 20; attempt++) {
+            assertEquals(expected, ruleEngine.evaluate(passingContext).getRuleResults());
+        }
     }
 
     @Test
@@ -91,7 +116,6 @@ class RuleEngineTest {
                         requiredDocument(DocumentType.SHIPPING_PROOF, false),
                         requiredDocument(DocumentType.EXPORT_DECLARATION, true)))
                 .documentExtraction(passingContext.getDocumentExtraction())
-                .aiAnalysis(passingContext.getAiAnalysis())
                 .build();
 
         PolicyEngineResult result = ruleEngine.evaluate(incomplete);

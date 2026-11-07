@@ -65,13 +65,12 @@ public class AIProcessingCoordinator {
             return analysis;
             
         } catch (AIAnalysisException e) {
-            log.error("AI analysis failed for transaction {}: {}", 
-                input.getTransactionId(), e.getMessage(), e);
+            log.warn("AI advisory analysis failed for transaction {}", input.getTransactionId());
             throw e;
         } catch (Exception e) {
-            log.error("Unexpected error during AI analysis for transaction {}: {}", 
-                input.getTransactionId(), e.getMessage(), e);
-            throw new AIAnalysisException("Unexpected error during AI analysis: " + e.getMessage(), e);
+            log.error("Unexpected AI advisory error for transaction {} ({})",
+                input.getTransactionId(), e.getClass().getSimpleName());
+            throw new AIAnalysisException("AI advisory analysis failed", e);
         }
     }
     

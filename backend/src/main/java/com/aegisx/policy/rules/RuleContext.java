@@ -1,6 +1,5 @@
 package com.aegisx.policy.rules;
 
-import com.aegisx.ai.entity.AIAnalysis;
 import com.aegisx.document.entity.DocumentExtraction;
 import com.aegisx.document.entity.RequiredDocument;
 import com.aegisx.transaction.entity.Transaction;
@@ -29,8 +28,11 @@ import java.util.List;
  * Data included:
  * - Transaction: amount, currency, purpose, beneficiary, status
  * - Required documents: invoice, shipping proof, export declaration (fulfilled status)
- * - OCR extraction: extracted text, structured JSON, confidence score
- * - AI analysis: advisory findings, confidence, rule results
+ * - OCR extraction: structured fields read from the document
+ *
+ * <p>AI output is deliberately absent. Extraction confidence remains an entity metadata field, but
+ * no policy rule reads it; the verdict is based on the transaction, required-document checklist,
+ * and selected structured OCR values.</p>
  */
 @Data
 @NoArgsConstructor
@@ -41,5 +43,4 @@ public class RuleContext {
     private Transaction transaction;
     private List<RequiredDocument> requiredDocuments;
     private DocumentExtraction documentExtraction;
-    private AIAnalysis aiAnalysis;
 }

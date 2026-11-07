@@ -50,7 +50,7 @@ import java.util.UUID;
  * - Never expose raw prompts or internal details
  * - Return advisory findings only
  * - Include full audit trail (model, version, hash, confidence, duration)
- * - Transaction remains AI_ANALYSIS until Phase 10 Policy Engine acts
+ * - AI failures are recorded as AI_ANALYSIS_FAILED; policy evaluation remains independently available
  */
 @Slf4j
 @RestController
@@ -77,6 +77,7 @@ public class AIAnalysisController {
     @PostMapping("/{id}/ai-analysis")
     @PreAuthorize("hasAnyRole('MERCHANT', 'COMPLIANCE_OFFICER', 'ADMIN')")
     public ResponseEntity<?> triggerAnalysis(@PathVariable("id") UUID transactionId, Authentication authentication) {
+        boolean analysisAttempted = false;
         try {
             log.info("Triggering AI analysis for transaction: {}", transactionId);
             
@@ -104,6 +105,7 @@ public class AIAnalysisController {
                 .build();
             
             // Trigger analysis
+            analysisAttempted = true;
             AIAnalysis analysis = aiProcessingCoordinator.triggerAnalysis(input);
             if (transaction.getStatus() == TransactionStatus.AI_ANALYSIS) {
                 transactionService.transitionStatus(transactionId, TransactionStatus.POLICY_EVALUATION,
@@ -131,19 +133,30 @@ public class AIAnalysisController {
                 "message", e.getMessage()
             ));
         } catch (AIAnalysisException e) {
-            log.error("AI analysis failed for transaction {}: {}", transactionId, e.getMessage(), e);
+            markAiAnalysisFailed(transactionId);
+            log.warn("AI advisory analysis failed for transaction {} ({})", transactionId, e.getClass().getSimpleName());
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
                 "error", "AI Analysis Failed",
-                "message", e.getMessage(),
+                "message", "AI advisory analysis is unavailable; deterministic policy evaluation remains available.",
                 "transactionId", transactionId
             ));
         } catch (Exception e) {
-            log.error("Unexpected error during AI analysis for transaction {}: {}", transactionId, e.getMessage(), e);
+            if (analysisAttempted) {
+                markAiAnalysisFailed(transactionId);
+            }
+            log.error("Unexpected AI advisory error for transaction {} ({})", transactionId, e.getClass().getSimpleName());
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
                 "error", "Internal Server Error",
                 "message", "An unexpected error occurred during AI analysis"
             ));
         }
+    }
+
+    private void markAiAnalysisFailed(UUID transactionId) {
+        transactionRepository.findById(transactionId)
+            .filter(transaction -> transaction.getStatus() == TransactionStatus.AI_ANALYSIS)
+            .ifPresent(transaction -> transactionService.transitionStatus(transactionId,
+                TransactionStatus.AI_ANALYSIS_FAILED, "AI_SERVICE", "AI advisory analysis failed"));
     }
     
     /**

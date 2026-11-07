@@ -25,7 +25,7 @@ import java.util.UUID;
  *   "id": "uuid",
  *   "transactionId": "uuid",
  *   "decision": "APPROVED",
- *   "overallScore": 95.0,
+ *   "overallScore": null,
  *   "rules": [
  *     {
  *       "rule": "DOCUMENT_COMPLETENESS",

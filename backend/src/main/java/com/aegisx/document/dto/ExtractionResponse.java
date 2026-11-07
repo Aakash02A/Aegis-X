@@ -14,7 +14,7 @@ import lombok.Setter;
 /**
  * REST response for document extraction queries.
  * 
- * Contains the extracted structured data and confidence metrics for compliance decisions.
+ * Contains the extracted structured data and a labeled heuristic confidence estimate for reviewers.
  */
 @Getter
 @Setter
@@ -39,9 +39,12 @@ public class ExtractionResponse {
     private DocumentStatus status;
 
     /**
-     * Confidence score (0–100) for the extraction
+     * Pattern-based estimate (0–100), not a calibrated OCR probability.
      */
     private Double confidence;
+
+    /** Labels the score source so callers do not interpret the heuristic as a measured probability. */
+    private String confidenceKind;
 
     /**
      * The extracted structured data (invoice number, date, amount, etc.)
@@ -67,6 +70,7 @@ public class ExtractionResponse {
             .extractionId(extraction.getId())
             .status(extraction.getDocument().getDocumentStatus())
             .confidence(extraction.getConfidenceScore())
+            .confidenceKind("HEURISTIC")
             .extractedData(extraction.getExtractedData())
             .extractionMethod(extraction.getExtractionMethod().toString())
             .createdAt(extraction.getCreatedAt())

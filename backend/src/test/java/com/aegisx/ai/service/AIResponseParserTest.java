@@ -143,6 +143,21 @@ class AIResponseParserTest {
         assertThrows(InvalidAIResponseException.class, () -> 
             parser.parse(emptySummary, transactionId, extractionId, "gpt-4", "v1"));
     }
+
+    @Test
+    @DisplayName("Should reject a non-string summary instead of coercing it")
+    void testRejectNonStringSummary() {
+        String invalidSummary = """
+            {
+                "overallConfidence": 95.0,
+                "summary": {"decision": "APPROVED"},
+                "findings": []
+            }
+            """;
+
+        assertThrows(InvalidAIResponseException.class, () ->
+                parser.parse(invalidSummary, transactionId, extractionId, "gpt-4", "v1"));
+    }
     
     @Test
     @DisplayName("Should reject finding missing required fields")
@@ -164,8 +179,8 @@ class AIResponseParserTest {
     }
     
     @Test
-    @DisplayName("Should normalize finding confidence scores")
-    void testNormalizeConfidenceScores() {
+    @DisplayName("Should reject out-of-range AI confidence scores")
+    void testRejectOutOfRangeConfidenceScores() {
         String responseWithHighConfidence = """
             {
                 "overallConfidence": 150.0,
@@ -182,9 +197,44 @@ class AIResponseParserTest {
             }
             """;
         
-        AIAnalysisResponse result = parser.parse(responseWithHighConfidence, transactionId, extractionId, "gpt-4", "v1");
-        assertEquals("100.00", result.getOverallConfidence().toPlainString());
-        assertEquals(100.0, result.getFindings().get(0).getConfidence());
+        assertThrows(InvalidAIResponseException.class, () ->
+                parser.parse(responseWithHighConfidence, transactionId, extractionId, "gpt-4", "v1"));
+    }
+
+    @Test
+    @DisplayName("Should reject garbage confidence values instead of coercing them to zero")
+    void testRejectGarbageConfidenceValues() {
+        String garbageConfidence = """
+            {
+                "overallConfidence": "very certain",
+                "summary": "Test",
+                "findings": []
+            }
+            """;
+
+        assertThrows(InvalidAIResponseException.class, () ->
+                parser.parse(garbageConfidence, transactionId, extractionId, "gpt-4", "v1"));
+    }
+
+    @Test
+    @DisplayName("Should discard a model supplied decision field from the fixed advisory schema")
+    void testDecisionFieldIsNotPartOfCanonicalSchema() {
+        String responseWithDecision = """
+            {
+                "decision": "APPROVED",
+                "overallConfidence": 92.0,
+                "summary": "Review the invoice.",
+                "findings": []
+            }
+            """;
+
+        AIAnalysisResponse response = parser.parse(responseWithDecision, transactionId, extractionId, "gpt-4", "v1");
+        var canonical = parser.toCanonicalJsonNode(response);
+
+        assertFalse(canonical.has("decision"));
+        assertTrue(canonical.has("summary"));
+        assertTrue(canonical.has("findings"));
+        assertEquals(5, canonical.size(), "canonical output contains only the advisory analysis schema");
     }
     
     @Test

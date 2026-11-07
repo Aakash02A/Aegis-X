@@ -10,10 +10,10 @@ Aegis-X is structured as a resilient, high-integrity modular monolith built on *
 │                                                                                        │
 │               AI is an ADVISOR. Java is the SOLE COMPLIANCE AUTHORITY.                 │
 │                                                                                        │
-│   • AI parses unstructured documents, extracts entities, and scores match confidence. │
-│     It NEVER transitions transaction states, approves payouts, or waives holds.        │
-│   • Deterministic Java policy rules strictly govern all state transitions, holds,     │
-│     and settlement disbursements.                                                      │
+│   • AI produces optional advisory findings from untrusted document text.              │
+│     It cannot set a decision or supply inputs to the policy rules.                    │
+│   • Five deterministic Java rules use transaction fields, checklist rows,             │
+│     and selected structured OCR fields to produce APPROVED or COMPLIANCE_HOLD.         │
 └────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -78,37 +78,24 @@ Aegis-X is structured as a resilient, high-integrity modular monolith built on *
 * **Security Guardrails:** Passwords hashed with BCrypt (strength 12); sensitive endpoints (`/actuator/env`, `/actuator/beans`) blocked from public ingress.
 
 ### 3.2 Transaction State Machine
-Transaction state advances deterministically through strict guard conditions:
-1. `CREATED`: Transaction registered by merchant with counterparty and amount.
-2. `PENDING_PAYMENT`: Awaiting verified payment capture notification.
-3. `PAYMENT_RECEIVED`: Razorpay webhook verified with HMAC signature and unique idempotency key.
-4. `EVIDENCE_PENDING`: Required trade documentation (invoices, BOLs) requested from merchant.
-5. `UNDER_REVIEW`: OCR extraction complete; evaluated against deterministic policy rules.
-6. `APPROVED`: All policy checks passed (or officer approved).
-7. `SETTLED`: Funds disbursed to beneficiary via payout rail.
-8. `HELD` / `REJECTED`: Assigned upon policy violation or officer rejection.
-
-*Rule: States cannot be skipped. Moving from `CREATED` directly to `APPROVED` without verified payment and evidence validation is rejected.*
+The current transaction enum includes `CREATED`, `PAYMENT_RECEIVED`, `PAYMENT_FAILED`, `EVIDENCE_PENDING`, `OCR_PROCESSING`, `OCR_FAILED`, `AI_ANALYSIS`, `AI_ANALYSIS_FAILED`, `POLICY_EVALUATION`, `APPROVED`, `COMPLIANCE_HOLD`, `REJECTED`, `SETTLEMENT_PENDING`, `SETTLEMENT_FAILED`, and `SETTLED`. Legal transitions are enforced by `TransactionStateMachine`. `APPROVED` can proceed to `SETTLEMENT_PENDING`; `SETTLED`, `REJECTED`, and `PAYMENT_FAILED` are terminal. AI analysis may fail without preventing the deterministic policy evaluation from running.
 
 ### 3.3 Evidence Collection & OCR Pipeline
-* **Digital Documents:** Extracted directly via Apache Tika 2.9.
-* **Scanned PDFs / Images:** Rasterized via Apache PDFBox 3.0 and processed through Tesseract OCR fallback.
-* **Resilience:** OCR extraction errors fail gracefully to `FAILED` extraction status rather than triggering unhandled 500 errors.
-* **Immutability:** Original files stored on disk; document versions marked with supersession markers rather than hard deletion.
+* **Digital Documents:** Text extraction uses Apache Tika; Tesseract is available as an OCR path for image-based content.
+* **Confidence:** Returned extraction confidence is a pattern-match heuristic and is labeled `HEURISTIC`; it is not a calibrated OCR probability and is not a policy input.
+* **Evidence extraction:** The integrity evidence response labels pattern-based scores as `HEURISTIC`, human corrections as `HUMAN_CONFIRMED`, and unattempted extraction as `NOT_AVAILABLE`.
+* **Storage:** The configured local-storage path is implemented. S3 remains an unimplemented template and is not described as a working adapter.
 
 ### 3.4 AI Advisory Engine
-* **Integration:** Spring AI framework integrated with OpenAI GPT-4o-mini.
-* **Role:** Extracts line items, counterparty addresses, and tax identifiers from raw OCR text and suggests confidence metrics.
-* **Startup Safety:** Custom `BlankOpenAiKeyEnvironmentPostProcessor` prevents Spring Boot startup crashes when `OPENAI_API_KEY` is not provided.
-* **Fail-Safe Operation:** If the OpenAI API is unreachable or rate-limited, transactions proceed to deterministic Java rule checks without interruption.
+* **Role:** Optional analysis prompt receives transaction details and OCR JSON/text and requests a summary, findings, missing-evidence notes, and recommended checks. It does not produce a payment decision.
+* **Untrusted input:** OCR JSON and extracted text are marked as untrusted prompt data. The parser accepts a fixed DTO schema, rejects invalid types and confidence values, and drops unknown fields such as `decision` before persistence.
+* **Policy boundary:** AI output and confidence are absent from `RuleContext`. Policy evaluation can proceed from `AI_ANALYSIS` or `AI_ANALYSIS_FAILED`; an AI failure appears under the existing `AI_FAILED` review-queue filter, but it cannot be directly approved or rejected while in that state. Low confidence is advisory and does not trigger a policy threshold or separate queue. A real external LLM call is not claimed as verified here.
 
 ### 3.5 Deterministic Policy Engine
-* Executes zero-tolerance business and regulatory validation rules in Java:
-  * Amount thresholds and foreign exchange sanction thresholds.
-  * Tax identification format validation (e.g., GSTIN / VAT checksums).
-  * Counterparty country sanction checks.
-  * Extracted invoice total match against authorized payment capture amount.
-* Transactions violating rules trigger an immutable `PolicyViolation` record and transition the transaction to `HELD` status.
+* Executes five rules in fixed order: `DOCUMENT_COMPLETENESS`, `BENEFICIARY_MATCH`, `AMOUNT_CONSISTENCY`, `CURRENCY_CONSISTENCY`, and `PURPOSE_CODE`.
+* Inputs are the transaction, required-document checklist, and structured OCR fields `beneficiary`/`vendor_name`, `total_amount`/`amount`, and `currency`. No AI value or OCR confidence is read.
+* All three fixed document types must be fulfilled; beneficiary uses trimmed case-insensitive exact-or-contains matching; amount is an exact decimal comparison; currency matches after trim and uppercase; purpose is checked against a fixed nine-code whitelist. There are no configurable numeric thresholds in these rules.
+* All rules passing produces `APPROVED`; any failure produces `COMPLIANCE_HOLD`. The service persists the evaluation and one violation row per failed rule.
 
 ### 3.6 Payment Integrity Bounded Context
 Located in `com.aegisx.integrity`, this subsystem guarantees financial correctness:

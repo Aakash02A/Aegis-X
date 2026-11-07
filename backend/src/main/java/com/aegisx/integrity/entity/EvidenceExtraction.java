@@ -6,6 +6,8 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.Table;
+import jakarta.persistence.Transient;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -90,5 +92,18 @@ public class EvidenceExtraction extends BaseEntity {
         MANUAL_CORRECTION,
         /** Recorded when an attempt could not be made, for example when Tesseract is absent. */
         NOT_ATTEMPTED
+    }
+
+    /** The confidence values are pattern-match heuristics, except when a person supplied a correction. */
+    @Transient
+    @JsonProperty("confidenceKind")
+    public String getConfidenceKind() {
+        if (humanCorrection || extractionMethod == Method.MANUAL_CORRECTION) {
+            return "HUMAN_CONFIRMED";
+        }
+        if (extractionMethod == null || extractionMethod == Method.NOT_ATTEMPTED) {
+            return "NOT_AVAILABLE";
+        }
+        return "HEURISTIC";
     }
 }

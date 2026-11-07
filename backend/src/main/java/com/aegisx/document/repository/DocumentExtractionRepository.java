@@ -49,7 +49,7 @@ public interface DocumentExtractionRepository extends JpaRepository<DocumentExtr
 
     /**
      * Find extractions with confidence score >= minConfidence.
-     * Allows filtering high-confidence results for compliance decisions.
+     * Allows optional filtering for analytics or reviewer workflows; this score is not a policy gate.
      */
     @Query(
         "SELECT de FROM DocumentExtraction de WHERE de.confidenceScore >= :minConfidence ORDER BY de.confidenceScore DESC"

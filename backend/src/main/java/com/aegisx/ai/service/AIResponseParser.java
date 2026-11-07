@@ -5,6 +5,8 @@ import com.aegisx.ai.dto.ComplianceFinding;
 import com.aegisx.common.exception.InvalidAIResponseException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -60,7 +62,7 @@ public class AIResponseParser {
         try {
             jsonNode = objectMapper.readTree(aiResponse);
         } catch (Exception e) {
-            throw new InvalidAIResponseException("AI response is not valid JSON: " + e.getMessage(), e);
+            throw new InvalidAIResponseException("AI response is not valid JSON", e);
         }
         
         if (!jsonNode.isObject()) {
@@ -81,24 +83,21 @@ public class AIResponseParser {
         // Extract overallConfidence
         BigDecimal overallConfidence;
         try {
-            Double confidenceValue = jsonNode.get("overallConfidence").asDouble();
+            Double confidenceValue = requiredNumber(jsonNode, "overallConfidence");
             overallConfidence = confidenceNormalizer.normalize(confidenceValue);
         } catch (Exception e) {
-            throw new InvalidAIResponseException("Invalid overallConfidence value: " + e.getMessage(), e);
+            throw new InvalidAIResponseException("Invalid overallConfidence value", e);
         }
         
         // Extract summary
-        String summary = jsonNode.get("summary").asText("");
-        if (summary.isBlank()) {
-            throw new InvalidAIResponseException("summary field is empty");
-        }
+        String summary = requiredText(jsonNode, "summary");
         
         // Extract findings
         List<ComplianceFinding> findings;
         try {
             findings = parseFindingsArray(jsonNode.get("findings"));
         } catch (Exception e) {
-            throw new InvalidAIResponseException("Invalid findings array: " + e.getMessage(), e);
+            throw new InvalidAIResponseException("Invalid findings array", e);
         }
         
         // Extract missingEvidence (optional)
@@ -152,11 +151,11 @@ public class AIResponseParser {
                 throw new InvalidAIResponseException("Finding missing required field: evidence");
             }
             
-            String type = findingNode.get("type").asText();
-            String severity = findingNode.get("severity").asText();
-            String message = findingNode.get("message").asText("");
-            Double confidence = findingNode.get("confidence").asDouble();
-            String evidence = findingNode.get("evidence").asText("");
+            String type = requiredText(findingNode, "type");
+            String severity = requiredText(findingNode, "severity");
+            String message = optionalText(findingNode, "message");
+            Double confidence = requiredNumber(findingNode, "confidence");
+            String evidence = requiredText(findingNode, "evidence");
             
             BigDecimal normalizedConfidence = confidenceNormalizer.normalize(confidence);
             
@@ -189,20 +188,65 @@ public class AIResponseParser {
         for (JsonNode element : arrayNode) {
             if (element.isTextual()) {
                 result.add(element.asText());
+            } else {
+                throw new InvalidAIResponseException("Field array elements must be strings");
             }
         }
         
         return result;
     }
     
-    /**
-     * Parse raw AI response into JsonNode for storage.
-     */
-    public JsonNode parseToJsonNode(String aiResponse) {
-        try {
-            return objectMapper.readTree(aiResponse);
-        } catch (Exception e) {
-            throw new InvalidAIResponseException("Cannot parse AI response as JSON: " + e.getMessage(), e);
+    /** Serializes only the fixed, validated response schema; unknown model fields are discarded. */
+    public JsonNode toCanonicalJsonNode(AIAnalysisResponse response) {
+        ObjectNode canonical = objectMapper.createObjectNode();
+        canonical.put("overallConfidence", response.getOverallConfidence());
+        canonical.put("summary", response.getSummary());
+
+        ArrayNode findings = canonical.putArray("findings");
+        for (ComplianceFinding finding : response.getFindings()) {
+            ObjectNode findingNode = findings.addObject();
+            findingNode.put("type", finding.getType());
+            findingNode.put("severity", finding.getSeverity());
+            findingNode.put("message", finding.getMessage());
+            findingNode.put("confidence", finding.getConfidence());
+            findingNode.put("evidence", finding.getEvidence());
         }
+
+        ArrayNode missingEvidence = canonical.putArray("missingEvidence");
+        response.getMissingEvidence().forEach(missingEvidence::add);
+        ArrayNode recommendedChecks = canonical.putArray("recommendedChecks");
+        response.getRecommendedChecks().forEach(recommendedChecks::add);
+        return canonical;
+    }
+
+    private String requiredText(JsonNode object, String fieldName) {
+        JsonNode value = object.get(fieldName);
+        if (value == null || !value.isTextual() || value.asText().isBlank()) {
+            throw new InvalidAIResponseException("Field must be a non-empty string: " + fieldName);
+        }
+        return value.asText();
+    }
+
+    private String optionalText(JsonNode object, String fieldName) {
+        JsonNode value = object.get(fieldName);
+        if (value == null || value.isNull()) {
+            return "";
+        }
+        if (!value.isTextual()) {
+            throw new InvalidAIResponseException("Field must be a string: " + fieldName);
+        }
+        return value.asText();
+    }
+
+    private Double requiredNumber(JsonNode object, String fieldName) {
+        JsonNode value = object.get(fieldName);
+        if (value == null || !value.isNumber()) {
+            throw new InvalidAIResponseException("Field must be a number: " + fieldName);
+        }
+        double number = value.doubleValue();
+        if (!Double.isFinite(number)) {
+            throw new InvalidAIResponseException("Field is not a finite number: " + fieldName);
+        }
+        return number;
     }
 }
