@@ -3,6 +3,8 @@ package com.aegisx.settlement.repository;
 import com.aegisx.settlement.entity.PaymentProcessor;
 import com.aegisx.settlement.entity.Settlement;
 import com.aegisx.settlement.entity.SettlementStatus;
+import jakarta.persistence.LockModeType;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -26,6 +28,11 @@ public interface SettlementRepository extends JpaRepository<Settlement, UUID> {
      * Finds settlement by settlement reference number.
      */
     Optional<Settlement> findBySettlementReference(String settlementReference);
+
+    /** Serializes payout processing so concurrent callers cannot submit one settlement twice. */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT s FROM Settlement s WHERE s.id = :settlementId")
+    Optional<Settlement> findByIdForUpdate(@Param("settlementId") UUID settlementId);
 
     @Query("SELECT s FROM Settlement s WHERE s.id = :settlementId AND s.transaction.merchant.id = :merchantId")
     Optional<Settlement> findByIdAndMerchantId(@Param("settlementId") UUID settlementId,

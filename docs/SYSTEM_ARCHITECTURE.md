@@ -108,6 +108,27 @@ Located in `com.aegisx.integrity`, this subsystem guarantees financial correctne
 * **WhatsApp Cloud API:** Sends template-driven alerts for compliance holds and status changes.
 * **Audit Trail:** Every state change, webhook, OCR extraction, and compliance decision persists an append-only `AuditEvent` record with an end-to-end `correlationId`.
 
+### 3.8 Settlement Execution Boundary
+The integrity payment adapter creates provider orders and reads provider state; it does not expose a
+payment-capture, refund, or payout operation. A `payment.captured` webhook records a capture already
+made by the provider. The only outbound money-moving call implemented by Aegis-X is
+`RazorpayXClient.submitPayout` (`POST /payouts`), reached from settlement processing through
+`SettlementService` and `SettlementProcessorService`.
+
+Before dispatch, `SettlementService` locks the settlement, refreshes and locks the linked
+transaction row, and requires `TransactionStatus.APPROVED`. The execution service repeats the same
+approval check. Thus `REJECTED` (BLOCKED) and `COMPLIANCE_HOLD` (ESCALATED) do not reach the
+processor, including by direct invocation of the process endpoint. A pessimistic settlement-row
+lock serializes repeated/concurrent processing; after the first submission commits, subsequent
+calls see a non-`INITIATED` state. The payout client also sends a stable per-settlement idempotency
+stable idempotency key across retries. If a provider payout ID was assigned before a local failure,
+the retry endpoint refuses another submission; automatic retry after provider assignment is
+unsupported and requires manual resolution.
+
+RazorpayX is disabled by default and accepts only a key ID starting `rzp_test_`. The `SIMULATED`
+processor is available only in development/test profiles and records `moneyMoved=false`; it is not a
+provider payout. No live key path or automated payment-capture endpoint is implemented.
+
 ---
 
 ## 4. Frontend Architecture

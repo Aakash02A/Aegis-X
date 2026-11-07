@@ -11,6 +11,8 @@ import java.time.Duration;
 @ConfigurationProperties(prefix = "razorpay")
 public class RazorpayProperties {
 
+    private static final String TEST_KEY_PREFIX = "rzp_test_";
+
     private String keyId;
     private String keySecret;
     private String webhookSecret;
@@ -19,7 +21,7 @@ public class RazorpayProperties {
     private Duration readTimeout = Duration.ofSeconds(15);
 
     public boolean isConfigured() {
-        return keyId != null && !keyId.isBlank()
+        return keyId != null && keyId.startsWith(TEST_KEY_PREFIX)
                 && keySecret != null && !keySecret.isBlank();
     }
 }

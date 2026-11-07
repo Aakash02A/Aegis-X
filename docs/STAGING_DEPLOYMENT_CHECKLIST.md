@@ -110,7 +110,7 @@ openssl rand -hex 32         # RAZORPAY_WEBHOOK_SECRET / WHATSAPP_VERIFY_TOKEN
 | `JWT_EXPIRATION` | `86400000` | Milliseconds; 24 h. |
 | `CORS_ALLOWED_ORIGINS` | `https://staging.aegis-x.example` | Exact origin, no wildcard, no trailing slash. |
 | `DB_PASSWORD` | generated | Never the DBA/root password. |
-| `RAZORPAY_KEY_ID` / `RAZORPAY_KEY_SECRET` | **`rzp_test_…`** | The adapter refuses any key id not starting with `rzp_test`. |
+| `RAZORPAY_KEY_ID` / `RAZORPAY_KEY_SECRET` | **`rzp_test_…`** | The adapter requires the exact `rzp_test_` prefix. |
 | `RAZORPAY_WEBHOOK_SECRET` | generated | Must match the value entered in the Razorpay dashboard. |
 | `OPENAI_API_KEY` | optional | Leave empty to run AI-disabled. |
 | `TESSERACT_PATH` | optional | Leave empty to run OCR-disabled. |
@@ -243,9 +243,10 @@ INTEGRITY_ALLOW_FINANCIAL_EXECUTION=false   # approving a money-moving recovery 
 RAZORPAY_ROUTE_ENABLED=false                # transfer verification is reported as not enabled
 ```
 
-Both are defaults. Do not flip either in staging: the recovery flow must remain advisory, and the
-only provider writes the code can perform (`createOrder`, `createRefund`) are human-initiated and
-Test-Mode only.
+Both are defaults. Do not flip either in staging: the recovery flow must remain advisory.
+`createOrder` creates a provider order and does not capture payment. The checkout adapter exposes no
+capture or refund operation. The only implemented outbound money-moving path is the separately
+gated RazorpayX payout, and that client also requires an `rzp_test_` key ID.
 
 ---
 

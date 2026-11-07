@@ -7,9 +7,10 @@ The application has two separate Razorpay integrations:
   key, order ID, amount (minor units), and currency. The transaction's provider order ID is persisted
   and payment webhooks are bound to that exact ID. Notes and merchant-supplied references are not
   accepted as a substitute.
-- **RazorpayX Payouts** sends an approved INR settlement to a bank account. It is the only live
-  settlement processor currently implemented. Other network enum values are not advertised or
-  submitted to a synthetic processor.
+- **RazorpayX Payouts** submits an approved INR settlement to a bank account in Test Mode. The
+  client rejects key IDs without the `rzp_test_` prefix and is disabled by default. Other network
+  enum values are not advertised or submitted to a synthetic processor; live payouts are not
+  supported by this build.
 
 ## Required configuration
 
@@ -26,10 +27,11 @@ chat:
 | `RAZORPAYX_PAYOUT_MODE` | `NEFT`, `RTGS`, or `IMPS`; defaults to `NEFT` |
 | `RAZORPAY_API_BASE_URL` / `RAZORPAYX_API_BASE_URL` | Defaults to `https://api.razorpay.com/v1` |
 
-Use the matching Test Mode credential pair and webhook secret in non-production. Live credentials must
-be installed only in the production secret manager after the relevant Razorpay and RazorpayX accounts
-are activated. `RAZORPAYX_ENABLED=true` is not sufficient by itself: all credentials and the source
-account number must also be present. Payout requests fail closed if configuration is incomplete.
+Use matching Test Mode credential pairs and the webhook secret. The Razorpay Orders client, integrity
+adapter, and RazorpayX payout client reject key IDs without the `rzp_test_` prefix. Live credentials
+cannot enable payout execution in this build.
+`RAZORPAYX_ENABLED=true` is not sufficient by itself: all credentials and the source account number
+must also be present. Payout requests fail closed if configuration is incomplete.
 
 ## Provider dashboard checklist
 
@@ -46,8 +48,8 @@ account number must also be present. Payout requests fail closed if configuratio
    before applying a status.
 5. Apply Flyway migrations on deployment. `V31` adds the unique persisted Razorpay order ID used for
    capture matching; `V32` registers the payment-order audit event.
-6. Run a small provider-approved test transaction and payout end-to-end before enabling live
-   processing. Reconciliation fetches the provider payout and marks it reconciled only after an exact
+6. Run a small provider-approved test transaction and payout end-to-end in Test Mode. Reconciliation
+   fetches the provider payout and marks it reconciled only after an exact
    provider-side match.
 
 The beneficiary bank account and IFSC are sent to RazorpayX to create a contact/fund account and are

@@ -19,6 +19,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.SpyBean;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.test.context.ActiveProfiles;
@@ -38,6 +39,11 @@ import java.util.stream.IntStream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.reset;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 
 @SpringBootTest
 @ActiveProfiles("test")
@@ -50,11 +56,13 @@ class SettlementServiceTest {
     @Autowired private TransactionRepository transactionRepository;
     @Autowired private UserRepository userRepository;
     @Autowired private AuditEventRepository auditEventRepository;
+    @SpyBean private SettlementProcessorService processorService;
 
     private Transaction transaction;
 
     @BeforeEach
     void setUp() {
+        reset(processorService);
         User merchant = userRepository.saveAndFlush(User.builder()
                 .fullName("Settlement Merchant")
                 .email("settlement-" + UUID.randomUUID() + "@aegis-x.test")
@@ -169,6 +177,21 @@ class SettlementServiceTest {
         assertThat(cancelled.getStatus()).isEqualTo(SettlementStatus.CANCELLED);
         assertThatThrownBy(() -> service.cancelSettlement(failed.getId(), "again"))
                 .isInstanceOf(IllegalStateException.class);
+    }
+
+    @Test
+    @DisplayName("does not retry a RazorpayX settlement after the provider assigned a payout ID")
+    void refusesRetryWhenProviderPayoutMayAlreadyExist() {
+        Settlement payout = Settlement.createSettlement(transaction, PaymentProcessor.RAZORPAYX,
+                new BigDecimal("1000.00"), "INR", "test");
+        payout.setProcessorDetails("pout_test_existing", null);
+        payout.updateStatus(SettlementStatus.FAILED, "Local processing failed after provider response");
+        Settlement saved = settlementRepository.saveAndFlush(payout);
+
+        assertThatThrownBy(() -> service.retrySettlement(saved.getId(), "retry requested"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("reconcile the existing payout before retrying");
+        assertThat(settlementRepository.findById(saved.getId()).orElseThrow().getRetryCount()).isZero();
     }
 
     @Test
@@ -295,6 +318,67 @@ class SettlementServiceTest {
         } finally {
             executor.shutdownNow();
             settlementRepository.deleteAll(settlementRepository.findByTransactionId(transaction.getId()));
+        }
+    }
+
+    @Test
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    @DisplayName("two overlapping direct processing calls submit one settlement once")
+    void concurrentProcessingSubmitsExactlyOnce() throws Exception {
+        SettlementResponse initiated = service.initiateSettlement(
+                request(PaymentProcessor.SIMULATED), "concurrent-processing-test");
+        CountDownLatch ready = new CountDownLatch(2);
+        CountDownLatch start = new CountDownLatch(1);
+        CountDownLatch providerEntered = new CountDownLatch(1);
+        CountDownLatch releaseProvider = new CountDownLatch(1);
+        List<Future<SettlementResponse>> results = new ArrayList<>();
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+
+        doAnswer(invocation -> {
+            providerEntered.countDown();
+            if (!releaseProvider.await(10, TimeUnit.SECONDS)) {
+                throw new IllegalStateException("Concurrent payout test did not release the first call");
+            }
+            return invocation.callRealMethod();
+        }).when(processorService).submitSettlement(any(Settlement.class));
+
+        try {
+            IntStream.range(0, 2).forEach(index -> results.add(executor.submit(() -> {
+                ready.countDown();
+                if (!start.await(10, TimeUnit.SECONDS)) {
+                    throw new IllegalStateException("Concurrent settlement test did not start");
+                }
+                try {
+                    return service.processSettlement(initiated.getId());
+                } catch (IllegalStateException e) {
+                    return null;
+                }
+            })));
+
+            assertThat(ready.await(10, TimeUnit.SECONDS)).isTrue();
+            start.countDown();
+            assertThat(providerEntered.await(10, TimeUnit.SECONDS)).isTrue();
+            releaseProvider.countDown();
+
+            List<SettlementResponse> completed = new ArrayList<>();
+            for (Future<SettlementResponse> result : results) {
+                SettlementResponse response = result.get(20, TimeUnit.SECONDS);
+                if (response != null) {
+                    completed.add(response);
+                }
+            }
+
+            assertThat(completed).hasSize(1);
+            assertThat(completed.get(0).getStatus()).isEqualTo(SettlementStatus.PENDING);
+            assertThat(settlementRepository.findById(initiated.getId()).orElseThrow().getStatus())
+                    .isEqualTo(SettlementStatus.PENDING);
+            assertThatThrownBy(() -> service.processSettlement(initiated.getId()))
+                    .isInstanceOf(IllegalStateException.class).hasMessageContaining("not in INITIATED status");
+            verify(processorService, times(1)).submitSettlement(any(Settlement.class));
+        } finally {
+            releaseProvider.countDown();
+            executor.shutdownNow();
+            settlementRepository.deleteById(initiated.getId());
         }
     }
 

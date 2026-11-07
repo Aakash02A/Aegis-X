@@ -11,6 +11,8 @@ import java.time.Duration;
 @ConfigurationProperties(prefix = "razorpayx")
 public class RazorpayXProperties {
 
+    private static final String TEST_KEY_PREFIX = "rzp_test_";
+
     private boolean enabled;
     private String keyId;
     private String keySecret;
@@ -23,6 +25,7 @@ public class RazorpayXProperties {
     public boolean isConfigured() {
         return enabled
                 && hasText(keyId)
+                && keyId.startsWith(TEST_KEY_PREFIX)
                 && hasText(keySecret)
                 && hasText(accountNumber);
     }

@@ -81,11 +81,7 @@ public class RazorpayXClient {
         }
 
         long amountMinor = toMinorUnits(settlement.getSettlementAmount());
-        int idempotencyAttempt = settlement.getProcessorTransactionId() == null
-                ? 0 : settlement.getRetryCount();
-        String idempotencyKey = UUID.nameUUIDFromBytes(
-                ("aegisx-razorpayx-payout:" + settlement.getId() + ":" + idempotencyAttempt)
-                        .getBytes(StandardCharsets.UTF_8)).toString();
+        String idempotencyKey = idempotencyKeyFor(settlement);
         JsonNode payout = post("/payouts", Map.of(
                 "account_number", properties.getAccountNumber(),
                 "fund_account_id", fundAccountId,
@@ -121,6 +117,14 @@ public class RazorpayXClient {
                 .initialStatus(payoutStatus)
                 .success(true)
                 .build();
+    }
+
+    static String idempotencyKeyFor(Settlement settlement) {
+        if (settlement.getId() == null) {
+            throw new IllegalArgumentException("RazorpayX payout requires a persisted settlement ID");
+        }
+        return UUID.nameUUIDFromBytes(("aegisx-razorpayx-payout:" + settlement.getId())
+                .getBytes(StandardCharsets.UTF_8)).toString();
     }
 
     public JsonNode fetchPayout(String payoutId) {

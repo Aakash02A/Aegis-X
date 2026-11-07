@@ -13,9 +13,9 @@ import java.util.List;
 /**
  * The only place in the integrity engine that knows a specific provider's API shape.
  *
- * <p>Every method is read-only except {@link #createOrder} and {@link #createRefund}, which are
- * never called by automatic recovery. Endpoint shapes are taken from the provider's published
- * documentation (see the literature/competitor survey). No endpoint is invented.</p>
+ * <p>Order creation is the only mutating provider operation in this interface; all remaining
+ * methods read provider state or verify webhook authenticity. Endpoint shapes are taken from the
+ * provider's published documentation. No capture, refund, or payout operation is exposed here.</p>
  */
 public interface PaymentProviderAdapter {
 

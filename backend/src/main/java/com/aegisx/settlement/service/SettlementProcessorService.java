@@ -4,6 +4,7 @@ import com.aegisx.settlement.entity.PaymentProcessor;
 import com.aegisx.settlement.entity.Settlement;
 import com.aegisx.settlement.entity.SettlementStatus;
 import com.aegisx.settlement.service.SettlementService.SettlementProcessorResult;
+import com.aegisx.transaction.entity.TransactionStatus;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -29,6 +30,10 @@ public class SettlementProcessorService {
     private boolean simulatedEnabled;
 
     public SettlementProcessorResult submitSettlement(Settlement settlement) {
+        if (settlement == null || settlement.getTransaction() == null
+                || settlement.getTransaction().getStatus() != TransactionStatus.APPROVED) {
+            throw new IllegalStateException("Settlement execution requires an approved transaction");
+        }
         return switch (settlement.getPaymentProcessor()) {
             case RAZORPAYX -> razorpayXClient.submitPayout(settlement);
             case SIMULATED -> submitSimulatedSettlement();

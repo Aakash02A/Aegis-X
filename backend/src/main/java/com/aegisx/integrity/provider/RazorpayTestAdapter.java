@@ -30,9 +30,8 @@ import java.util.Map;
  * Adapter for the Razorpay <strong>Test Mode</strong> API.
  *
  * <p>Endpoints are exactly the documented ones (Orders {@code /orders}, Payments {@code /payments},
- * Refunds {@code /refunds}, Route {@code /transfers}). Nothing is invented, and no method here is
- * called automatically by recovery: the two mutating calls ({@code createOrder}, {@code
- * createRefund}) require an explicit, human-initiated request.</p>
+ * Refunds {@code /refunds}, Route {@code /transfers}). Nothing is invented. This adapter creates
+ * orders but does not expose payment capture, refund, or payout operations.</p>
  *
  * <p>Safety properties:</p>
  * <ul>
@@ -49,7 +48,7 @@ import java.util.Map;
 public class RazorpayTestAdapter implements PaymentProviderAdapter {
 
     private static final String PROVIDER = "RAZORPAY";
-    private static final String TEST_KEY_PREFIX = "rzp_test";
+    private static final String TEST_KEY_PREFIX = "rzp_test_";
 
     private final IntegrityProperties properties;
     private final IntegrityWebhookSignatureService signatureService;

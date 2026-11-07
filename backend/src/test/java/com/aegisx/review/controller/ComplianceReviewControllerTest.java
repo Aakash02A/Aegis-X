@@ -26,6 +26,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -159,8 +160,14 @@ class ComplianceReviewControllerTest {
     @DisplayName("Returns reviewer statistics from persisted decisions")
     @WithMockUser(username = REVIEWER_EMAIL, authorities = "ROLE_ADMIN")
     void returnsReviewerStatistics() throws Exception {
-        reviewRepository.saveAndFlush(ComplianceReview.createReview(transaction, reviewer,
-                TransactionStatus.COMPLIANCE_HOLD, ReviewDecision.APPROVED, "Recorded approval"));
+        ComplianceReview review = ComplianceReview.createReview(transaction, reviewer,
+                TransactionStatus.COMPLIANCE_HOLD, ReviewDecision.APPROVED, "Recorded approval");
+        // Keep the persisted fixture well inside the 30-day window instead of deriving it from the
+        // exact clock tick used by the controller after the HTTP request starts.
+        review.setReviewedAt(LocalDateTime.now().minusDays(1));
+        reviewRepository.saveAndFlush(review);
+        assertThat(reviewRepository.findByReviewerAndDateRange(reviewer.getId(),
+                LocalDateTime.now().minusDays(2), LocalDateTime.now())).hasSize(1);
 
         mockMvc.perform(get("/api/v1/compliance/stats/{reviewerId}", reviewer.getId()).param("days", "30"))
                 .andExpect(status().isOk())

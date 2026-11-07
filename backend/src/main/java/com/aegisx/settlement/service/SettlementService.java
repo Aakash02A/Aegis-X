@@ -9,12 +9,15 @@ import com.aegisx.settlement.entity.Settlement;
 import com.aegisx.settlement.entity.SettlementStatus;
 import com.aegisx.settlement.repository.SettlementRepository;
 import com.aegisx.transaction.entity.Transaction;
+import com.aegisx.transaction.entity.TransactionStatus;
 import com.aegisx.transaction.repository.TransactionRepository;
 import com.aegisx.audit.service.AuditService;
 import com.aegisx.audit.entity.AuditModule;
 import com.aegisx.audit.entity.AuditEventType;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.LockModeType;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -48,6 +51,7 @@ public class SettlementService {
     private final AuditService auditService;
     private final ObjectMapper objectMapper;
     private final RazorpayXClient razorpayXClient;
+    private final EntityManager entityManager;
 
     /**
      * Initiates a new settlement for a transaction.
@@ -145,10 +149,16 @@ public class SettlementService {
     public SettlementResponse processSettlement(UUID settlementId) {
         log.info("Processing settlement: {}", settlementId);
         
-        Settlement settlement = getSettlementById(settlementId);
+        Settlement settlement = settlementRepository.findByIdForUpdate(settlementId)
+                .orElseThrow(() -> new IllegalArgumentException("Settlement not found"));
         
         if (settlement.getStatus() != SettlementStatus.INITIATED) {
             throw new IllegalStateException("Settlement is not in INITIATED status");
+        }
+        Transaction transaction = settlement.getTransaction();
+        entityManager.refresh(transaction, LockModeType.PESSIMISTIC_WRITE);
+        if (!isTransactionEligibleForSettlement(transaction)) {
+            throw new IllegalStateException("Transaction is no longer approved for settlement");
         }
         
         try {
@@ -459,6 +469,12 @@ public class SettlementService {
         if (!settlement.canRetry()) {
             throw new IllegalStateException("Settlement cannot be retried");
         }
+        if (settlement.getPaymentProcessor() == PaymentProcessor.RAZORPAYX
+                && settlement.getProcessorTransactionId() != null
+                && !settlement.getProcessorTransactionId().isBlank()) {
+            throw new IllegalStateException(
+                    "RazorpayX has assigned a payout ID; reconcile the existing payout before retrying");
+        }
         
         settlement.incrementRetry();
         settlement.updateStatus(SettlementStatus.INITIATED, reason);
@@ -584,9 +600,8 @@ public class SettlementService {
     }
 
     private boolean isTransactionEligibleForSettlement(Transaction transaction) {
-        // Check if transaction is approved and ready for settlement
-        return transaction.getStatus().name().equals("APPROVED") || 
-               transaction.getStatus().name().equals("COMPLIANCE_APPROVED");
+        // APPROVED is the legacy status corresponding to the policy engine's ALLOWED decision.
+        return transaction.getStatus() == TransactionStatus.APPROVED;
     }
 
     private boolean isValidStatusTransition(SettlementStatus from, SettlementStatus to) {

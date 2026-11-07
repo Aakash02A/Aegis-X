@@ -146,7 +146,7 @@ i.e. a distinct database per Spring context. The previous shared named database 
 | S10 | Razorpay webhooks. HMAC-SHA256 over the raw body with constant-time comparison; a missing secret refuses every delivery rather than accepting unverified ones; duplicates are rejected by the DB unique index on the event id. There is **no timestamp-tolerance check**, so a re-signed *distinct* event id is not detected by the signature layer — only by event-id idempotency. | Accepted, documented |
 | S11 | Logging/retention. JSON via logstash encoder with `correlationId` in MDC; rolling file 10 MB, 30 files, 1 GB cap. In `prod` the root logger is `WARN` and only the file appender is attached, so container stdout is nearly silent — ship the file or add a console appender. The application enforces rotation, not a legal retention period. | Owner-side operation |
 | S12 | Payment reconciliation transactionality. Runs are `@Transactional`; observations are append-only ("never mutates an existing row"); illegal transitions are persisted as conflict records rather than applied; financial recovery approval is refused while `INTEGRITY_ALLOW_FINANCIAL_EXECUTION=false`. | Verified |
-| S13 | Live execution. `RazorpayTestAdapter` refuses any key id that does not start with `rzp_test`; the only mutating provider calls (`createOrder`, `createRefund`) are human-initiated. | Verified |
+| S13 | Test-mode execution. `RazorpayTestAdapter` refuses key IDs without `rzp_test_`; the orders adapter creates orders but exposes no payment capture/refund call. The only implemented outbound money-moving call is the RazorpayX payout, now gated by an `APPROVED` transaction, a serialized settlement lock, and the same `rzp_test_` key prefix. | Verified by Phase 7 checks |
 
 ---
 
