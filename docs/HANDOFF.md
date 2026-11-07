@@ -368,3 +368,38 @@ Each test command loaded `.env` into process memory, mapped `DB_URL`/`DB_USERNAM
 - Live external LLM request: **NOT VERIFIED**; offline tests prove the parser, failure handling, and deterministic policy boundary.
 - Phase 8 reconciliation flake: **OPEN** pending root-cause review and three consecutive randomized full runs.
 - `README.md` was updated in the working tree to align its AI claims, but was intentionally excluded from the Phase 5 commit per the explicit instruction.
+
+## Phase 6: policy and staleness boundaries (2026-11-07)
+
+### Verdict
+**COMPLETE for supported policy and provider-staleness behavior.** The policy rules, inputs, and comparisons are listed in `docs/SRS_Aegis_X.md:402-430`. The requested expired-data boundary is **NOT SUPPORTED**, not a defect: there is no evidence-expiry field or approved cutoff, and none was invented.
+
+### Evidence and changes
+- `DOCUMENT_COMPLETENESS` now iterates required document types in a fixed list order, so its missing-type evidence is stable across runs (`backend/src/main/java/com/aegisx/policy/rules/DocumentCompletenessRule.java:27`, `:49`). Currency and purpose normalization use `Locale.ROOT` so case conversion does not depend on the machine locale (`CurrencyConsistencyRule.java:31`, `PurposeCodeRule.java:49`).
+- Amount boundary tests prove decimal scale alone passes and a one-cent difference fails (`backend/src/test/java/com/aegisx/policy/service/RuleEngineTest.java:102`, `:123`). A duplicate invoice checklist row cannot satisfy the missing export declaration (`:144`); the existing evidence-upload path separately rejects identical file content and retains its strict duplicate/supersession assertions (`backend/src/test/java/com/aegisx/integrity/IntegrityEvidenceIntelligenceTest.java:267`).
+- Conflicting beneficiary, amount, and currency fields fail exactly their three comparison rules and produce `COMPLIANCE_HOLD` (`backend/src/test/java/com/aegisx/policy/service/RuleEngineTest.java:166`). Missing required documents remain fail-closed (`backend/src/test/java/com/aegisx/policy/rules/DocumentCompletenessRuleTest.java:71`, `backend/src/test/java/com/aegisx/policy/service/RuleEngineTest.java:199`).
+- `INTEGRITY_STALENESS_THRESHOLD` configures the pending-payment age threshold (default 15 minutes); the workspace’s effective threshold is placed in the evidence pack (`backend/src/main/resources/application.yml:102`, `backend/src/main/java/com/aegisx/integrity/reconciliation/EvidencePackBuilder.java:86`). Staleness is true only when `moment + threshold` is strictly before evaluation time (`backend/src/main/java/com/aegisx/integrity/reconciliation/model/MethodSupport.java:100`). `ProposedMethodTest.stalePaymentThresholdBoundaryIsStrictlyGreaterThan` proves just-under and exact-boundary cases are not stale, while one nanosecond over is (`backend/src/test/java/com/aegisx/integrity/reconciliation/method/ProposedMethodTest.java:222`).
+- No document or evidence expiry rule was added. The SRS explicitly records the absence of expiry metadata and cutoff (`docs/SRS_Aegis_X.md:428`); JWT expiration remains a separate authentication requirement. A repository search found no README/SRS/docs claim that document or evidence expiry is enforced, so none needed removal.
+
+### Commands and results
+The MySQL-enabled full-suite command loaded `.env` in process memory, mapped its database variables to the test profile, rewrote the JDBC schema to `aegisx_audit`, set `SPRING_PROFILES_ACTIVE=test` and `INTEGRITY_ALLOW_FINANCIAL_EXECUTION=false`, and printed no environment values.
+
+- Focused command: direct Maven launcher with `-B -Dtest=RuleEngineTest,DocumentCompletenessRuleTest,ProposedMethodTest test`.
+  ```text
+  Tests run: 28, Failures: 0, Errors: 0, Skipped: 0
+  BUILD SUCCESS
+  ```
+- Final clean randomized full suite, including MySQL integration tests and randomized JUnit class/method order:
+  ```text
+  Tests run: 461, Failures: 0, Errors: 0, Skipped: 1
+  BUILD SUCCESS
+  ```
+  The only skip was `MySqlDdlGenerateTest`; the MySQL integration cases ran against `aegisx_audit`.
+
+### Phase commit
+`515a6d7 Verify policy and staleness boundaries`
+
+### Open items
+- Expired-data boundary: **NOT SUPPORTED**, not a defect, per the user’s decision; list it as an open item in `BUILD_STATUS.md` during Phase 11.
+- Phase 8 still requires the reconciliation root-cause review and three consecutive randomized MySQL-enabled full-suite passes.
+- Phase 5 live external LLM request remains **NOT VERIFIED**.
