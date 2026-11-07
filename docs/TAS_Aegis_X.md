@@ -1622,7 +1622,7 @@ public class AuditService {
 
 ### 16.1 Local & Hackathon Deployment (Docker Compose)
 
-The entire application stack (Spring Boot 3 + PostgreSQL 15 + Tesseract native OCR libraries) is packaged into a unified `docker-compose.yml` for local execution and Railway cloud deployment.
+The entire application stack is packaged into the root `compose.yaml` for local execution; the production deployment has a separate Compose file.
 
 ```yaml
 version: '3.8'
