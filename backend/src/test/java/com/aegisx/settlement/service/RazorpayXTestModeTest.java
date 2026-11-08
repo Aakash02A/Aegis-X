@@ -18,6 +18,23 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class RazorpayXTestModeTest {
 
     @Test
+    void disabledFeatureFlagRefusesBeneficiarySetupAndPayoutBeforeNetworkAccess() {
+        RazorpayXProperties properties = configuredProperties("rzp_test_fake-key-id");
+        properties.setEnabled(false);
+        properties.setApiBaseUrl("http://127.0.0.1:1");
+        RazorpayXClient client = new RazorpayXClient(properties, new ObjectMapper());
+        Settlement settlement = approvedSettlement();
+
+        assertThat(client.isConfigured()).isFalse();
+        assertThatThrownBy(() -> client.createBeneficiaryFundAccount(settlement, null))
+                .isInstanceOf(RazorpayXClient.RazorpayXProviderException.class)
+                .hasMessageContaining("disabled or not fully configured");
+        assertThatThrownBy(() -> client.submitPayout(settlement))
+                .isInstanceOf(RazorpayXClient.RazorpayXProviderException.class)
+                .hasMessageContaining("disabled or not fully configured");
+    }
+
+    @Test
     void acceptsOnlyTestModeKeyIdsAndRefusesLiveKeyBeforeNetworkAccess() {
         RazorpayXProperties testProperties = configuredProperties("rzp_test_fake-key-id");
         RazorpayXClient testClient = new RazorpayXClient(testProperties, new ObjectMapper());
@@ -26,16 +43,7 @@ class RazorpayXTestModeTest {
         RazorpayXProperties liveProperties = configuredProperties("rzp_live_fake-key-id");
         liveProperties.setApiBaseUrl("http://127.0.0.1:1");
         RazorpayXClient liveClient = new RazorpayXClient(liveProperties, new ObjectMapper());
-        Settlement settlement = Settlement.builder()
-                .transaction(Transaction.builder().status(TransactionStatus.APPROVED).build())
-                .settlementReference("STL-TEST-ONLY")
-                .paymentProcessor(PaymentProcessor.RAZORPAYX)
-                .status(SettlementStatus.INITIATED)
-                .settlementAmount(new BigDecimal("10.00"))
-                .settlementCurrency("INR")
-                .processorMetadata(metadataWithFundAccount())
-                .retryCount(0)
-                .build();
+        Settlement settlement = approvedSettlement();
 
         assertThat(liveClient.isConfigured()).isFalse();
         assertThatThrownBy(() -> liveClient.submitPayout(settlement))
@@ -56,5 +64,18 @@ class RazorpayXTestModeTest {
         ObjectNode metadata = new ObjectMapper().createObjectNode();
         metadata.put("fundAccountId", "fa_test_fake");
         return metadata;
+    }
+
+    private static Settlement approvedSettlement() {
+        return Settlement.builder()
+                .transaction(Transaction.builder().status(TransactionStatus.APPROVED).build())
+                .settlementReference("STL-TEST-ONLY")
+                .paymentProcessor(PaymentProcessor.RAZORPAYX)
+                .status(SettlementStatus.INITIATED)
+                .settlementAmount(new BigDecimal("10.00"))
+                .settlementCurrency("INR")
+                .processorMetadata(metadataWithFundAccount())
+                .retryCount(0)
+                .build();
     }
 }

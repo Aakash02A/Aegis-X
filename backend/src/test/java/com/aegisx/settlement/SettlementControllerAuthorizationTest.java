@@ -43,6 +43,17 @@ class SettlementControllerAuthorizationTest {
     @Autowired private SettlementRepository settlementRepository;
 
     @Test
+    void processEndpointRequiresASettlementExecutionRole() throws Exception {
+        UUID settlementId = UUID.randomUUID();
+        mockMvc.perform(post("/api/v1/settlements/{id}/process", settlementId))
+                .andExpect(status().isUnauthorized());
+        mockMvc.perform(post("/api/v1/settlements/{id}/process", settlementId)
+                        .with(SecurityMockMvcRequestPostProcessors.user("merchant@aegis-x.test")
+                                .roles("MERCHANT")))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
     void merchantsCanReadOnlyTheirOwnSettlements() throws Exception {
         User owner = createMerchant("settlement-owner-");
         User otherMerchant = createMerchant("settlement-other-");
