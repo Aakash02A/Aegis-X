@@ -65,8 +65,8 @@ if (process.env.ADMIN_EMAIL) {
   try {
     const r = await req('POST', '/api/auth/login', { body: { email: process.env.ADMIN_EMAIL, password: process.env.ADMIN_PASSWORD }, token: false });
     const adminToken = r.json?.token ?? null;
-    record('POST /api/auth/login (admin operator)', r.status === 200 && !!adminToken, `status=${r.status} role=${r.json?.role}`);
-    if (adminToken) token = adminToken;
+    record('POST /api/auth/login (admin operator)', r.status === 200 && !!adminToken && r.json?.role === 'ADMIN', `status=${r.status} role=${r.json?.role}`);
+    if (adminToken && r.json?.role === 'ADMIN') token = adminToken;
   } catch (e) { record('POST /api/auth/login (admin operator)', false, e.message); }
 }
 void merchantToken;

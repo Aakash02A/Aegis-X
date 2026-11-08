@@ -29,6 +29,17 @@ JAVA_BIN="${JAVA_BIN:-$(command -v java || true)}"
 if [ -z "$JAVA_BIN" ]; then echo "Java 21 is required." >&2; exit 1; fi
 if [ -n "${JAVA_HOME:-}" ]; then export PATH="$JAVA_HOME/bin:$PATH"; fi
 if [ -x "$BACKEND/mvnw" ]; then MVN_BIN="$BACKEND/mvnw"; else MVN_BIN="mvn"; fi
+if [ -z "${CURL_BIN:-}" ]; then
+  if command -v curl.exe >/dev/null 2>&1; then
+    CURL_BIN="curl.exe"
+  elif command -v curl >/dev/null 2>&1; then
+    CURL_BIN="curl"
+  elif command -v cygpath >/dev/null 2>&1; then
+    WINDOWS_CURL="$(cygpath -u 'C:\Windows\System32\curl.exe')"
+    if [ -x "$WINDOWS_CURL" ]; then CURL_BIN="$WINDOWS_CURL"; fi
+  fi
+fi
+if [ -z "${CURL_BIN:-}" ]; then echo "curl is required for the E2E runner." >&2; exit 1; fi
 
 # Read .env line by line instead of sourcing it: DB_URL contains `&`, which the shell would treat
 # as a command separator and leave DB_URL unset. Comments and blank lines are skipped, and a
@@ -46,8 +57,8 @@ fi
 # may still be a leftover account name, so it is not reused here.
 MYSQL_HOST="${MYSQL_HOST:-localhost}"
 MYSQL_PORT="${MYSQL_PORT:-3306}"
-MYSQL_E2E_USER="${MYSQL_E2E_USER:-root}"
-MYSQL_E2E_PASSWORD="${MYSQL_E2E_PASSWORD:-}"
+MYSQL_E2E_USER="${MYSQL_E2E_USER:-${DB_USERNAME:-root}}"
+MYSQL_E2E_PASSWORD="${MYSQL_E2E_PASSWORD:-${DB_PASSWORD:-}}"
 case "$MYSQL_HOST" in localhost|127.0.0.1) ;; *) echo "Only local MySQL is permitted." >&2; exit 1 ;; esac
 export DB_USERNAME="$MYSQL_E2E_USER"
 export DB_PASSWORD="$MYSQL_E2E_PASSWORD"
@@ -58,17 +69,34 @@ export DB_PASSWORD="$MYSQL_E2E_PASSWORD"
 MYSQL_PARAMS="?connectionTimeZone=UTC&forceConnectionTimeZoneToSession=true&characterEncoding=UTF-8&useSSL=false&allowPublicKeyRetrieval=true"
 export ADMIN_MYSQL_URL="jdbc:mysql://$MYSQL_HOST:$MYSQL_PORT$MYSQL_PARAMS"
 
-# The project classpath used by the helper tools. `mvn dependency:build-classpath` is cached in
-# /tmp so repeated runs stay fast, but it is regenerated when missing instead of being assumed.
-CP_FILE="${CP_FILE:-${TMPDIR:-/tmp}/aegisx-e2e-cp.txt}"
+# Build both application and test classes: the test-scope SIMULATED provider is deliberately
+# loaded into this isolated process for offline E2E verification.
+echo "### Compiling application and E2E test classes"
+( cd "$BACKEND" && "$MVN_BIN" -B -q -DskipTests test-compile ) || {
+  echo "Could not compile the backend and E2E provider fixture."
+  exit 1
+}
+
+# The test-scope project classpath used by the Java helper tools.
+CP_FILE="${CP_FILE:-${TMPDIR:-/tmp}/aegisx-e2e-test-cp.txt}"
 if [ ! -s "$CP_FILE" ]; then
   echo "### Resolving project classpath into $CP_FILE"
-  ( cd "$BACKEND" && "$MVN_BIN" -B -q dependency:build-classpath -Dmdep.outputFile="$(to_native_path "$CP_FILE")" ) || exit 1
+  ( cd "$BACKEND" && "$MVN_BIN" -B -q dependency:build-classpath -Dmdep.includeScope=test -Dmdep.outputFile="$(to_native_path "$CP_FILE")" ) || exit 1
 fi
 CP="$(cat "$CP_FILE")"
+if command -v cygpath >/dev/null 2>&1; then CP_SEPARATOR=';'; else CP_SEPARATOR=':'; fi
+APP_CP="$BACKEND_NATIVE/target/classes${CP_SEPARATOR}$BACKEND_NATIVE/target/test-classes${CP_SEPARATOR}$CP"
 
 DBNAME="${E2E_DB:-aegisx_audit}"
 if [ "$DBNAME" != "aegisx_audit" ]; then echo "E2E_DB must be aegisx_audit." >&2; exit 1; fi
+PORT="${E2E_PORT:-8080}"
+case "$PORT" in ''|*[!0-9]*) echo "E2E_PORT must be numeric." >&2; exit 1 ;; esac
+if [ "$PORT" -lt 1 ] || [ "$PORT" -gt 65535 ]; then echo "E2E_PORT is out of range." >&2; exit 1; fi
+if (exec 3<>"/dev/tcp/127.0.0.1/$PORT") 2>/dev/null; then
+  exec 3>&-
+  echo "Port $PORT already has a listener; refusing to reset the E2E database."
+  exit 1
+fi
 echo "### Recreating disposable database $DBNAME"
 "$JAVA_BIN" -cp "$CP" "$HARNESS_NATIVE/MySqlTool.java" "$DBNAME" recreate || {
   echo "Could not recreate $DBNAME."
@@ -95,22 +123,22 @@ export OPENAI_API_KEY=aegisx-openai-disabled
 export WHATSAPP_SANDBOX_MODE=true
 export APP_STORAGE_ROOT_PATH="$BACKEND/target/e2e-storage"
 export E2E_SIMULATED_PROVIDER=true
-# The ambient sandbox environment exports PORT=0, which Spring Boot reads as "pick a random
-# port". Pin the documented port so the real frontend origin is exercised.
-export PORT=8080
+# Pin the API port so the runner can avoid an unrelated local service when needed.
+export PORT
+export SERVER_PORT="$PORT"
 
 LOG="$OUTDIR/backend-e2e.log"
 : > "$LOG"
 echo "### Starting backend (profile=prod, db=$DBNAME)"
+echo "### E2E API port $PORT using $CURL_BIN"
 if command -v setsid >/dev/null 2>&1; then
-  ( cd "$BACKEND" && setsid "$MVN_BIN" -B spring-boot:run -Dspring-boot.run.useTestClasspath=true > "$LOG" 2>&1 ) &
+  ( cd "$BACKEND" && setsid "$JAVA_BIN" -cp "$APP_CP" com.aegisx.AegisXApplication > "$LOG" 2>&1 ) &
 else
-  ( cd "$BACKEND" && "$MVN_BIN" -B spring-boot:run -Dspring-boot.run.useTestClasspath=true > "$LOG" 2>&1 ) &
+  ( cd "$BACKEND" && "$JAVA_BIN" -cp "$APP_CP" com.aegisx.AegisXApplication > "$LOG" 2>&1 ) &
 fi
 APP_PID=$!
 
-# mvn spring-boot:run forks a JVM, and on Windows the fork outlives the wrapper shell, so killing
-# APP_PID alone leaves the server holding the port. Kill the tree and then whatever still listens.
+# Stop the launched application and clean up any listener it left behind.
 cleanup() {
   local status=$?
   echo "### Stopping backend (pid $APP_PID)"
@@ -133,27 +161,45 @@ trap cleanup EXIT
 echo "### Waiting for /actuator/health"
 READY=0
 for i in $(seq 1 60); do
-  if [ "$(curl -s -m 3 -o /dev/null -w '%{http_code}' http://localhost:8080/actuator/health 2>/dev/null)" = "200" ]; then
+  HEALTH_STATUS=$("$CURL_BIN" -s -m 3 -o /dev/null -w '%{http_code}' \
+    "http://127.0.0.1:$PORT/actuator/health" 2>/dev/null)
+  if [ -z "$HEALTH_STATUS" ]; then HEALTH_STATUS=000; fi
+  if [ "$HEALTH_STATUS" = "200" ] && grep -Fq '"message":"Started AegisXApplication' "$LOG"; then
     READY=1; echo "ready after $((i*5))s"; break
   fi
   sleep 5
 done
 if [ "$READY" != "1" ]; then
-  echo "BACKEND DID NOT BECOME READY"; tail -n 40 "$LOG"; exit 1
+  echo "BACKEND DID NOT BECOME READY"; exit 1
 fi
 
 ADMIN_EMAIL="admin-e2e@aegis-x.test"
 ADMIN_PASSWORD="${ADMIN_PASSWORD:-AdminTestPass_$(date +%s)_Aa1!}"
 echo "### Provisioning admin operator $ADMIN_EMAIL"
-curl -s -o /dev/null -X POST http://localhost:8080/api/auth/register \
+ADMIN_REGISTER_STATUS=$("$CURL_BIN" -s -o /dev/null -w '%{http_code}' -X POST "http://127.0.0.1:$PORT/api/auth/register" \
   -H 'Content-Type: application/json' \
-  -d "{\"fullName\":\"E2E Admin\",\"email\":\"$ADMIN_EMAIL\",\"password\":\"$ADMIN_PASSWORD\"}"
-"$JAVA_BIN" -cp "$CP" "$HARNESS_NATIVE/MySqlTool.java" "$DBNAME" sql \
-  "UPDATE users SET role='ADMIN' WHERE email='$ADMIN_EMAIL'"
+  -d "{\"fullName\":\"E2E Admin\",\"email\":\"$ADMIN_EMAIL\",\"password\":\"$ADMIN_PASSWORD\"}")
+if [ "$ADMIN_REGISTER_STATUS" != "201" ]; then
+  echo "Local E2E operator registration failed (HTTP $ADMIN_REGISTER_STATUS)."
+  exit 1
+fi
+PROMOTE_OUTPUT=$("$JAVA_BIN" -cp "$CP" "$HARNESS_NATIVE/MySqlTool.java" "$DBNAME" sql \
+  "UPDATE users SET \`role\`='ADMIN' WHERE email='$ADMIN_EMAIL'" 2>&1)
+PROMOTE_EXIT=$?
+if [ "$PROMOTE_EXIT" -ne 0 ]; then
+  PROMOTE_ERROR=$(printf '%s\n' "$PROMOTE_OUTPUT" | sed -n 's/^Exception in thread "main" \([^:]*\).*/\1/p' | head -n 1)
+  echo "Could not grant the local E2E operator role (${PROMOTE_ERROR:-local SQL failure})."
+  exit 1
+fi
+PROMOTE_RESULT="$PROMOTE_OUTPUT"
+if [ "$PROMOTE_RESULT" != "rows=1" ]; then
+  echo "Expected to promote exactly one local E2E operator."
+  exit 1
+fi
 
 echo "### Driving E2E HTTP flows"
-FLOW_CP="$BACKEND_NATIVE/target/classes;$BACKEND_NATIVE/target/test-classes;$CP"
-B=http://localhost:8080 \
+FLOW_CP="$APP_CP"
+B="http://127.0.0.1:$PORT" \
 CP="$FLOW_CP" \
 OUT_DIR="$OUTDIR_NATIVE" \
 HARNESS_DIR="$HARNESS_NATIVE" \
