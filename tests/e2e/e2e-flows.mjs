@@ -9,6 +9,8 @@ const RAZORPAY_WEBHOOK_SECRET = process.env.RAZORPAY_WEBHOOK_SECRET;
 const OUT_DIR = process.env.OUT_DIR || '.';
 const results = [];
 let token = null;
+let merchantToken = null;
+let adminToken = null;
 
 function record(name, ok, detail) {
   results.push({ name, ok, detail });
@@ -17,7 +19,8 @@ function record(name, ok, detail) {
 
 async function req(method, path, { body, headers = {}, raw, token: useToken = true } = {}) {
   const h = { ...headers };
-  if (useToken && token) h.Authorization = `Bearer ${token}`;
+  const bearer = typeof useToken === 'string' ? useToken : (useToken ? token : null);
+  if (bearer) h.Authorization = `Bearer ${bearer}`;
   let payload = raw;
   if (body !== undefined && raw === undefined) {
     h['Content-Type'] = 'application/json';
@@ -28,6 +31,95 @@ async function req(method, path, { body, headers = {}, raw, token: useToken = tr
   let json = null;
   try { json = text ? JSON.parse(text) : null; } catch { /* non-json */ }
   return { status: res.status, json, text };
+}
+
+async function createPolicyCase(label, documentTypes) {
+  const reference = `E2E-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`;
+  const beneficiary = 'Northwind Imports Ltd';
+  const created = await req('POST', '/api/transactions', {
+    token: merchantToken,
+    body: { amount: '1500.00', currency: 'INR', beneficiaryName: beneficiary, purposeCode: 'P0101' },
+  });
+  const transactionId = created.json?.id;
+  record(`${label}: create policy transaction`, created.status === 201 && !!transactionId,
+    `status=${created.status} id=${transactionId ?? 'missing'}`);
+  if (!transactionId) return null;
+
+  const orderResponse = await req('POST', '/api/v1/payments/orders', {
+    token: merchantToken,
+    body: { transactionId },
+  });
+  const orderId = orderResponse.json?.data?.orderId;
+  record(`${label}: create Test Mode order through loopback stub`,
+    orderResponse.status === 201 && !!orderId,
+    `status=${orderResponse.status} order=${orderId ?? 'missing'}`);
+  if (!orderId) return { transactionId, decision: null };
+
+  const paymentId = `pay_e2e_${crypto.randomBytes(8).toString('hex')}`;
+  const eventId = `evt_e2e_${crypto.randomBytes(8).toString('hex')}`;
+  const rawBody = JSON.stringify({
+    event: 'payment.captured',
+    created_at: Math.floor(Date.now() / 1000),
+    payload: { payment: { entity: {
+      id: paymentId, order_id: orderId, status: 'captured', amount: 150000, currency: 'INR', method: 'card',
+    } } },
+  });
+  const signature = crypto.createHmac('sha256', RAZORPAY_WEBHOOK_SECRET).update(rawBody).digest('hex');
+  const webhook = await req('POST', '/api/webhooks/razorpay', {
+    token: false,
+    raw: rawBody,
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Razorpay-Signature': signature,
+      'X-Razorpay-Event-Id': eventId,
+    },
+  });
+  record(`${label}: accept signed simulated payment event`, webhook.status === 200,
+    `status=${webhook.status} providerEvent=${eventId}`);
+
+  let invoiceId = null;
+  for (const type of documentTypes) {
+    const filePath = `${OUT_DIR}/policy-${transactionId}-${type.toLowerCase()}.pdf`;
+    const javaBin = process.env.JAVA_BIN || 'java';
+    execFileSync(javaBin, [
+      '-cp', process.env.CP || '',
+      `${process.env.HARNESS_DIR || '.'}/GenPolicyDocument.java`,
+      type, `${reference}-${type}`, reference, 'INR', '1500.00', beneficiary, filePath,
+    ], { cwd: process.env.BACKEND_DIR || '.', stdio: 'pipe' });
+    const form = new FormData();
+    form.append('file', new Blob([fs.readFileSync(filePath)], { type: 'application/pdf' }), `${type.toLowerCase()}.pdf`);
+    form.append('documentType', type);
+    const upload = await fetch(`${B}/api/transactions/${transactionId}/documents`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${merchantToken}` },
+      body: form,
+    });
+    const uploadJson = await upload.json().catch(() => null);
+    record(`${label}: upload ${type}`, upload.status === 201 && !!uploadJson?.id,
+      `status=${upload.status} document=${uploadJson?.id ?? 'missing'}`);
+    if (type === 'INVOICE' && uploadJson?.id) invoiceId = uploadJson.id;
+  }
+
+  let ocrOk = false;
+  let ocrDetail = 'invoice document unavailable';
+  if (invoiceId) {
+    const ocr = await req('POST', `/api/documents/${invoiceId}/process`, { token: merchantToken });
+    ocrOk = ocr.status === 202 && !!ocr.json?.extractionId;
+    ocrDetail = `http=${ocr.status} status=${ocr.json?.status ?? 'missing'} extraction=${!!ocr.json?.extractionId}`;
+  }
+  record(`${label}: extract invoice using Tika text layer`, ocrOk, ocrDetail);
+
+  const ai = await req('POST', `/api/transactions/${transactionId}/ai-analysis`, { token: merchantToken });
+  record(`${label}: unavailable AI advice does not block deterministic evaluation`,
+    ai.status === 500 && String(ai.json?.message ?? '').includes('deterministic policy evaluation remains available'),
+    `status=${ai.status} advisoryUnavailable=${ai.status === 500} message=${String(ai.json?.message ?? '').slice(0, 100)}`);
+
+  const policy = await req('POST', `/api/transactions/${transactionId}/policy-evaluation`, { token: merchantToken });
+  const decision = policy.json?.decision ?? null;
+  const expected = documentTypes.includes('EXPORT_DECLARATION') ? 'APPROVED' : 'COMPLIANCE_HOLD';
+  record(`${label}: Java policy decision`, policy.status === 200 && decision === expected,
+    `status=${policy.status} persisted=${decision ?? 'missing'} expected=${expected} error=${String(policy.json?.message ?? policy.json?.error ?? '').slice(0, 100)}`);
+  return { transactionId, decision };
 }
 
 const email = `e2e-${Date.now()}@aegis-x.test`;
@@ -60,16 +152,15 @@ try {
 } catch (e) { record('Unauthenticated request refused', false, e.message); }
 
 // Switch to a privileged operator for the integrity flows (role-based endpoints).
-const merchantToken = token;
+merchantToken = token;
 if (process.env.ADMIN_EMAIL) {
   try {
     const r = await req('POST', '/api/auth/login', { body: { email: process.env.ADMIN_EMAIL, password: process.env.ADMIN_PASSWORD }, token: false });
-    const adminToken = r.json?.token ?? null;
+    adminToken = r.json?.token ?? null;
     record('POST /api/auth/login (admin operator)', r.status === 200 && !!adminToken && r.json?.role === 'ADMIN', `status=${r.status} role=${r.json?.role}`);
     if (adminToken && r.json?.role === 'ADMIN') token = adminToken;
   } catch (e) { record('POST /api/auth/login (admin operator)', false, e.message); }
 }
-void merchantToken;
 
 let wsId = null;
 try {
@@ -175,6 +266,53 @@ try {
     `status=${r.status} events=${r.json?.data?.events?.length} duplicates=${r.json?.data?.duplicateDeliveryCount}`);
 } catch (e) { record('GET webhooks', false, e.message); }
 
+// Legacy policy flow: evidence and policy decisions remain separate from the integrity order
+// model. The payment event is simulated after a local stub-created order; no capture call exists.
+let allowedPolicyCase = null;
+let escalatedPolicyCase = null;
+if (merchantToken && adminToken) {
+  try {
+    allowedPolicyCase = await createPolicyCase('Policy ALLOWED',
+      ['INVOICE', 'SHIPPING_PROOF', 'EXPORT_DECLARATION']);
+  } catch (e) {
+    record('Policy ALLOWED flow completed', false, e.message);
+  }
+  try {
+    escalatedPolicyCase = await createPolicyCase('Policy ESCALATED',
+      ['INVOICE', 'SHIPPING_PROOF']);
+  } catch (e) {
+    record('Policy ESCALATED flow completed', false, e.message);
+  }
+  if (escalatedPolicyCase?.transactionId && escalatedPolicyCase.decision === 'COMPLIANCE_HOLD') {
+    try {
+      const queue = await req('GET', '/api/v1/compliance/queue?page=0&size=100', { token: adminToken });
+      const items = queue.json?.data?.content ?? [];
+      const queued = items.some(item => item.transactionId === escalatedPolicyCase.transactionId);
+      record('Policy ESCALATED transaction appears in reviewer queue',
+        queue.status === 200 && queued,
+        `status=${queue.status} found=${queued}`);
+
+      const review = await req('POST', '/api/v1/compliance/review', {
+        token: adminToken,
+        body: {
+          transactionId: escalatedPolicyCase.transactionId,
+          decision: 'REJECTED',
+          justification: 'Required export declaration was missing during review.',
+        },
+      });
+      record('Reviewer rejection maps ESCALATED to BLOCKED',
+        review.status === 200 && review.json?.data?.resultingState === 'REJECTED',
+        `status=${review.status} resultingState=${review.json?.data?.resultingState}`);
+    } catch (e) {
+      record('Compliance review of ESCALATED transaction', false, e.message);
+    }
+  }
+} else {
+  record('Legacy evidence-to-policy and review flow', false, 'merchant/admin JWT unavailable');
+}
+
+// Reconcile the separate integrity order after policy outcomes, then verify both policy and
+// workspace audit records. The bounded contexts intentionally have no capture or state bridge.
 try {
   const r = await req('POST', `${base}/reconciliation/runs`, { body: { refreshProviderState: true } });
   record('POST reconciliation/runs', r.status === 200, `status=${r.status} findings=${r.json?.data?.findings?.length ?? r.json?.data?.findingCount ?? '?'}`);
@@ -201,6 +339,26 @@ if (exceptionId) {
     const res = await req('POST', `${base}/exceptions/${exceptionId}/resolve`, { body: { summary: 'Resolved during E2E verification', evidence: 'Verified against provider state' } });
     record('POST exception resolve', res.status === 200, `status=${res.status}`);
   } catch (e) { record('POST exception workflow', false, e.message); }
+}
+
+for (const [label, policyCase, expectedState, requiredEvents] of [
+  ['ALLOWED', allowedPolicyCase, 'APPROVED', ['POLICY_APPROVED']],
+  ['BLOCKED', escalatedPolicyCase, 'REJECTED', ['POLICY_HOLD', 'MANUAL_REVIEW_DECISION']],
+]) {
+  if (!policyCase?.transactionId) {
+    record(`Policy ${label}: decision appears in transaction audit`, false, 'policy transaction unavailable');
+    continue;
+  }
+  const audit = await req('GET', `/api/transactions/${policyCase.transactionId}/audit?page=0&size=100`, {
+    token: merchantToken,
+  });
+  const events = audit.json?.events ?? [];
+  const eventTypes = events.map(event => event.eventType);
+  const decisionAudited = requiredEvents.every(type => eventTypes.includes(type));
+  record(`Policy ${label}: decision appears in transaction audit`,
+    audit.status === 200 && audit.json?.currentState === expectedState && decisionAudited
+      && events.every(event => !!event.actorType && !!event.createdAt),
+    `status=${audit.status} current=${audit.json?.currentState} eventTypes=${JSON.stringify(eventTypes)}`);
 }
 
 for (const [name, path] of [

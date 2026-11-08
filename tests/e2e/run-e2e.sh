@@ -92,9 +92,20 @@ if [ "$DBNAME" != "aegisx_audit" ]; then echo "E2E_DB must be aegisx_audit." >&2
 PORT="${E2E_PORT:-8080}"
 case "$PORT" in ''|*[!0-9]*) echo "E2E_PORT must be numeric." >&2; exit 1 ;; esac
 if [ "$PORT" -lt 1 ] || [ "$PORT" -gt 65535 ]; then echo "E2E_PORT is out of range." >&2; exit 1; fi
+MOCK_PORT="${E2E_RAZORPAY_MOCK_PORT:-18086}"
+case "$MOCK_PORT" in ''|*[!0-9]*) echo "E2E_RAZORPAY_MOCK_PORT must be numeric." >&2; exit 1 ;; esac
+if [ "$MOCK_PORT" -lt 1 ] || [ "$MOCK_PORT" -gt 65535 ] || [ "$MOCK_PORT" = "$PORT" ]; then
+  echo "E2E_RAZORPAY_MOCK_PORT is out of range or conflicts with E2E_PORT."
+  exit 1
+fi
 if (exec 3<>"/dev/tcp/127.0.0.1/$PORT") 2>/dev/null; then
   exec 3>&-
   echo "Port $PORT already has a listener; refusing to reset the E2E database."
+  exit 1
+fi
+if (exec 3<>"/dev/tcp/127.0.0.1/$MOCK_PORT") 2>/dev/null; then
+  exec 3>&-
+  echo "Port $MOCK_PORT already has a listener; refusing to reset the E2E database."
   exit 1
 fi
 echo "### Recreating disposable database $DBNAME"
@@ -115,9 +126,12 @@ export JWT_SECRET="$(node -e 'process.stdout.write(require("crypto").randomBytes
 export CORS_ALLOWED_ORIGINS="http://localhost:3000"
 export E2E_SIMULATED_WEBHOOK_SECRET="$(node -e 'process.stdout.write(require("crypto").randomBytes(32).toString("hex"))')"
 export RAZORPAY_WEBHOOK_SECRET="$E2E_SIMULATED_WEBHOOK_SECRET"
-unset RAZORPAY_KEY_ID RAZORPAY_KEY_SECRET RAZORPAY_API_BASE_URL
+export RAZORPAY_KEY_ID="rzp_test_e2e_loopback"
+export RAZORPAY_KEY_SECRET="$(node -e 'process.stdout.write(require("crypto").randomBytes(32).toString("hex"))')"
+export RAZORPAY_API_BASE_URL="http://127.0.0.1:$MOCK_PORT/v1"
 export RAZORPAY_ROUTE_ENABLED=false
 export RAZORPAYX_ENABLED=false
+unset RAZORPAYX_KEY_ID RAZORPAYX_KEY_SECRET RAZORPAYX_ACCOUNT_NUMBER
 export INTEGRITY_ALLOW_FINANCIAL_EXECUTION=false
 export OPENAI_API_KEY=aegisx-openai-disabled
 export WHATSAPP_SANDBOX_MODE=true
@@ -129,6 +143,51 @@ export SERVER_PORT="$PORT"
 
 LOG="$OUTDIR/backend-e2e.log"
 : > "$LOG"
+MOCK_LOG="$OUTDIR/razorpay-mock.log"
+: > "$MOCK_LOG"
+APP_PID=""
+MOCK_PID=""
+
+# Stop only the backend and loopback mock launched by this runner.
+cleanup() {
+  local status=$?
+  echo "### Stopping local E2E processes"
+  if command -v taskkill >/dev/null 2>&1; then
+    if [ -n "$APP_PID" ]; then taskkill //PID "$APP_PID" //T //F >/dev/null 2>&1 || true; fi
+    if [ -n "$MOCK_PID" ]; then taskkill //PID "$MOCK_PID" //T //F >/dev/null 2>&1 || true; fi
+  else
+    if [ -n "$APP_PID" ]; then
+      if command -v setsid >/dev/null 2>&1; then kill -TERM -- "-$APP_PID" >/dev/null 2>&1 || true; else kill "$APP_PID" >/dev/null 2>&1 || true; fi
+      wait "$APP_PID" >/dev/null 2>&1 || true
+    fi
+    if [ -n "$MOCK_PID" ]; then
+      if command -v setsid >/dev/null 2>&1; then kill -TERM -- "-$MOCK_PID" >/dev/null 2>&1 || true; else kill "$MOCK_PID" >/dev/null 2>&1 || true; fi
+      wait "$MOCK_PID" >/dev/null 2>&1 || true
+    fi
+  fi
+  return $status
+}
+trap cleanup EXIT
+
+echo "### Starting loopback Razorpay Orders stub"
+if command -v setsid >/dev/null 2>&1; then
+  setsid node "$HARNESS/razorpay-mock.mjs" "$MOCK_PORT" > "$MOCK_LOG" 2>&1 &
+else
+  node "$HARNESS/razorpay-mock.mjs" "$MOCK_PORT" > "$MOCK_LOG" 2>&1 &
+fi
+MOCK_PID=$!
+MOCK_READY=0
+for i in $(seq 1 20); do
+  MOCK_STATUS=$("$CURL_BIN" -s -m 2 -o /dev/null -w '%{http_code}' \
+    "http://127.0.0.1:$MOCK_PORT/healthz" 2>/dev/null)
+  if [ "$MOCK_STATUS" = "200" ]; then MOCK_READY=1; break; fi
+  sleep 1
+done
+if [ "$MOCK_READY" != "1" ]; then
+  echo "Loopback Razorpay Orders stub did not become ready."
+  exit 1
+fi
+
 echo "### Starting backend (profile=prod, db=$DBNAME)"
 echo "### E2E API port $PORT using $CURL_BIN"
 if command -v setsid >/dev/null 2>&1; then
@@ -137,26 +196,6 @@ else
   ( cd "$BACKEND" && "$JAVA_BIN" -cp "$APP_CP" com.aegisx.AegisXApplication > "$LOG" 2>&1 ) &
 fi
 APP_PID=$!
-
-# Stop the launched application and clean up any listener it left behind.
-cleanup() {
-  local status=$?
-  echo "### Stopping backend (pid $APP_PID)"
-  if command -v taskkill >/dev/null 2>&1; then
-    taskkill //PID "$APP_PID" //T //F >/dev/null 2>&1 || true
-    local listener
-    listener="$(netstat -ano | grep -E "[:.]${PORT} " | grep LISTENING | awk '{print $5}' | head -1)"
-    if [ -n "${listener:-}" ]; then taskkill //PID "$listener" //T //F >/dev/null 2>&1 || true; fi
-  elif command -v setsid >/dev/null 2>&1; then
-    kill -TERM -- "-$APP_PID" >/dev/null 2>&1 || true
-    wait "$APP_PID" >/dev/null 2>&1 || true
-  else
-    kill "$APP_PID" >/dev/null 2>&1 || true
-    wait "$APP_PID" >/dev/null 2>&1 || true
-  fi
-  return $status
-}
-trap cleanup EXIT
 
 echo "### Waiting for /actuator/health"
 READY=0

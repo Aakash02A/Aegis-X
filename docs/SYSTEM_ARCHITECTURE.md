@@ -98,7 +98,7 @@ The current transaction enum includes `CREATED`, `PAYMENT_RECEIVED`, `PAYMENT_FA
 * All rules passing produces `APPROVED`; any failure produces `COMPLIANCE_HOLD`. The service persists the evaluation and one violation row per failed rule.
 
 ### 3.6 Payment Integrity Bounded Context
-Located in `com.aegisx.integrity`, this subsystem guarantees financial correctness:
+Located in `com.aegisx.integrity`, this subsystem supports payment integrity review:
 * **Double-Entry Ledger:** All payment records track debit and credit ledger balances.
 * **Duplicate-Safe Ingestion:** Webhook events are hashed and validated with compound unique keys: `(workspace_id, provider, provider_event_id)`.
 * **Automated Reconciliation:** Matches provider captures against internal transaction orders.
@@ -108,12 +108,21 @@ Located in `com.aegisx.integrity`, this subsystem guarantees financial correctne
 * **WhatsApp Cloud API:** Sends template-driven alerts for compliance holds and status changes.
 * **Audit Trail:** Every state change, webhook, OCR extraction, and compliance decision persists an append-only `AuditEvent` record with an end-to-end `correlationId`.
 
-### 3.8 Settlement Execution Boundary
-The integrity payment adapter creates provider orders and reads provider state; it does not expose a
-payment-capture, refund, or payout operation. A `payment.captured` webhook records a capture already
-made by the provider. The only outbound money-moving call implemented by Aegis-X is
-`RazorpayXClient.submitPayout` (`POST /payouts`), reached from settlement processing through
-`SettlementService` and `SettlementProcessorService`.
+### 3.8 Payment and Settlement Boundaries
+Aegis-X collects evidence, provides optional AI advice, records Java-decided policy outcomes,
+reconciles provider data, and audits those actions. It has no customer payment capture or refund
+path. An external provider performs customer capture; a `payment.captured` webhook only records that
+completed outcome. The integrity payment adapter creates orders and reads provider state; it exposes
+no capture, refund, transfer, or payout mutation.
+
+A separate `RazorpayXClient.submitPayout` (`POST /payouts`) path exists for Test Mode. It is disabled
+by default, requires `RAZORPAYX_ENABLED` and complete Test Mode credentials, rejects non-`rzp_test_`
+key IDs, and is reachable through settlement processing after an approved policy state. Initiation
+requires `COMPLIANCE_OFFICER` or `SETTLEMENT_OPERATOR`; processing accepts `SETTLEMENT_OPERATOR` or
+`SYSTEM`, so the process route is role-gated but can be system-invoked. It does not provide a live
+funds-movement path. Beneficiary contact and fund-account calls are Test Mode setup operations, not
+payout calls. `INTEGRITY_ALLOW_FINANCIAL_EXECUTION` controls read-only integrity recovery and is not
+the RazorpayX payout feature flag.
 
 Before dispatch, `SettlementService` locks the settlement, refreshes and locks the linked
 transaction row, and requires `TransactionStatus.APPROVED`. The execution service repeats the same
@@ -127,7 +136,8 @@ unsupported and requires manual resolution.
 
 RazorpayX is disabled by default and accepts only a key ID starting `rzp_test_`. The `SIMULATED`
 processor is available only in development/test profiles and records `moneyMoved=false`; it is not a
-provider payout. No live key path or automated payment-capture endpoint is implemented.
+provider payout. Customer capture/refund and live funds movement are outside Aegis-X's supported
+product scope; no automated payment-capture endpoint is implemented.
 
 ---
 

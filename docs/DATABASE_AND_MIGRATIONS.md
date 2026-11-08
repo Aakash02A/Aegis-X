@@ -58,7 +58,7 @@ backend/src/main/resources/db/migration/
                ▼                               ▼                               ▼
      ┌──────────────────┐            ┌──────────────────┐            ┌──────────────────┐
      │    documents     │            │policy_evaluations│            │   settlements    │
-     │  (Files & OCR)   │            │   & violations   │            │   (Payout rail)  │
+     │  (Files & OCR)   │            │   & violations   │            │(Test Mode payout)│
      └────────┬─────────┘            └──────────────────┘            └──────────────────┘
               │ 1:N
               ▼

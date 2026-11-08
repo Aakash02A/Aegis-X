@@ -16,7 +16,7 @@ frontend/
 ├── dashboard.html               # Merchant console (remittances, KPIs, creation modal)
 ├── transaction.html             # Transaction workspace (lifecycle stepper, OCR, audit log)
 ├── compliance.html              # Compliance officer investigation queue
-├── settlement.html              # Settlement desk (payout rails, retry, reconciliation)
+├── settlement.html              # Test Mode payout records, retry, and reconciliation
 ├── operations.html              # System observability (live Actuator health & metrics)
 ├── integrity*.html              # Payment Integrity console (9 specialized audit views)
 ├── css/

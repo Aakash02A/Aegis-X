@@ -10,10 +10,13 @@ import com.aegisx.document.entity.DocumentStatus;
 import com.aegisx.document.entity.DocumentType;
 import com.aegisx.document.repository.DocumentExtractionRepository;
 import com.aegisx.document.repository.DocumentRepository;
+import com.aegisx.integrity.support.EvidenceFixtures;
 import com.aegisx.transaction.entity.Transaction;
 import com.aegisx.transaction.entity.TransactionStatus;
 import com.aegisx.transaction.repository.TransactionRepository;
 import java.math.BigDecimal;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -184,6 +187,45 @@ class OcrIntegrationTest {
             .contentType(MediaType.APPLICATION_JSON)
         )
         .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @DisplayName("Should process an owned invoice over the authenticated HTTP route")
+    @Transactional
+    void testOwnedDocumentCanBeProcessedOverHttp() throws Exception {
+        Path file = Path.of("target", "ocr-controller-" + UUID.randomUUID() + ".pdf").toAbsolutePath();
+        Files.write(file, EvidenceFixtures.invoicePdf("INV-OCR-HTTP", "ORDER-OCR-HTTP", "USD", "2450.50"));
+        document.setStoragePath(file.toString());
+        document.setFileSize(Files.size(file));
+        documentRepository.saveAndFlush(document);
+        transaction.applyStatus(TransactionStatus.OCR_PROCESSING);
+        transactionRepository.saveAndFlush(transaction);
+
+        mockMvc.perform(post("/api/documents/{id}/process", document.getId())
+                .header("Authorization", "Bearer " + jwtToken))
+            .andExpect(status().isAccepted())
+            .andExpect(jsonPath("$.documentId").value(document.getId().toString()))
+            .andExpect(jsonPath("$.extractionId").isNotEmpty());
+
+        assertEquals(1, extractionRepository.countByDocumentId(document.getId()));
+    }
+
+    @Test
+    @DisplayName("Should refuse OCR processing when another merchant owns the document")
+    @Transactional
+    void testUnauthorizedProcessingAccess() throws Exception {
+        User otherMerchant = User.builder()
+            .email("other-process@example.com")
+            .passwordHash(passwordEncoder.encode("password123"))
+            .fullName("Other Merchant")
+            .role(Role.MERCHANT)
+            .build();
+        otherMerchant = userRepository.save(otherMerchant);
+        String otherToken = jwtService.generateToken(otherMerchant);
+
+        mockMvc.perform(post("/api/documents/{id}/process", document.getId())
+                .header("Authorization", "Bearer " + otherToken))
+            .andExpect(status().isForbidden());
     }
 
     @Test

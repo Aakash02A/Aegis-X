@@ -2,11 +2,12 @@
 
 The application has two separate Razorpay integrations:
 
-- **Razorpay Orders/Checkout** charges a payer. An authenticated merchant creates an order with
-  `POST /api/v1/payments/orders` and a `transactionId`; the response supplies the public checkout
-  key, order ID, amount (minor units), and currency. The transaction's provider order ID is persisted
-  and payment webhooks are bound to that exact ID. Notes and merchant-supplied references are not
-  accepted as a substitute.
+- **Razorpay Orders/Checkout** creates an external provider order for checkout. An authenticated
+  merchant calls `POST /api/v1/payments/orders` with a `transactionId`; the response supplies the
+  public checkout key, order ID, amount (minor units), and currency. The transaction's provider order
+  ID is persisted and payment webhooks are bound to that exact ID. Notes and merchant-supplied
+  references are not accepted as a substitute. Aegis-X has no payment-capture or refund API; the
+  external provider performs capture and sends the resulting event.
 - **RazorpayX Payouts** submits an approved INR settlement to a bank account in Test Mode. The
   client rejects key IDs without the `rzp_test_` prefix and is disabled by default. Other network
   enum values are not advertised or submitted to a synthetic processor; live payouts are not

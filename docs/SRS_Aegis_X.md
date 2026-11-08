@@ -529,28 +529,33 @@ The service persists the decision, the five rule results, and a violation row fo
 | FR-38 | The dashboard SHALL display real-time transaction status for all user roles | Must |
 | FR-39 | The dashboard SHALL provide role-appropriate views (merchant, compliance, admin) | Must |
 
-### 9.10 Settlement Execution Safety
+### 9.10 Payment and Settlement Boundaries
 
-Payment receipt and payment execution are separate. A `payment.captured` webhook records a capture
-already performed by the provider; the payment provider adapter exposes order creation and read-only
-operations, with no capture or refund operation. The only outbound money-moving request implemented
-is the RazorpayX payout `POST /payouts` call. Its request path is `SettlementController` →
-`SettlementService` → `SettlementProcessorService` → `RazorpayXClient`.
+Aegis-X collects evidence, provides optional AI advice, records Java-decided policy outcomes,
+reconciles provider data, and writes audit events. It has no customer payment capture or refund path.
+A `payment.captured` webhook records an outcome already produced by the external provider. Actual
+customer payment capture and live funds movement are outside the supported product scope. A separate
+RazorpayX payout adapter can submit Test Mode payouts only; it is disabled by default and rejects
+non-`rzp_test_` key IDs. Its request path is `SettlementController` → `SettlementService` →
+`SettlementProcessorService` → `RazorpayXClient`; processing requires `SETTLEMENT_OPERATOR` or
+`SYSTEM`, and settlement initiation requires `COMPLIANCE_OFFICER` or `SETTLEMENT_OPERATOR`.
 
 | ID | Requirement | Priority |
 |----|-------------|----------|
 | FR-40 | The settlement service SHALL re-read and lock the transaction decision before payout submission; only `APPROVED` may execute | Must |
-| FR-41 | The execution module SHALL independently reject any transaction that is not `APPROVED` | Must |
-| FR-42 | `REJECTED` and `COMPLIANCE_HOLD` transactions SHALL not reach the provider execution module, including through direct settlement API calls | Must |
+| FR-41 | The settlement processor SHALL independently reject any transaction that is not `APPROVED` | Must |
+| FR-42 | `REJECTED` and `COMPLIANCE_HOLD` transactions SHALL not reach the payout processor, including through direct settlement API calls | Must |
 | FR-43 | Concurrent or repeated processing of one settlement SHALL submit at most one payout; retries SHALL reuse its provider idempotency key, and the retry endpoint SHALL refuse another submission once a provider payout ID has been assigned | Must |
 | FR-44 | RazorpayX payout configuration SHALL reject key IDs without the `rzp_test_` prefix; the integration SHALL remain disabled by default | Must |
 | FR-45 | The `SIMULATED` settlement processor SHALL record `moneyMoved=false` and SHALL NOT make a provider request | Must |
 
 `APPROVED` is the transaction model's persisted equivalent of policy `ALLOWED`; `COMPLIANCE_HOLD`
-represents `ESCALATED`, and `REJECTED` represents `BLOCKED`. The automated settlement path accepts
-only the approved state. Provider-side payment capture is outside Aegis-X's execution module and is
-observed through the verified webhook ingestion path. When a RazorpayX payout ID exists, automatic
-retry through the settlement retry endpoint is unsupported and requires manual resolution.
+represents `ESCALATED`, and `REJECTED` represents `BLOCKED`. The separate Test Mode payout path
+accepts only the approved state and is enabled only by `RAZORPAYX_ENABLED` plus complete Test Mode
+credentials. `INTEGRITY_ALLOW_FINANCIAL_EXECUTION` controls read-only integrity recovery and does not
+enable payout submission. Provider-side customer capture is observed through verified webhook
+ingestion; no policy decision triggers a capture. When a RazorpayX payout ID exists, automatic retry
+through the settlement retry endpoint is unsupported and requires manual resolution.
 
 ---
 

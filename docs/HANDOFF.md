@@ -592,40 +592,38 @@ No `.env` file is present in Git history. Current `.env.example` entries and tes
 ## Phase 11: end-to-end and final report (2026-11-08)
 
 ### Verdict
-**PARTIAL: the supported offline integration path is VERIFIED; the requested full payment-decision-and-capture scenario is NOT SUPPORTED by the current product interfaces.** The E2E harness completed successfully on a fresh `aegisx_audit` database. The run did not call a real LLM, Tesseract, Razorpay, or money-moving provider.
+**COMPLETE for the currently supported product design and local verification.** The supported policy flow, reconciliation, and audit passed on a fresh `aegisx_audit` database. Post-policy capture is **NOT SUPPORTED BY DESIGN**, an open scope item and not a defect. No real LLM, Tesseract, Razorpay, or payout provider was called.
 
 ### E2E runner hardening and result
 - The runner compiles and explicitly loads the test-scope provider fixture, uses the platform classpath separator, selects Windows `curl.exe` when running in Git Bash, and launches the application directly. It accepts a configurable numeric API port, checks that port is free **before** it recreates the database, and waits for both health success and the application-started log marker before sending requests (`tests/e2e/run-e2e.sh:29-165`).
 - It restricts database recreation to local MySQL and exactly `aegisx_audit`, creates an ephemeral local operator and verifies that operator has the ADMIN role, uses ephemeral signing/webhook material, selects the simulated provider, and keeps financial execution and external payment providers disabled (`tests/e2e/run-e2e.sh:47-150`). The flow script now also requires the privileged login response to identify the role as ADMIN (`tests/e2e/e2e-flows.mjs:59-70`).
-- Fresh-database Windows/Git Bash run on port 18085 completed with **35/35 checks passed, 0 failed**. The exercised flow covered registration/login and authorization, simulated order creation, signed webhook acceptance and deduplication, bad-signature rejection, evidence PDF upload/download, evidence assessment, reconciliation, exception handling, dashboard, and audit reads. No unrelated schema or service was reset.
-- `node --check tests/e2e/e2e-flows.mjs`, Bash `-n tests/e2e/run-e2e.sh`, and `git diff --check` passed. The actual runner execution also parsed and ran both scripts.
+- Fresh-database Windows/Git Bash run on port 18090 completed with **56/56 checks passed, 0 failed**. It exercised registration and authorization, simulated order creation, signed webhook acceptance/deduplication, PDF evidence upload and Tika extraction, Java `APPROVED`/`COMPLIANCE_HOLD` policy results, reviewer rejection to `REJECTED`, then integrity reconciliation and audit. The integrity and legacy policy contexts remain separate; no capture or state bridge exists. No unrelated schema or service was reset.
+- `node --check tests/e2e/e2e-flows.mjs` and `git diff --check` passed. The actual runner execution parsed and ran both the Bash and JavaScript flow scripts.
 
 ### Acceptance limits
-- The payment provider interface can create/read orders and verify webhooks; it exposes **no payment-capture method or capture endpoint** (`backend/src/main/java/com/aegisx/integrity/provider/PaymentProviderAdapter.java:18-20,34`). The E2E `payment.captured` event simulates an already captured provider payment. Therefore “ALLOWED captures once” is **NOT SUPPORTED**, and no capture feature was invented.
-- This conflicts with the pasted Phase 11 acceptance, which requires a post-policy capture. The current SRS section 9.10 and provider contract explicitly put provider-side capture outside Aegis-X; implementing the requested flow would require an authorized-payment state and a bridge between the legacy policy transactions and integrity orders. The task also prohibits new features. User clarification on which scope governs is pending; capture is not counted as complete.
-- The implemented outbound money-moving operation remains the RazorpayX payout path behind the approved settlement gate. Phase 7 tests cover approval requirements, refusal for COMPLIANCE_HOLD/REJECTED, test-key restrictions, and exactly-one dispatch under duplicate/concurrent requests. The live payout provider remains NOT VERIFIED; financial execution stayed disabled in this E2E run.
-- The E2E harness does not invoke the separate legacy AI-analysis and policy-evaluation routes or walk the browser UI. Offline AI parser/failure tests, deterministic policy boundary tests, and review/settlement API tests are recorded in Phases 5–9. A live AI advice response and an end-to-end browser reviewer journey remain NOT VERIFIED. The local review queue service/API is covered by backend tests; visual behavior is not.
-- `ALLOWED`/`ESCALATED`/`BLOCKED` are represented in the legacy decision flow by `APPROVED`/`COMPLIANCE_HOLD`/`REJECTED`; settlement processing requires `APPROVED`. No API-level capture follows those decisions.
-- Expired document/evidence data is **NOT SUPPORTED**, not a defect: there is no expiry field or approved cutoff. The existing provider-payment staleness threshold is covered at just-under, exact, and just-over boundaries in Phase 6. No README, SRS, or documentation claim that document/evidence expiry is enforced was found; the SRS states this limit explicitly at `docs/SRS_Aegis_X.md:428`.
+- The provider interface creates and reads orders, reads payment/refund/transfer state, and verifies webhooks; it exposes **no payment-capture, refund, or transfer submission method** (`backend/src/main/java/com/aegisx/integrity/provider/PaymentProviderAdapter.java:18-20,34`). The E2E `payment.captured` event is simulated as an external outcome; Aegis-X does not perform capture.
+- `ALLOWED`/`ESCALATED`/`BLOCKED` are represented by `APPROVED`/`COMPLIANCE_HOLD`/`REJECTED`. Phase 11 runs through the Java policy result, then reconciles the separate integrity order and checks audit records. No authorized-payment state, capture path, or bridge between those contexts was added.
+- Phase 7 found one outbound money-moving API call in code: a disabled-by-default RazorpayX `POST /payouts`, Test Mode only, after an approved settlement. It requires `RAZORPAYX_ENABLED=true`, a `rzp_test_` key, complete credentials, and privileged API roles. `SYSTEM` may call the process endpoint, so it is not strictly human-only. External Test Mode payout remains NOT VERIFIED; live payout is unsupported. `INTEGRITY_ALLOW_FINANCIAL_EXECUTION` controls read-only integrity recovery and is not the payout flag.
+- The generated policy documents carry embedded text and exercise Tika extraction. Real native Tesseract OCR remains NOT VERIFIED. The AI endpoint had no live key; the E2E asserted its unavailable-advice response and confirmed deterministic Java policy evaluation continued. Browser reviewer UI, hosted CI, deployment, load testing, and backup/restore remain NOT VERIFIED.
+- Expired document/evidence data is **NOT SUPPORTED**, not a defect: there is no expiry field or approved cutoff. The existing provider-payment staleness threshold is covered just-under, exactly-at, and just-over the configured boundary. README, SRS, and architecture wording now state the product boundary plainly.
 
 ### Commands and results
-- Fresh local simulated E2E: `E2E_PORT=18085 ./tests/e2e/run-e2e.sh` under Git Bash, with the runner reading `.env` only into process memory and guarding the database name/host. Result: `=== E2E: 35/35 passed, 0 failed ===`.
-- The first MySQL-backed clean randomized suite attempt had one failure: `RazorpayWebhookControllerTest.validWebhookIsPersisted` returned 401 because the process overrode the test fixture's expected offline webhook secret. Inspection confirmed the fixture value in `backend/src/test/resources/application.yml:41`; no assertion or timeout was changed. The clean randomized suite was rerun with that declared test-only value, local MySQL integration enabled against `aegisx_audit`, and provider/financial execution disabled:
+- Fresh local simulated E2E: `E2E_PORT=18090 ./tests/e2e/run-e2e.sh` under Git Bash, with `.env` read into process memory and database host/name guarded. Result: `=== E2E: 56/56 passed, 0 failed ===`.
+- Final randomized full suite used local MySQL integration against `aegisx_audit`, `.env` values held in process memory, the test profile, `RAZORPAYX_ENABLED=false`, and `INTEGRITY_ALLOW_FINANCIAL_EXECUTION=false`:
   ```text
-  Tests run: 486, Failures: 0, Errors: 0, Skipped: 1
+  Tests run: 490, Failures: 0, Errors: 0, Skipped: 1
   BUILD SUCCESS
   ```
-  The only skip was `MySqlDdlGenerateTest`; all MySQL integration tests ran. The failed first attempt is retained here for an accurate verification record.
+  The only skip was `MySqlDdlGenerateTest`; all other MySQL integration tests ran, including settlement execution concurrency. The OCR integration class passed 10/10; the final loopback-only payout role/flag rerun passed 6/6.
 
 ### Phase commit
-- `2c37c7c Harden local end-to-end verification runner`
-- This Phase 11 handoff update is committed separately after the runner change.
+- `2c37c7c Harden local end-to-end verification runner` (earlier runner commit)
+- Final scoped verification and documentation are recorded in the commit that updates this handoff.
 
 ### Open items
-- Payment capture is NOT SUPPORTED by the current API/provider contract; no capture implementation was added.
+- Post-policy customer capture is **NOT SUPPORTED BY DESIGN**, an open item and not a defect. No capture path, authorized-payment state, or policy-to-integrity bridge was added.
 - Real Razorpay/Test Mode and RazorpayX, WhatsApp, live LLM, and Tesseract OCR calls remain NOT VERIFIED.
 - Browser UI review journey, hosted CI execution, deployment, load testing, and backup/restore drill remain NOT VERIFIED.
-- Expired-data boundary remains NOT SUPPORTED pending an approved data model and validity rule.
+- Expired-data boundary remains **NOT SUPPORTED**, not a defect, until an authoritative data model and validity rule exist.
 - A follow-up browser automation attempt was stopped by the user's physical Escape key before a review case was verified; the browser UI result remains NOT VERIFIED. The temporary local server PIDs had exited and ports 18086/3000 had no listeners afterward.
-- Phase 11's capture acceptance conflicts with the current SRS/provider contract and the no-new-features constraint; user clarification is pending.
 - Owner review/rotation of local `.env` credential candidates and reused historical example credentials remains outstanding. The changes are local; push is still the user's action.
