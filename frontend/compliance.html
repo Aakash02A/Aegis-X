@@ -74,7 +74,7 @@
       <div class="flex items-center gap-3">
         <span class="editorial-badge badge-approved">
           <i class="fa-solid fa-shield-halved w-3.5 h-3.5 inline"></i>
-          Statutory Audit Mode
+          Escalated Review Queue
         </span>
       </div>
       <div class="flex items-center gap-3">
@@ -94,22 +94,10 @@
         <!-- Search -->
         <div class="md:col-span-5 relative">
           <i class="fa-solid fa-magnifying-glass w-4 h-4 text-ink-soft absolute left-3 top-1/2 -translate-y-1/2"></i>
-          <input type="text" id="compliance-search" placeholder="Search reference, beneficiary, or merchant" class="editorial-input pl-9 text-xs" />
+          <input type="search" id="compliance-search" maxlength="100" placeholder="Search reference, beneficiary, or merchant" class="editorial-input pl-9 text-xs" aria-label="Search escalated cases" />
         </div>
 
-        <!-- Status Filter -->
-        <div class="md:col-span-3">
-          <select id="filter-status" class="editorial-input text-xs bg-white">
-            <option value="ALL">All Queue Items</option>
-            <option value="COMPLIANCE_HOLD">Compliance Hold</option>
-            <option value="HIGH_RISK">High Risk</option>
-            <option value="OCR_FAILURE">OCR Failure</option>
-            <option value="AI_FAILURE">AI Failure</option>
-            <option value="SETTLEMENT_FAILURE">Settlement Failure</option>
-          </select>
-        </div>
-
-        <p class="md:col-span-4 text-[11px] text-ink-soft">Queue and priority data are supplied by the compliance API.</p>
+        <p class="md:col-span-7 text-[11px] text-ink-soft">Only escalated cases awaiting a human decision appear here. Search applies across the full queue.</p>
       </div>
 
       <!-- Compliance Table -->
@@ -127,7 +115,7 @@
                 <th class="py-3 px-2 text-right">Action</th>
               </tr>
             </thead>
-            <tbody id="compliance-tbody" class="divide-y divide-ink/10">
+            <tbody id="compliance-tbody" class="divide-y divide-ink/10" aria-live="polite">
               <!-- Rendered via js/compliance.js -->
             </tbody>
           </table>
@@ -166,8 +154,8 @@
         <label for="review-justification" class="block text-xs font-semibold text-ink">Decision justification (required)</label>
         <textarea id="review-justification" class="editorial-input" rows="3" required minlength="10" maxlength="2000" placeholder="Record the evidence and rule basis for this decision."></textarea>
         <div class="flex justify-end gap-2">
-          <button class="aegis-btn-outline py-2 px-4 text-xs" type="submit" value="REJECTED">Reject</button>
-          <button class="aegis-btn-ink py-2 px-4 text-xs" type="submit" value="APPROVED">Approve</button>
+          <button class="aegis-btn-outline py-2 px-4 text-xs" type="button" data-review-decision="REJECTED">Reject</button>
+          <button class="aegis-btn-ink py-2 px-4 text-xs" type="button" data-review-decision="APPROVED">Approve</button>
         </div>
       </form>
     </section>

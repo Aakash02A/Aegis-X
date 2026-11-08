@@ -2,10 +2,16 @@ package com.aegisx.review.service;
 
 import com.aegisx.auth.entity.User;
 import com.aegisx.auth.service.UserService;
+import com.aegisx.audit.entity.ActorType;
+import com.aegisx.audit.entity.AuditEventType;
+import com.aegisx.audit.entity.AuditModule;
+import com.aegisx.audit.service.AuditService;
+import com.aegisx.common.filter.CorrelationIdFilter;
 import com.aegisx.policy.entity.PolicyViolation;
 import com.aegisx.policy.entity.ViolationSeverity;
 import com.aegisx.policy.repository.PolicyViolationRepository;
 import com.aegisx.review.dto.QueueSummary;
+import com.aegisx.review.dto.ComplianceReviewResponse;
 import com.aegisx.review.dto.ReviewQueueItemResponse;
 import com.aegisx.review.entity.ComplianceReview;
 import com.aegisx.review.entity.ReviewDecision;
@@ -24,6 +30,8 @@ import org.springframework.data.domain.Sort;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.slf4j.MDC;
+import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
@@ -48,10 +56,11 @@ public class ComplianceReviewService {
     private final com.aegisx.document.repository.RequiredDocumentRepository requiredDocumentRepository;
     private final UserService userService;
     private final TransactionStateMachine stateMachine;
+    private final AuditService auditService;
 
     /**
      * Gets the review queue for compliance officers.
-     * Returns transactions in COMPLIANCE_HOLD state ordered by priority.
+     * Returns transactions in the requested status newest first, with a stable ID tie-breaker.
      */
     @Transactional(readOnly = true)
     @PreAuthorize("hasRole('COMPLIANCE_OFFICER') or hasRole('ADMIN')")
@@ -63,8 +72,9 @@ public class ComplianceReviewService {
     @PreAuthorize("hasRole('COMPLIANCE_OFFICER') or hasRole('ADMIN')")
     public Page<ReviewQueueItemResponse> getReviewQueue(Pageable pageable, String filter) {
         log.debug("Getting review queue with page size: {}", pageable.getPageSize());
-        Pageable ordered = PageRequest.of(pageable.getPageNumber(), pageable.getPageSize(),
-                Sort.by(Sort.Direction.DESC, "createdAt"));
+        Pageable ordered = PageRequest.of(Math.max(0, pageable.getPageNumber()),
+                Math.min(Math.max(1, pageable.getPageSize()), 100),
+                Sort.by(Sort.Direction.DESC, "createdAt").and(Sort.by(Sort.Direction.DESC, "id")));
         if (filter == null || filter.isBlank() || "COMPLIANCE_HOLD".equalsIgnoreCase(filter)
                 || "PENDING_REVIEW".equalsIgnoreCase(filter)) {
             return transactionRepository.findByStatus(TransactionStatus.COMPLIANCE_HOLD, ordered)
@@ -84,23 +94,31 @@ public class ComplianceReviewService {
         return transactionRepository.findByStatus(status, ordered).map(this::buildReviewQueueItem);
     }
 
-    /**
-     * Gets pending review items for a specific compliance officer.
-     *
-     * <p>The "already reviewed" filter runs in the database. It used to load every transaction in
-     * {@code COMPLIANCE_HOLD}, enrich each one (three extra queries per row) and then discard the
-     * reviewed ones in memory, which made the endpoint's cost scale with the whole queue rather than
-     * with the items it returns.</p>
-     */
+    /** Returns pending compliance-hold cases filtered by visible text search. */
     @Transactional(readOnly = true)
     @PreAuthorize("hasRole('COMPLIANCE_OFFICER') or hasRole('ADMIN')")
-    public List<ReviewQueueItemResponse> getMyReviewQueue(UUID reviewerId) {
-        List<Transaction> transactions = transactionRepository.findUnreviewedByStatus(
-                TransactionStatus.COMPLIANCE_HOLD);
+    public Page<ReviewQueueItemResponse> searchReviewQueue(Pageable pageable, String query) {
+        String normalizedQuery = query == null ? "" : query.trim();
+        if (normalizedQuery.length() > 100) {
+            throw new IllegalArgumentException("Search query must not exceed 100 characters");
+        }
+        Pageable ordered = PageRequest.of(Math.max(0, pageable.getPageNumber()),
+                Math.min(Math.max(1, pageable.getPageSize()), 100),
+                Sort.by(Sort.Direction.DESC, "createdAt").and(Sort.by(Sort.Direction.DESC, "id")));
+        return transactionRepository.searchUnreviewedByStatus(TransactionStatus.COMPLIANCE_HOLD,
+                        normalizedQuery, ordered)
+                .map(this::buildReviewQueueItem);
+    }
 
-        return transactions.stream()
-                .map(this::buildReviewQueueItem)
-                .toList();
+    /** Returns the shared pending queue; there is no reviewer-assignment model in this release. */
+    @Transactional(readOnly = true)
+    @PreAuthorize("hasRole('COMPLIANCE_OFFICER') or hasRole('ADMIN')")
+    public Page<ReviewQueueItemResponse> getUnreviewedQueue(Pageable pageable) {
+        Pageable ordered = PageRequest.of(Math.max(0, pageable.getPageNumber()),
+                Math.min(Math.max(1, pageable.getPageSize()), 100),
+                Sort.by(Sort.Direction.DESC, "createdAt").and(Sort.by(Sort.Direction.DESC, "id")));
+        return transactionRepository.searchUnreviewedByStatus(TransactionStatus.COMPLIANCE_HOLD, "", ordered)
+                .map(this::buildReviewQueueItem);
     }
 
     /**
@@ -185,6 +203,16 @@ public class ComplianceReviewService {
         }
         
         transactionRepository.save(transaction);
+
+        var eventData = JsonNodeFactory.instance.objectNode()
+                .put("reviewId", savedReview.getId().toString())
+                .put("decision", decision.name())
+                .put("reviewerName", reviewer.getFullName())
+                .put("justification", justification.trim());
+        auditService.recordStateTransition(transaction, AuditEventType.MANUAL_REVIEW_DECISION,
+                AuditModule.TRANSACTION, reviewer.getId(), ActorType.USER,
+                MDC.get(CorrelationIdFilter.CORRELATION_ID_KEY), TransactionStatus.COMPLIANCE_HOLD.name(),
+                transaction.getStatus().name(), eventData);
         
         log.info("Compliance review submitted successfully for transaction: {}, outcome: {}", 
                 transactionId, targetStatus);
@@ -196,8 +224,12 @@ public class ComplianceReviewService {
      * Gets review history for a transaction.
      */
     @Transactional(readOnly = true)
-    public List<ComplianceReview> getReviewHistory(UUID transactionId) {
-        return complianceReviewRepository.findByTransactionId(transactionId);
+    public Page<ComplianceReviewResponse> getReviewHistory(UUID transactionId, Pageable pageable) {
+        Pageable ordered = PageRequest.of(Math.max(0, pageable.getPageNumber()),
+                Math.min(Math.max(1, pageable.getPageSize()), 100),
+                Sort.by(Sort.Direction.DESC, "reviewedAt").and(Sort.by(Sort.Direction.DESC, "id")));
+        return complianceReviewRepository.findPagedHistoryByTransactionId(transactionId, ordered)
+                .map(ComplianceReviewResponse::fromEntity);
     }
 
     /**
@@ -207,6 +239,7 @@ public class ComplianceReviewService {
     @PreAuthorize("hasRole('COMPLIANCE_OFFICER') or hasRole('ADMIN')")
     public Optional<ReviewQueueItemResponse> getReviewItem(UUID transactionId) {
         return transactionRepository.findById(transactionId)
+                .filter(transaction -> transaction.getStatus() == TransactionStatus.COMPLIANCE_HOLD)
                 .map(this::buildReviewQueueItem);
     }
 
@@ -216,12 +249,12 @@ public class ComplianceReviewService {
     @Transactional(readOnly = true)
     @PreAuthorize("hasRole('COMPLIANCE_OFFICER') or hasRole('ADMIN')")
     public ReviewerStats getReviewerStats(UUID reviewerId, LocalDateTime since) {
-        List<ComplianceReview> reviews = complianceReviewRepository.findByReviewerAndDateRange(
-                reviewerId, since, LocalDateTime.now());
-        
-        long totalReviews = reviews.size();
-        long approvals = reviews.stream().filter(ComplianceReview::isApproval).count();
-        long rejections = reviews.stream().filter(ComplianceReview::isRejection).count();
+        LocalDateTime until = LocalDateTime.now();
+        long totalReviews = complianceReviewRepository.countByReviewer_IdAndReviewedAtBetween(reviewerId, since, until);
+        long approvals = complianceReviewRepository.countByReviewer_IdAndDecisionAndReviewedAtBetween(
+                reviewerId, ReviewDecision.APPROVED, since, until);
+        long rejections = complianceReviewRepository.countByReviewer_IdAndDecisionAndReviewedAtBetween(
+                reviewerId, ReviewDecision.REJECTED, since, until);
         
         double approvalRate = totalReviews > 0 ? (approvals * 100.0 / totalReviews) : 0.0;
         
@@ -232,7 +265,7 @@ public class ComplianceReviewService {
                 .rejections(rejections)
                 .approvalRate(approvalRate)
                 .periodStart(since)
-                .periodEnd(LocalDateTime.now())
+                .periodEnd(until)
                 .build();
     }
 

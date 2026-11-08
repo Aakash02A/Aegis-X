@@ -71,6 +71,7 @@ public enum AuditEventType {
 
     // Manual Review
     MANUAL_REVIEW_NOTE_ADDED,
+    MANUAL_REVIEW_DECISION,
 
     // System & Audit
     AUDIT_ERROR,

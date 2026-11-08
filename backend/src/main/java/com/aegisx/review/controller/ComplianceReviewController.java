@@ -18,6 +18,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
@@ -26,7 +27,6 @@ import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
-import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -44,15 +44,15 @@ public class ComplianceReviewController {
     private final ComplianceReviewService complianceReviewService;
     private final UserRepository userRepository;
 
-    @Operation(summary = "Get review queue", 
-               description = "Retrieves transactions pending compliance review ordered by priority")
+    @Operation(summary = "Get review queue",
+               description = "Retrieves pending escalated transactions, newest first, with database pagination and search")
     @GetMapping("/queue")
     @PreAuthorize("hasRole('COMPLIANCE_OFFICER') or hasRole('ADMIN')")
     public ResponseEntity<ApiResponse<Page<ReviewQueueItemResponse>>> getReviewQueue(
             @Parameter(description = "Page number (0-based)") @RequestParam(defaultValue = "0") int page,
             @Parameter(description = "Page size") @RequestParam(defaultValue = "20") int size,
-            @Parameter(description = "Optional queue filter: COMPLIANCE_HOLD, OCR_FAILED, AI_FAILED, PAYMENT_FAILED, SETTLEMENT_FAILED, HIGH_RISK, PENDING_REVIEW")
-            @RequestParam(required = false) String filter) {
+            @Parameter(description = "Search reference, beneficiary, merchant name, or merchant email")
+            @RequestParam(required = false) String q) {
         
         // This controller builds its own PageRequest, so the global pageable cap does not apply.
         // Clamp here instead: an unbounded size would let a caller ask the server to materialise the
@@ -61,25 +61,28 @@ public class ComplianceReviewController {
         int safeSize = Math.min(Math.max(size, 1), 100);
         log.debug("Getting review queue - page: {}, size: {}", safePage, safeSize);
 
+        String search = q == null ? "" : q.trim();
+        if (search.length() > 100) {
+            return ResponseEntity.badRequest().body(ApiResponse.error("Search query must not exceed 100 characters"));
+        }
         Pageable pageable = PageRequest.of(safePage, safeSize);
-        Page<ReviewQueueItemResponse> queue = complianceReviewService.getReviewQueue(pageable, filter);
+        Page<ReviewQueueItemResponse> queue = complianceReviewService.searchReviewQueue(pageable, search);
         
         return ResponseEntity.ok(ApiResponse.success(queue, "Review queue retrieved successfully"));
     }
 
-    @Operation(summary = "Get my review queue",
-               description = "Retrieves unreviewed transactions for the current compliance officer")
-    @GetMapping("/queue/my")
+    @Operation(summary = "Get unreviewed queue",
+               description = "Retrieves unreviewed escalated transactions from the shared compliance queue. Reviewer assignment is not implemented; /queue/my is a legacy alias.")
+    @GetMapping({"/queue/unreviewed", "/queue/my"})
     @PreAuthorize("hasRole('COMPLIANCE_OFFICER') or hasRole('ADMIN')")
-    public ResponseEntity<ApiResponse<List<ReviewQueueItemResponse>>> getMyReviewQueue(
-            Authentication authentication) {
+    public ResponseEntity<ApiResponse<Page<ReviewQueueItemResponse>>> getUnreviewedQueue(
+            @Parameter(description = "Page number (0-based)") @RequestParam(defaultValue = "0") int page,
+            @Parameter(description = "Page size") @RequestParam(defaultValue = "20") int size) {
+        log.debug("Getting shared unreviewed review queue - page: {}, size: {}", page, size);
         
-        UUID reviewerId = getUserIdFromAuthentication(authentication);
-        log.debug("Getting personal review queue for reviewer: {}", reviewerId);
-        
-        List<ReviewQueueItemResponse> myQueue = complianceReviewService.getMyReviewQueue(reviewerId);
-        
-        return ResponseEntity.ok(ApiResponse.success(myQueue, "Personal review queue retrieved successfully"));
+        Page<ReviewQueueItemResponse> queue = complianceReviewService.getUnreviewedQueue(boundedPage(page, size));
+
+        return ResponseEntity.ok(ApiResponse.success(queue, "Unreviewed queue retrieved successfully"));
     }
 
     @Operation(summary = "Get review item details",
@@ -94,7 +97,8 @@ public class ComplianceReviewController {
         Optional<ReviewQueueItemResponse> reviewItem = complianceReviewService.getReviewItem(transactionId);
         
         if (reviewItem.isEmpty()) {
-            return ResponseEntity.ok(ApiResponse.error("Transaction not found or not in review queue"));
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(ApiResponse.error("Transaction not found or not in review queue"));
         }
         
         return ResponseEntity.ok(ApiResponse.success(reviewItem.get(), "Review item retrieved successfully"));
@@ -152,15 +156,15 @@ public class ComplianceReviewController {
                description = "Retrieves review history for a transaction")
     @GetMapping("/history/{transactionId}")
     @PreAuthorize("hasRole('COMPLIANCE_OFFICER') or hasRole('ADMIN')")
-    public ResponseEntity<ApiResponse<List<ComplianceReviewResponse>>> getReviewHistory(
-            @Parameter(description = "Transaction ID") @PathVariable UUID transactionId) {
+    public ResponseEntity<ApiResponse<Page<ComplianceReviewResponse>>> getReviewHistory(
+            @Parameter(description = "Transaction ID") @PathVariable UUID transactionId,
+            @Parameter(description = "Page number (0-based)") @RequestParam(defaultValue = "0") int page,
+            @Parameter(description = "Page size") @RequestParam(defaultValue = "20") int size) {
         
         log.debug("Getting review history for transaction: {}", transactionId);
         
-        List<ComplianceReview> history = complianceReviewService.getReviewHistory(transactionId);
-        List<ComplianceReviewResponse> responses = history.stream()
-                .map(ComplianceReviewResponse::fromEntity)
-                .toList();
+        Page<ComplianceReviewResponse> responses = complianceReviewService
+                .getReviewHistory(transactionId, boundedPage(page, size));
         
         return ResponseEntity.ok(ApiResponse.success(responses, "Review history retrieved successfully"));
     }
@@ -184,7 +188,7 @@ public class ComplianceReviewController {
         
         log.debug("Getting reviewer statistics for: {}, days: {}", reviewerId, days);
         
-        LocalDateTime since = LocalDateTime.now().minusDays(days);
+        LocalDateTime since = LocalDateTime.now().minusDays(boundedDays(days));
         ComplianceReviewService.ReviewerStats stats = complianceReviewService.getReviewerStats(reviewerId, since);
         
         return ResponseEntity.ok(ApiResponse.success(stats, "Reviewer statistics retrieved successfully"));
@@ -200,7 +204,7 @@ public class ComplianceReviewController {
         
         UUID reviewerId = getUserIdFromAuthentication(authentication);
         
-        LocalDateTime since = LocalDateTime.now().minusDays(days);
+        LocalDateTime since = LocalDateTime.now().minusDays(boundedDays(days));
         ComplianceReviewService.ReviewerStats stats = complianceReviewService.getReviewerStats(reviewerId, since);
         
         return ResponseEntity.ok(ApiResponse.success(stats, "Your statistics retrieved successfully"));
@@ -280,6 +284,14 @@ public class ComplianceReviewController {
         return authentication.getAuthorities().stream()
                 .map(GrantedAuthority::getAuthority)
                 .anyMatch(role::equals);
+    }
+
+    private Pageable boundedPage(int page, int size) {
+        return PageRequest.of(Math.max(0, page), Math.min(Math.max(1, size), 100));
+    }
+
+    private int boundedDays(int days) {
+        return Math.min(Math.max(days, 1), 3650);
     }
 
     /**

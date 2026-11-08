@@ -125,6 +125,15 @@ const complianceJs = fs.readFileSync(path.join(frontendDir, 'js/compliance.js'),
 assert(complianceJs.includes("/v1/compliance/queue"), 'Compliance reads the review queue API');
 assert(complianceJs.includes("/v1/compliance/review"), 'Compliance decisions use the review API');
 assert(complianceJs.includes('justification.length < 10'), 'Review decisions require justification');
+assert(complianceJs.includes('URLSearchParams') && complianceJs.includes('result.totalPages'), 'Compliance queue uses server pagination');
+assert(!complianceJs.includes('transactions.slice('), 'Compliance queue does not paginate only the loaded client subset');
+assert(complianceJs.includes('No escalated cases are awaiting a decision.'), 'Compliance queue has a specific empty state');
+assert(complianceJs.includes('this.loadError') && complianceJs.includes("retry.textContent = 'Retry'"), 'Compliance queue shows an error state with retry');
+assert(complianceJs.includes('result?.resultingState'), 'Compliance UI displays the decision result state from the API');
+assert(!complianceJs.includes('event.submitter'), 'Review decision is selected explicitly and cannot default to Reject on Enter');
+const complianceHtml = fs.readFileSync(path.join(frontendDir, 'compliance.html'), 'utf-8');
+assert(complianceHtml.includes('Only escalated cases awaiting a human decision appear here.'), 'Compliance UI explains the reviewable queue scope');
+assert(!complianceHtml.includes('OCR Failure') && !complianceHtml.includes('Settlement Failure'), 'Compliance UI does not offer non-reviewable failure filters');
 
 const settlementJs = fs.readFileSync(path.join(frontendDir, 'js/settlement.js'), 'utf-8');
 assert(settlementJs.includes('/v1/settlements/status/'), 'Settlements use the existing status page API');

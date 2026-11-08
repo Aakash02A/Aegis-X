@@ -3,6 +3,9 @@ package com.aegisx.review.controller;
 import com.aegisx.auth.entity.Role;
 import com.aegisx.auth.entity.User;
 import com.aegisx.auth.repository.UserRepository;
+import com.aegisx.audit.entity.ActorType;
+import com.aegisx.audit.entity.AuditEventType;
+import com.aegisx.audit.repository.AuditEventRepository;
 import com.aegisx.review.dto.ComplianceReviewRequest;
 import com.aegisx.review.entity.ComplianceReview;
 import com.aegisx.review.entity.ReviewDecision;
@@ -47,6 +50,7 @@ class ComplianceReviewControllerTest {
     @Autowired private UserRepository userRepository;
     @Autowired private TransactionRepository transactionRepository;
     @Autowired private ComplianceReviewRepository reviewRepository;
+    @Autowired private AuditEventRepository auditEventRepository;
     @Autowired private ComplianceReviewService reviewService;
 
     private User reviewer;
@@ -82,13 +86,16 @@ class ComplianceReviewControllerTest {
     }
 
     @Test
-    @DisplayName("Reads the current officer's persisted personal queue")
+    @DisplayName("Reads the paginated shared unreviewed queue and legacy alias")
     @WithMockUser(username = REVIEWER_EMAIL, authorities = "ROLE_COMPLIANCE_OFFICER")
     void returnsPersonalQueue() throws Exception {
-        mockMvc.perform(get("/api/v1/compliance/queue/my"))
+        mockMvc.perform(get("/api/v1/compliance/queue/unreviewed").param("page", "0").param("size", "20"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
-                .andExpect(jsonPath("$.data[0].transactionId").value(transaction.getId().toString()));
+                .andExpect(jsonPath("$.data.content[0].transactionId").value(transaction.getId().toString()));
+        mockMvc.perform(get("/api/v1/compliance/queue/my").param("page", "0").param("size", "20"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.content[0].transactionId").value(transaction.getId().toString()));
     }
 
     @Test
@@ -106,7 +113,7 @@ class ComplianceReviewControllerTest {
     @WithMockUser(username = REVIEWER_EMAIL, authorities = "ROLE_COMPLIANCE_OFFICER")
     void returnsNotFoundReviewItem() throws Exception {
         mockMvc.perform(get("/api/v1/compliance/review/{transactionId}", UUID.randomUUID()))
-                .andExpect(status().isOk())
+                .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.message").value("Transaction not found or not in review queue"));
     }
@@ -130,6 +137,18 @@ class ComplianceReviewControllerTest {
                 .isEqualTo(reviewer.getId());
         assertThat(transactionRepository.findById(transaction.getId()).orElseThrow().getStatus())
                 .isEqualTo(TransactionStatus.APPROVED);
+        assertThat(auditEventRepository.findByTransactionIdOrderByCreatedAtAsc(transaction.getId()))
+                .anySatisfy(event -> {
+                    assertThat(event.getEventType()).isEqualTo(AuditEventType.MANUAL_REVIEW_DECISION);
+                    assertThat(event.getActorType()).isEqualTo(ActorType.USER);
+                    assertThat(event.getActorId()).isEqualTo(reviewer.getId());
+                    assertThat(event.getPreviousState()).isEqualTo("COMPLIANCE_HOLD");
+                    assertThat(event.getNewState()).isEqualTo("APPROVED");
+                    assertThat(event.getEventData().get("decision").asText()).isEqualTo("APPROVED");
+                    assertThat(event.getEventData().get("justification").asText())
+                            .isEqualTo("All compliance requirements are satisfied");
+                    assertThat(event.getCorrelationId()).isNotBlank();
+                });
     }
 
     @Test
@@ -153,7 +172,7 @@ class ComplianceReviewControllerTest {
         mockMvc.perform(get("/api/v1/compliance/history/{transactionId}", transaction.getId()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
-                .andExpect(jsonPath("$.data[0].decision").value("APPROVED"));
+                .andExpect(jsonPath("$.data.content[0].decision").value("APPROVED"));
     }
 
     @Test
@@ -182,6 +201,82 @@ class ComplianceReviewControllerTest {
         mockMvc.perform(get("/api/v1/compliance/queue").param("size", "100000"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.pageable.pageSize").value(100));
+        mockMvc.perform(get("/api/v1/compliance/queue/unreviewed").param("size", "100000"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.pageable.pageSize").value(100));
+        mockMvc.perform(get("/api/v1/compliance/history/{transactionId}", transaction.getId())
+                        .param("size", "100000"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.pageable.pageSize").value(100));
+    }
+
+    @Test
+    @DisplayName("Returns a stable second queue page instead of slicing a client subset")
+    @WithMockUser(username = REVIEWER_EMAIL, authorities = "ROLE_COMPLIANCE_OFFICER")
+    void returnsSecondQueuePage() throws Exception {
+        for (int index = 0; index < 20; index++) {
+            createTransaction(transaction.getMerchant(), TransactionStatus.COMPLIANCE_HOLD);
+        }
+
+        mockMvc.perform(get("/api/v1/compliance/queue").param("page", "0").param("size", "20"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totalElements").value(21))
+                .andExpect(jsonPath("$.data.totalPages").value(2))
+                .andExpect(jsonPath("$.data.content.length()").value(20));
+        mockMvc.perform(get("/api/v1/compliance/queue").param("page", "1").param("size", "20"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totalElements").value(21))
+                .andExpect(jsonPath("$.data.content.length()").value(1));
+    }
+
+    @Test
+    @DisplayName("Searches the entire pending queue on the server")
+    @WithMockUser(username = REVIEWER_EMAIL, authorities = "ROLE_COMPLIANCE_OFFICER")
+    void searchesQueue() throws Exception {
+        mockMvc.perform(get("/api/v1/compliance/queue").param("q", "test beneficiary"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totalElements").value(1))
+                .andExpect(jsonPath("$.data.content[0].transactionId").value(transaction.getId().toString()));
+    }
+
+    @Test
+    @DisplayName("Rejects a decision when the reason is too short")
+    @WithMockUser(username = REVIEWER_EMAIL, authorities = "ROLE_COMPLIANCE_OFFICER")
+    void rejectsShortDecisionReason() throws Exception {
+        mockMvc.perform(post("/api/v1/compliance/review")
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(ComplianceReviewRequest.builder()
+                                .transactionId(transaction.getId())
+                                .decision(ReviewDecision.REJECTED)
+                                .justification("No reason")
+                                .build())))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @DisplayName("Persists a reasoned rejection and its human audit event")
+    @WithMockUser(username = REVIEWER_EMAIL, authorities = "ROLE_COMPLIANCE_OFFICER")
+    void rejectsTransactionWithAudit() throws Exception {
+        mockMvc.perform(post("/api/v1/compliance/review")
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(ComplianceReviewRequest.builder()
+                                .transactionId(transaction.getId())
+                                .decision(ReviewDecision.REJECTED)
+                                .justification("Evidence conflicts with the approved beneficiary records.")
+                                .build())))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.decision").value("REJECTED"))
+                .andExpect(jsonPath("$.data.resultingState").value("REJECTED"));
+        assertThat(transactionRepository.findById(transaction.getId()).orElseThrow().getStatus())
+                .isEqualTo(TransactionStatus.REJECTED);
+        assertThat(auditEventRepository.findByTransactionIdOrderByCreatedAtAsc(transaction.getId()))
+                .anySatisfy(event -> {
+                    assertThat(event.getEventType()).isEqualTo(AuditEventType.MANUAL_REVIEW_DECISION);
+                    assertThat(event.getActorId()).isEqualTo(reviewer.getId());
+                    assertThat(event.getNewState()).isEqualTo("REJECTED");
+                });
     }
 
     @Test

@@ -35,6 +35,12 @@ public interface ComplianceReviewRepository extends JpaRepository<ComplianceRevi
            "ORDER BY cr.reviewedAt DESC")
     List<ComplianceReview> findByTransactionId(@Param("transactionId") UUID transactionId);
 
+    @Query(value = "SELECT cr FROM ComplianceReview cr JOIN FETCH cr.transaction JOIN FETCH cr.reviewer " +
+            "WHERE cr.transaction.id = :transactionId",
+            countQuery = "SELECT COUNT(cr) FROM ComplianceReview cr WHERE cr.transaction.id = :transactionId")
+    Page<ComplianceReview> findPagedHistoryByTransactionId(@Param("transactionId") UUID transactionId,
+                                                           Pageable pageable);
+
     /**
      * Finds the latest review for a transaction.
      */
@@ -84,6 +90,11 @@ public interface ComplianceReviewRepository extends JpaRepository<ComplianceRevi
     List<ComplianceReview> findByReviewerAndDateRange(@Param("reviewerId") UUID reviewerId,
                                                       @Param("startDate") LocalDateTime startDate,
                                                       @Param("endDate") LocalDateTime endDate);
+
+    long countByReviewer_IdAndReviewedAtBetween(UUID reviewerId, LocalDateTime startDate, LocalDateTime endDate);
+
+    long countByReviewer_IdAndDecisionAndReviewedAtBetween(UUID reviewerId, ReviewDecision decision,
+                                                           LocalDateTime startDate, LocalDateTime endDate);
 
     /**
      * Counts reviews by reviewer.

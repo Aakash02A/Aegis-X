@@ -27,6 +27,7 @@ public class ComplianceReviewResponse {
     private UUID reviewerId;
     private String reviewerName;
     private TransactionStatus previousState;
+    private TransactionStatus resultingState;
     private ReviewDecision decision;
     private String justification;
     private LocalDateTime reviewedAt;
@@ -48,6 +49,7 @@ public class ComplianceReviewResponse {
                 .reviewerId(review.getReviewer().getId())
                 .reviewerName(review.getReviewer().getFullName())
                 .previousState(review.getPreviousState())
+                .resultingState(review.getTransaction().getStatus())
                 .decision(review.getDecision())
                 .justification(review.getJustification())
                 .reviewedAt(review.getReviewedAt())
