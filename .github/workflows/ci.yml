@@ -115,17 +115,22 @@ jobs:
         working-directory: backend
         run: |
           python3 - <<'PY'
-          import glob, sys, xml.etree.ElementTree as ET
+          import glob, pathlib, sys, xml.etree.ElementTree as ET
 
           total = skipped = failed = 0
           skipped_classes = set()
           executed_classes = set()
+          report_classes = set()
           # Only the gated suites: a stale report from an earlier `mvn test` must not make this look
           # like the MySQL job ran anything it did not.
           for path in glob.glob('target/surefire-reports/TEST-*MySql*.xml'):
               root = ET.parse(path).getroot()
+              suite_class = root.get('name', '')
+              report_classes.add(suite_class.rsplit('.', 1)[-1])
               total += int(root.get('tests', 0))
               failed += int(root.get('failures', 0)) + int(root.get('errors', 0))
+              if int(root.get('skipped', 0)) and not suite_class.endswith('MySqlDdlGenerateTest'):
+                  skipped_classes.add(suite_class)
               for case in root.iter('testcase'):
                   cls = case.get('classname', '')
                   if case.find('skipped') is not None:
@@ -147,6 +152,11 @@ jobs:
               print('::error::no MySQL test executed -- is INTEGRITY_MYSQL_URL set?')
               ok = False
           unexpected = {c for c in skipped_classes if not c.endswith('MySqlDdlGenerateTest')}
+          source_classes = {path.stem for path in pathlib.Path('src/test/java').rglob('MySql*Test.java')}
+          missing_reports = source_classes - report_classes
+          if missing_reports:
+              print('::error::missing MySQL reports: ' + ', '.join(sorted(missing_reports)))
+              ok = False
           if unexpected:
               print('::error::unexpected skipped classes: ' + ', '.join(sorted(unexpected)))
               ok = False
@@ -160,6 +170,127 @@ jobs:
           name: surefire-mysql
           path: backend/target/surefire-reports/
           if-no-files-found: ignore
+
+  backend-randomized:
+    name: Backend - MySQL 8.4 randomized full suite (2 runs)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_DATABASE: aegisx_mysqlverify
+          MYSQL_ALLOW_EMPTY_PASSWORD: 'yes'
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd "mysqladmin ping -h 127.0.0.1 --silent"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 30
+    env:
+      INTEGRITY_MYSQL_URL: jdbc:mysql://127.0.0.1:3306/aegisx_mysqlverify?connectionTimeZone=UTC&forceConnectionTimeZoneToSession=true&characterEncoding=UTF-8&useSSL=false&allowPublicKeyRetrieval=true
+      INTEGRITY_MYSQL_USER: root
+      INTEGRITY_MYSQL_PASS: ""
+      SPRING_PROFILES_ACTIVE: test
+      INTEGRITY_ALLOW_FINANCIAL_EXECUTION: "false"
+      RAZORPAYX_ENABLED: "false"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+          cache-dependency-path: backend/pom.xml
+
+      - name: Run randomized full suite twice and check skipped-test accounting
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          for run in 1 2; do
+            echo "### Randomized MySQL-backed full-suite run $run/2"
+            ./mvnw -B clean test -Dsurefire.runOrder=random
+            python3 - <<'PY'
+          import glob, sys, xml.etree.ElementTree as ET
+
+          tests = failures = errors = skipped = 0
+          skipped_classes = set()
+          mysql_executed = 0
+          for path in glob.glob('target/surefire-reports/TEST-*.xml'):
+              root = ET.parse(path).getroot()
+              tests += int(root.get('tests', 0))
+              failures += int(root.get('failures', 0))
+              errors += int(root.get('errors', 0))
+              skipped += int(root.get('skipped', 0))
+              for case in root.iter('testcase'):
+                  classname = case.get('classname', '')
+                  if 'MySql' in classname and case.find('skipped') is None:
+                      mysql_executed += 1
+                  if case.find('skipped') is not None:
+                      skipped_classes.add(classname)
+
+          print(f'tests={tests} failures={failures} errors={errors} skipped={skipped} mysql_executed={mysql_executed}')
+          unexpected = {name for name in skipped_classes if not name.endswith('MySqlDdlGenerateTest')}
+          if failures or errors or mysql_executed == 0 or skipped != 1 or skipped_classes != {'com.aegisx.integrity.MySqlDdlGenerateTest'} or unexpected:
+              print('::error::randomized suite failed or skipped-test accounting was unexpected')
+              sys.exit(1)
+          PY
+          done
+
+      - name: Upload surefire reports
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: surefire-randomized
+          path: backend/target/surefire-reports/
+          if-no-files-found: ignore
+
+  backend-e2e:
+    name: Backend - HTTP e2e (simulated provider)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_DATABASE: aegisx_audit
+          MYSQL_ALLOW_EMPTY_PASSWORD: 'yes'
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd "mysqladmin ping -h 127.0.0.1 --silent"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 30
+    env:
+      MYSQL_HOST: 127.0.0.1
+      MYSQL_PORT: "3306"
+      MYSQL_E2E_USER: root
+      MYSQL_E2E_PASSWORD: ""
+      E2E_DB: aegisx_audit
+      INTEGRITY_ALLOW_FINANCIAL_EXECUTION: "false"
+      RAZORPAYX_ENABLED: "false"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+          cache-dependency-path: backend/pom.xml
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Run e2e script
+        run: bash tests/e2e/run-e2e.sh
 
   frontend:
     name: Frontend - build and checks

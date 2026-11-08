@@ -83,7 +83,8 @@ public class TestPaymentProviderAdapter implements PaymentProviderAdapter {
      */
     private static final long PROCESS_SALT = new java.security.SecureRandom().nextLong() & 0xFFFFFFFFFFFFL;
 
-    private static final String WEBHOOK_SECRET = "test-only-integrity-webhook-secret";
+    private static final String WEBHOOK_SECRET = System.getenv().getOrDefault(
+            "E2E_SIMULATED_WEBHOOK_SECRET", "test-only-integrity-webhook-secret");
     private static final long ID_SEED = 20261010L;
 
     public TestPaymentProviderAdapter(IntegrityWebhookSignatureService signatureService) {

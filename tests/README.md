@@ -52,7 +52,9 @@ npm test
 ```
 
 ### 4. End-to-End HTTP Blackbox Suite
-Drives the real Spring Boot REST API and signed Razorpay webhooks against a disposable MySQL database:
+Drives the Spring Boot REST API and signed synthetic webhooks against the local disposable
+`aegisx_audit` MySQL database using the in-process simulated provider. The runner recreates that
+database and disables money-moving and external provider calls:
 ```bash
 bash tests/e2e/run-e2e.sh
 ```

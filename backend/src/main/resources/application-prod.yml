@@ -29,6 +29,12 @@ spring:
     baseline-on-migrate: false
     validate-on-migrate: true
 
+aegisx:
+  cors:
+    # No development-origin fallback is allowed in prod. ProductionSafetyChecks rejects empty
+    # configuration so deployments must name their frontend origins explicitly.
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:}
+
 management:
   endpoint:
     health:

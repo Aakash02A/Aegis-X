@@ -164,6 +164,7 @@
     <!-- Production Profile: File output with JSON, less verbose -->
     <springProfile name="prod">
         <root level="WARN">
+            <appender-ref ref="CONSOLE"/>
             <appender-ref ref="ASYNC_FILE"/>
         </root>
         <logger name="com.aegisx" level="INFO"/>

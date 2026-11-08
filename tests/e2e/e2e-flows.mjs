@@ -85,6 +85,28 @@ if (!wsId) {
   console.log('\n=== E2E: aborted, no default workspace ===');
   process.exit(1);
 }
+
+if (process.env.E2E_SIMULATED_PROVIDER === 'true') {
+  try {
+    const javaBin = process.env.JAVA_BIN || 'java';
+    const cp = process.env.CP || '';
+    const mysqlTool = `${process.env.HARNESS_DIR || '.'}/MySqlTool.java`;
+    const database = process.env.E2E_DB || 'aegisx_audit';
+    execFileSync(javaBin, [
+      '-cp', cp,
+      mysqlTool,
+      database,
+      'sql',
+      `UPDATE pi_workspaces SET provider_mode='SIMULATED' WHERE id='${wsId}'`,
+    ], { stdio: 'pipe' });
+    const updated = await req('GET', '/api/integrity/workspaces/default');
+    record('Use in-process simulated provider',
+      updated.status === 200 && updated.json?.data?.providerMode === 'SIMULATED',
+      `status=${updated.status} mode=${updated.json?.data?.providerMode}`);
+  } catch {
+    record('Use in-process simulated provider', false, 'test fixture setup failed');
+  }
+}
 const base = `/api/integrity/workspaces/${wsId}`;
 
 let order = null;

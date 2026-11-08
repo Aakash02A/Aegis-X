@@ -29,6 +29,9 @@ import java.util.concurrent.ConcurrentHashMap;
  * - Mitigates DoS attacks
  * - Protects payment webhooks from replay
  * 
+ * This implementation is single-instance only: buckets live in this JVM, so each additional
+ * application instance receives its own full allowance. Use a shared store before scaling out.
+ *
  * Production Recommendation:
  * - Replace in-memory implementation with Redis for distributed rate limiting
  * - Use IP from X-Forwarded-For header when behind reverse proxy
