@@ -444,3 +444,51 @@ Commands used the direct Maven 3.9.10 launcher. For the required full suite, `.e
 - Automatic retry after RazorpayX assigned a payout ID: **NOT SUPPORTED**; operator-side manual resolution is required to avoid a possible duplicate payout.
 - Phase 8 reconciliation investigation and three consecutive clean randomized MySQL-backed runs remain open.
 - The user's uncommitted `README.md` changes remain unstaged and uncommitted.
+
+## Phase 8: reconciliation and audit (2026-11-08)
+
+### Verdict
+**COMPLETE for adapter-based reconciliation and application-level audit API behavior.** Provider reconciliation reads through the configured adapter and does not manufacture confirmation by flipping the internal state. The randomized outage/recovery acceptance test now proves a fresh simulated-provider API read clears the temporary uncertainty. A live Razorpay API read was not made in this offline run and remains **NOT VERIFIED**.
+
+### Reconciliation root cause and fix
+- The randomized failure in `IntegrityReconciliationWorkflowTest.providerOutageIsReported` showed internal `PAID` against provider `CREATED` after recovery. `TestPaymentProviderAdapter.fetch*` returned each resource's last-update timestamp as `observedAt`; initial create and later state update could land in the same MySQL `DATETIME(6)` value. The evidence selector then had no reliable chronology and could choose the old state.
+- The production `RazorpayTestAdapter` stamps each returned snapshot with the response time (`backend/src/main/java/com/aegisx/integrity/provider/RazorpayTestAdapter.java:136`, `:166`, `:300-346`). The test adapter now follows that contract for order, payment, refund, and transfer reads (`backend/src/test/java/com/aegisx/integrity/support/TestPaymentProviderAdapter.java:139-212`, `:344-362`); the contract is documented on `OrderSnapshot` (`backend/src/main/java/com/aegisx/integrity/provider/PaymentProviderAdapter.java:58-62`).
+- `ProviderSyncService` still fetches provider state through the adapter before recording observations and applying them (`backend/src/main/java/com/aegisx/integrity/service/ProviderSyncService.java:76-112`). The outage test now checks the internal payment and simulator's provider payment independently, then requires a later `PROVIDER_API_CONFIRMED` observation of the provider's `PAID` order state before asserting the recovered run is clean (`backend/src/test/java/com/aegisx/integrity/IntegrityReconciliationWorkflowTest.java:235-307`).
+- Simulation reset restores availability controls while retaining records referenced by persisted rows (`backend/src/test/java/com/aegisx/integrity/support/IntegrityScenarioFixtures.java:194-202`, `backend/src/test/java/com/aegisx/integrity/support/TestPaymentProviderAdapter.java:256-263`); `resetPreservesProviderTruthForPersistedOrders` covers this (`backend/src/test/java/com/aegisx/integrity/IntegrityReconciliationWorkflowTest.java:319-330`).
+- Lifecycle conflict detection ignores state ordering when observations are closer than either source's precision (`backend/src/main/java/com/aegisx/integrity/reconciliation/method/ProposedMethod.java:197-204`). The new 200 ns regression case verifies no lifecycle sequence is inferred (`backend/src/test/java/com/aegisx/integrity/reconciliation/method/ProposedMethodTest.java:152-176`).
+
+### Audit coverage
+- Every successful policy evaluation now emits a dedicated `POLICY_APPROVED` or `POLICY_HOLD` audit event with the prior and resulting status, evaluated rules, justification, correlation ID, and policy-engine actor (`backend/src/main/java/com/aegisx/policy/service/PolicyEvaluationService.java:175-196`, `backend/src/main/java/com/aegisx/audit/service/AuditService.java:375-408`). It is recorded even when a repeated hold leaves the transaction status unchanged. Policy-originated state transitions also identify `POLICY_ENGINE` as actor and module (`backend/src/main/java/com/aegisx/transaction/service/TransactionService.java:190-207`).
+- Tests assert policy APPROVED and COMPLIANCE_HOLD audit events include who, what, and when, including a hold re-evaluation that starts and ends in COMPLIANCE_HOLD (`backend/src/test/java/com/aegisx/policy/service/PolicyEvaluationServiceTest.java:105-164`). Human exception resolution audit coverage asserts actor label, actor ID, category, exception, result detail, and timestamp (`backend/src/test/java/com/aegisx/integrity/IntegrityReconciliationWorkflowTest.java:333-355`).
+- Both audit REST surfaces have read-only API contracts: the legacy transaction audit controller and integrity workspace audit controller expose GET mappings only (`backend/src/main/java/com/aegisx/audit/controller/AuditController.java:138-139`, `:223-224`; `backend/src/main/java/com/aegisx/integrity/controller/IntegrityAuditController.java:26-39`). HTTP attempts to create, edit, or delete audit rows are rejected, and row count and stored fields remain unchanged (`backend/src/test/java/com/aegisx/audit/AuditIntegrationTest.java:316-357`, `backend/src/test/java/com/aegisx/integrity/IntegrityApiContractTest.java:115-149`). This verifies application/API immutability; it does not claim database-level or cryptographic tamper resistance.
+
+### Commands and results
+For every Maven command, `.env` was loaded in process memory only. The JDBC schema was guarded and rewritten to local `aegisx_audit`; provider configuration used offline placeholders, `RAZORPAYX_ENABLED=false`, `INTEGRITY_ALLOW_FINANCIAL_EXECUTION=false`, and the `test` profile. No `.env` value was printed or written, and no real provider call was made.
+
+- Focused Phase 8 tests: `mvn -B -Dtest=ProposedMethodTest,PolicyEvaluationServiceTest,IntegrityApiContractTest,AuditIntegrationTest,IntegrityReconciliationWorkflowTest,OfflineProviderFixtureTest test`.
+  ```text
+  Tests run: 55, Failures: 0, Errors: 0, Skipped: 0
+  BUILD SUCCESS
+  ```
+- Webhook harness verification after correcting the offline secret to the test fixture's configured value: `mvn -B -Dtest=RazorpayWebhookControllerTest test`.
+  ```text
+  Tests run: 2, Failures: 0, Errors: 0, Skipped: 0
+  BUILD SUCCESS
+  ```
+- Three consecutive randomized full-suite runs, each `mvn -B clean test -Dsurefire.runOrder=random "-Djunit.jupiter.testclass.order.default=org.junit.jupiter.api.ClassOrderer$Random" "-Djunit.jupiter.testmethod.order.default=org.junit.jupiter.api.MethodOrderer$Random"`, with MySQL verification enabled against `aegisx_audit`:
+  ```text
+  Run 1: Tests run: 475, Failures: 0, Errors: 0, Skipped: 1; BUILD SUCCESS
+  Run 2: Tests run: 475, Failures: 0, Errors: 0, Skipped: 1; BUILD SUCCESS
+  Run 3: Tests run: 475, Failures: 0, Errors: 0, Skipped: 1; BUILD SUCCESS
+  ```
+  The sole skip in each run was `MySqlDdlGenerateTest`.
+- Diagnostic history: one preliminary full run failed because the offline harness supplied a webhook key different from the test fixture; matching the fixture's offline value made the two webhook controller tests pass. A later randomized run exposed the simulator timestamp root cause described above. Neither run counts toward the three consecutive clean-run gate; no assertion was weakened.
+
+### Phase commit
+`4006d34 Harden reconciliation observation timing and audit trail`
+
+### Open items
+- Live Razorpay API reconciliation and live webhook remain **NOT VERIFIED**; tests used the explicitly simulated provider, labelled simulated in observations.
+- Audit APIs reject writes, but database-administrator tampering and cryptographic tamper evidence are **NOT SUPPORTED**.
+- Phase 9 review queue/frontend walk-through, pagination, and remaining phases are next.
+- The user's uncommitted `README.md` changes remain untouched, unstaged, and uncommitted.
