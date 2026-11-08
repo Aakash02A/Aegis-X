@@ -492,3 +492,39 @@ For every Maven command, `.env` was loaded in process memory only. The JDBC sche
 - Audit APIs reject writes, but database-administrator tampering and cryptographic tamper evidence are **NOT SUPPORTED**.
 - Phase 9 review queue/frontend walk-through, pagination, and remaining phases are next.
 - The user's uncommitted `README.md` changes remain untouched, unstaged, and uncommitted.
+
+## Phase 9: review queue and frontend (2026-11-08)
+
+### Verdict
+**PARTIAL.** The review API, decision audit, pagination, frontend state handling, and a live local API walkthrough are verified. A browser UI walkthrough is **NOT VERIFIED** because Codex Work settings reported that local browser use is disabled and no browser surface was available. This is an environment limitation, not a code result.
+
+### Changes and behavior
+- `ComplianceReviewController` pages and searches the escalated review queue server-side, caps page sizes, provides unreviewed queue/history pages, restricts detail lookup to held cases, and validates the requested statistics window. `ComplianceReviewService` returns stable newest-first ordering and database-backed counts rather than loading entire lists.
+- Reviewer approve/reject actions require a justification, return the resulting transaction state, and write `MANUAL_REVIEW_DECISION` with reviewer identity, decision, justification, correlation ID, and before/after status. Controller and service tests cover authorization, decision outcomes, queue filtering, pagination, result state, and audit content.
+- `frontend/compliance.html` and `frontend/js/compliance.js` now render server pages and search, expose loading/error/retry/empty states, and show the decision outcome. The old client-only filters for failure and high-risk cases were removed because those filters did not identify reviewable held cases. No decision button defaults to Reject when invoked without a browser submitter.
+- The live local API walkthrough listed a held case, loaded its detail, approved it with a reason, observed one audit entry with the actor and state transition, and confirmed it left the unreviewed queue. This verifies API behavior, not browser rendering.
+- `/queue/my` remains a documented legacy alias of `/queue/unreviewed`; there is no reviewer assignment model, so the product cannot yet provide a genuinely personal queue. Persisted `COMPLIANCE_HOLD` is the current representation of an escalated case.
+
+### Commands and results
+- Focused backend review command: `mvn -B "-Dtest=ComplianceReviewControllerTest,ComplianceReviewServiceSummaryTest,ComplianceReviewQueueAgingTest,AiFailureReviewQueueTest" test`.
+  ```text
+  Tests run: 23, Failures: 0, Errors: 0, Skipped: 0
+  BUILD SUCCESS
+  ```
+- Frontend `npm test`: 96 passed, 0 failed. `npm run build`: success; 40 modules transformed.
+- MySQL-enabled randomized full suite ran with `.env` values loaded only in process memory, JDBC schema rewritten to `aegisx_audit`, local loopback access, offline provider placeholders, and financial execution and RazorpayX disabled. A temporary resolver lock-provider setting avoided writes to the read-only global Maven cache. The final run used `mvn -o -Daether.syncContext.named.factory=rwlock-local -B clean test -Dsurefire.runOrder=random`.
+  ```text
+  Tests run: 479, Failures: 0, Errors: 0, Skipped: 1
+  BUILD SUCCESS
+  ```
+  The only skip was `MySqlDdlGenerateTest`; MySQL-gated tests were enabled. An earlier harness attempt overrode the test-profile webhook fixture and returned 401; the environment override was removed, no assertion was changed, and the final randomized run passed.
+
+### Phase commit
+`c50b4af Harden compliance review queue and pagination`
+
+### Open items
+- Browser-driven UI walkthrough: **NOT VERIFIED** because local browser use was disabled by Work settings.
+- Reviewer assignment and a true personal `/queue/my`: **NOT SUPPORTED**.
+- Live external LLM, Razorpay webhook, and provider behavior remain **NOT VERIFIED** as recorded in earlier phases.
+- Continue with Phase 10 platform hygiene and Phase 11 end-to-end/status report.
+- The user's uncommitted `README.md` changes remain untouched, unstaged, and uncommitted.
