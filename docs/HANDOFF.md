@@ -528,3 +528,54 @@ For every Maven command, `.env` was loaded in process memory only. The JDBC sche
 - Live external LLM, Razorpay webhook, and provider behavior remain **NOT VERIFIED** as recorded in earlier phases.
 - Continue with Phase 10 platform hygiene and Phase 11 end-to-end/status report.
 - The user's uncommitted `README.md` changes remain untouched, unstaged, and uncommitted.
+
+## Phase 10: platform and production hygiene (2026-11-08)
+
+### Verdict
+**COMPLETE for the Phase 10 code and local verification criteria.** Production startup checks, storage selection, console logging, CI gates, and the isolated E2E runner are present and covered as noted below. GitHub Actions itself has not run in this workspace. Phase 11 performs the local E2E run.
+
+### Changes
+- Production configuration now has no default CORS origin (`backend/src/main/resources/application-prod.yml:36`). Existing `ProductionSafetyChecks` refuses a missing, weak, placeholder, or malformed JWT signing key and empty or wildcard CORS configuration (`backend/src/main/java/com/aegisx/common/config/ProductionSafetyChecks.java:34-61`). Six tests cover the production safety guard (`backend/src/test/java/com/aegisx/common/config/ProductionSafetyChecksTest.java:14-75`).
+- S3 selection now fails during bean initialization with a clear unsupported-implementation message; both storage services use the actual `app.storage.type` property (`backend/src/main/java/com/aegisx/storage/service/S3StorageService.java:18-40`, `backend/src/main/java/com/aegisx/storage/service/LocalStorageService.java:22`). `StorageSelectionTest` asserts the startup failure (`backend/src/test/java/com/aegisx/storage/service/StorageSelectionTest.java:13-38`).
+- Production Logback includes a console appender (`backend/src/main/resources/logback-spring.xml:13`, referenced by the prod root at `:90`). The rate-limit configuration now documents its per-JVM, single-instance boundary (`backend/src/main/java/com/aegisx/common/config/RateLimitingConfig.java:32-34`).
+- CI adds a MySQL 8.4 skip-accounting gate that accepts only `MySqlDdlGenerateTest` as skipped, a MySQL-backed full suite randomized twice, and a simulated-provider E2E job (`.github/workflows/ci.yml:92-294`). These workflow jobs are configured but not remotely executed here.
+- The E2E runner now restricts itself to local MySQL and exactly `aegisx_audit`, generates ephemeral test signing/webhook secrets, uses the in-process simulated provider, disables financial execution and external payment integrations, and writes reports under ignored `tests/e2e/out/` (`tests/e2e/run-e2e.sh:47-103`). The UI/API flow script emits a nonzero exit on failed checks (`tests/e2e/e2e-flows.mjs:257`). Full execution follows in Phase 11.
+- README claim cleanup is present in the worktree to remove unsupported performance, security-grade, real-integration, demo-credential, and production-readiness claims. `README.md` remains unstaged and uncommitted as required.
+
+### Credential scan (locations only; no values emitted)
+The scan covered all Git revisions, the current tracked and untracked worktree, the current index (empty after the Phase 10 code commit), and the ignored `.env` file. Environment substitutions, test fixtures, and example values were classified as placeholders. Concrete literal candidates requiring owner review:
+
+- Worktree `.env:4` — `DB_PASSWORD`, literal value; length bucket under 16.
+- Worktree `.env:6` — `JWT_SECRET`, literal value; length bucket 64 or more.
+- Historical `.env.example` static JWT assignments: commits `4bad66b339516c26a59e6d688e1416c6d72d39bd:4`, `516a8d9940127f2a9fb6004b710e5af53e958003:4`, `42bd2d045070eccccc4fea3c93f94348e127152a:6`, `b2fcffc4840c3630ae45bb6fc2b68543e5ea536e:6`, `f9bb10796e0d4e612f6fc52116c0c2194512320f:17`, `835be03a1a5cb90d1b9a2a63d1118fd3a5890c39:19`, and `d0576eda4ca2b8b8b1f8a5199dc184f7f96de817:19`.
+- Historical `.env.example` commit `d0576eda4ca2b8b8b1f8a5199dc184f7f96de817:77` — static demo-password assignment.
+
+No `.env` file is present in Git history. Current `.env.example` entries and test-only provider/webhook values were classified as placeholders. Do not reuse historical sample credentials. Owner action: rotate the current local DB password and JWT secret if they are active or reused elsewhere; rotate any historical sample values if they were ever deployed. No values were printed, copied into a report, or committed. The scan intentionally made no history rewrite.
+
+### Kept-as-notes assets
+- `ai-ml/prompts/regulatory-advisory-prompt.json` and `ai-ml/ocr/document-extraction-spec.json` have no in-repository runtime consumer found; the backend's AI/OCR code is separate.
+- `database/schema/schema.sql` is a standalone snapshot; application startup uses Flyway. No snapshot-parity check was run.
+- `deployment/cloud/railway.json` is a Railway-consumable manifest; no deployment or in-repository Railway invocation was verified.
+- `idx_settlements_transaction_id` in baseline V1 duplicates the V34 unique index `uq_settlements_transaction_id`; retained as a future migration note, not deleted.
+
+### Commands and results
+- `node --check tests/e2e/e2e-flows.mjs`: exit 0. The Git Bash syntax-only invocation was denied by the restricted Windows named-object sandbox; the Phase 11 runner execution is the decisive check.
+- Focused backend command: `-o -Dtest=ProductionSafetyChecksTest,StorageSelectionTest,LocalStorageServiceTest test`.
+  ```text
+  Tests run: 9, Failures: 0, Errors: 0, Skipped: 0
+  BUILD SUCCESS
+  ```
+- MySQL-enabled randomized full suite: `-o -B clean test -Dsurefire.runOrder=random`, with `.env` parsed in process memory, URL host constrained to local MySQL, schema rewritten in memory to `aegisx_audit`, JWT/provider values replaced with offline throwaways, and financial execution/RazorpayX disabled.
+  ```text
+  Tests run: 486, Failures: 0, Errors: 0, Skipped: 1
+  BUILD SUCCESS
+  ```
+  The sole skip was `MySqlDdlGenerateTest`; MySQL integration tests executed. The report was read from the fresh Surefire XML output after the run.
+
+### Phase commit
+`29ca265 Harden production configuration and add CI gates`
+
+### Open items
+- Owner review/rotation of the literal credentials at `.env:4` and `.env:6`, and any historical sample credential that was reused.
+- CI workflow execution and Phase 11's local simulated-provider E2E run.
+- Live Razorpay, WhatsApp, LLM, and Tesseract/OCR integrations remain NOT VERIFIED; no real provider key was used.
