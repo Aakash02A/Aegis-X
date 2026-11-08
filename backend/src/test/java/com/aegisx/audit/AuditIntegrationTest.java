@@ -18,6 +18,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.http.MediaType;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
@@ -29,7 +30,10 @@ import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -304,6 +308,47 @@ public class AuditIntegrationTest {
 
             log.info("✓ Audit event immutability verified");
         }
+    }
+
+    @Test
+    @DisplayName("audit rows cannot be edited or deleted through the transaction audit API")
+    @WithMockUser(username = "merchant@test.com", roles = "MERCHANT")
+    void testAuditRowsAreReadOnlyThroughHttp() throws Exception {
+        AuditEvent event = auditEventRepository.saveAndFlush(AuditEvent.builder()
+            .transaction(transactionRepository.findById(transactionId).orElseThrow())
+            .eventType(com.aegisx.audit.entity.AuditEventType.POLICY_APPROVED)
+            .module(com.aegisx.audit.entity.AuditModule.POLICY_ENGINE)
+            .actorId(merchantId)
+            .actorType(com.aegisx.audit.entity.ActorType.POLICY_ENGINE)
+            .correlationId(correlationId)
+            .previousState(TransactionStatus.POLICY_EVALUATION.name())
+            .newState(TransactionStatus.APPROVED.name())
+            .build());
+        long originalCount = auditEventRepository.count();
+        var originalCreatedAt = event.getCreatedAt();
+
+        mockMvc.perform(post("/api/transactions/{transactionId}/audit", transactionId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"eventType\":\"SYSTEM_EVENT\"}"))
+            .andExpect(status().isMethodNotAllowed());
+        mockMvc.perform(put("/api/transactions/{transactionId}/audit", transactionId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"eventType\":\"SYSTEM_EVENT\"}"))
+            .andExpect(status().isMethodNotAllowed());
+        mockMvc.perform(delete("/api/transactions/{transactionId}/audit", transactionId))
+            .andExpect(status().isMethodNotAllowed());
+        mockMvc.perform(put("/api/transactions/{transactionId}/audit/{eventId}", transactionId, event.getId())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"eventType\":\"SYSTEM_EVENT\"}"))
+            .andExpect(status().isNotFound());
+        mockMvc.perform(delete("/api/transactions/{transactionId}/audit/{eventId}", transactionId, event.getId()))
+            .andExpect(status().isNotFound());
+
+        AuditEvent unchanged = auditEventRepository.findById(event.getId()).orElseThrow();
+        assertThat(auditEventRepository.count()).isEqualTo(originalCount);
+        assertThat(unchanged.getEventType()).isEqualTo(com.aegisx.audit.entity.AuditEventType.POLICY_APPROVED);
+        assertThat(unchanged.getNewState()).isEqualTo(TransactionStatus.APPROVED.name());
+        assertThat(unchanged.getCreatedAt()).isEqualTo(originalCreatedAt);
     }
 
     @Test

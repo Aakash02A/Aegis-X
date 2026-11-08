@@ -1,6 +1,9 @@
 package com.aegisx.policy.service;
 
 import com.aegisx.ai.repository.AIAnalysisRepository;
+import com.aegisx.audit.entity.AuditEventType;
+import com.aegisx.audit.service.AuditService;
+import com.aegisx.common.filter.CorrelationIdFilter;
 import com.aegisx.common.exception.MissingEvidenceException;
 import com.aegisx.common.exception.PolicyEvaluationException;
 import com.aegisx.document.repository.DocumentExtractionRepository;
@@ -18,6 +21,7 @@ import com.aegisx.transaction.service.TransactionService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.slf4j.MDC;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -55,6 +59,7 @@ public class PolicyEvaluationService {
     private final ObjectMapper objectMapper;
     private final TransactionService transactionService;
     private final PolicyViolationService policyViolationService;
+    private final AuditService auditService;
 
     /**
      * Stable rule identifiers published in the policy-violation analytics API.
@@ -86,6 +91,7 @@ public class PolicyEvaluationService {
             // Load transaction
             Transaction transaction = transactionRepository.findById(transactionId)
                 .orElseThrow(() -> new MissingEvidenceException("Transaction not found: " + transactionId));
+            TransactionStatus evaluationStartStatus = transaction.getStatus();
             
             // Load required documents
             var requiredDocuments = requiredDocumentRepository.findByTransactionId(transactionId);
@@ -169,6 +175,23 @@ public class PolicyEvaluationService {
                 case "COMPLIANCE_HOLD" -> TransactionStatus.COMPLIANCE_HOLD;
                 default -> throw new PolicyEvaluationException("Unsupported policy decision: " + result.getFinalDecision());
             };
+            String justification = result.getRuleResults().stream()
+                    .filter(ruleResult -> !ruleResult.getPassed())
+                    .map(ruleResult -> ruleResult.getRuleName() + ": " + ruleResult.getReason())
+                    .collect(Collectors.joining("; "));
+            if (justification.isBlank()) {
+                justification = "All deterministic policy rules passed.";
+            }
+            auditService.recordPolicyDecision(
+                    transaction,
+                    nextStatus == TransactionStatus.APPROVED
+                            ? AuditEventType.POLICY_APPROVED : AuditEventType.POLICY_HOLD,
+                    MDC.get(CorrelationIdFilter.CORRELATION_ID_KEY),
+                    evaluationStartStatus.name(),
+                    nextStatus.name(),
+                    evaluationJson.path("rules"),
+                    result.getFinalDecision(),
+                    justification);
             if (transaction.getStatus() == TransactionStatus.AI_ANALYSIS
                     || transaction.getStatus() == TransactionStatus.AI_ANALYSIS_FAILED) {
                 transactionService.transitionStatus(transactionId, TransactionStatus.POLICY_EVALUATION,

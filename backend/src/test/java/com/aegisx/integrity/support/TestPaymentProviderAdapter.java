@@ -143,7 +143,7 @@ public class TestPaymentProviderAdapter implements PaymentProviderAdapter {
         OrderSnapshot snapshot = orders.get(providerOrderId);
         return snapshot == null
                 ? ProviderOutcome.notFound("simulated provider has no order " + providerOrderId, true)
-                : ProviderOutcome.ok(snapshot, true);
+                : ProviderOutcome.ok(atReadTime(snapshot, Instant.now()), true);
     }
 
     @Override
@@ -155,9 +155,10 @@ public class TestPaymentProviderAdapter implements PaymentProviderAdapter {
             return ProviderOutcome.notFound("simulated provider has no order " + providerOrderId, true);
         }
         List<PaymentSnapshot> matches = new ArrayList<>();
+        Instant observedAt = Instant.now();
         for (PaymentSnapshot payment : payments.values()) {
             if (providerOrderId.equals(payment.providerOrderId())) {
-                matches.add(payment);
+                matches.add(atReadTime(payment, observedAt));
             }
         }
         return ProviderOutcome.ok(List.copyOf(matches), true);
@@ -171,7 +172,7 @@ public class TestPaymentProviderAdapter implements PaymentProviderAdapter {
         PaymentSnapshot snapshot = payments.get(providerPaymentId);
         return snapshot == null
                 ? ProviderOutcome.notFound("simulated provider has no payment " + providerPaymentId, true)
-                : ProviderOutcome.ok(snapshot, true);
+                : ProviderOutcome.ok(atReadTime(snapshot, Instant.now()), true);
     }
 
     @Override
@@ -182,7 +183,7 @@ public class TestPaymentProviderAdapter implements PaymentProviderAdapter {
         RefundSnapshot snapshot = refunds.get(providerRefundId);
         return snapshot == null
                 ? ProviderOutcome.notFound("simulated provider has no refund " + providerRefundId, true)
-                : ProviderOutcome.ok(snapshot, true);
+                : ProviderOutcome.ok(atReadTime(snapshot, Instant.now()), true);
     }
 
     @Override
@@ -191,9 +192,10 @@ public class TestPaymentProviderAdapter implements PaymentProviderAdapter {
             return ProviderOutcome.unavailable("simulated provider unreachable", true);
         }
         List<RefundSnapshot> matches = new ArrayList<>();
+        Instant observedAt = Instant.now();
         for (RefundSnapshot refund : refunds.values()) {
             if (providerPaymentId.equals(refund.providerPaymentId())) {
-                matches.add(refund);
+                matches.add(atReadTime(refund, observedAt));
             }
         }
         return ProviderOutcome.ok(List.copyOf(matches), true);
@@ -207,7 +209,7 @@ public class TestPaymentProviderAdapter implements PaymentProviderAdapter {
         TransferSnapshot snapshot = transfers.get(providerTransferId);
         return snapshot == null
                 ? ProviderOutcome.notFound("simulated provider has no transfer " + providerTransferId, true)
-                : ProviderOutcome.ok(snapshot, true);
+                : ProviderOutcome.ok(atReadTime(snapshot, Instant.now()), true);
     }
 
     @Override
@@ -337,6 +339,27 @@ public class TestPaymentProviderAdapter implements PaymentProviderAdapter {
         orders.put(providerOrderId, new OrderSnapshot(existing.providerOrderId(), state, existing.amountMinor(),
                 existing.currency(), existing.receipt(), existing.createdAt(), Instant.now()));
         return true;
+    }
+
+    private static OrderSnapshot atReadTime(OrderSnapshot snapshot, Instant observedAt) {
+        return new OrderSnapshot(snapshot.providerOrderId(), snapshot.state(), snapshot.amountMinor(),
+                snapshot.currency(), snapshot.receipt(), snapshot.createdAt(), observedAt);
+    }
+
+    private static PaymentSnapshot atReadTime(PaymentSnapshot snapshot, Instant observedAt) {
+        return new PaymentSnapshot(snapshot.providerPaymentId(), snapshot.providerOrderId(), snapshot.state(),
+                snapshot.amountMinor(), snapshot.currency(), snapshot.method(), snapshot.failureReason(),
+                snapshot.createdAt(), observedAt);
+    }
+
+    private static RefundSnapshot atReadTime(RefundSnapshot snapshot, Instant observedAt) {
+        return new RefundSnapshot(snapshot.providerRefundId(), snapshot.providerPaymentId(), snapshot.state(),
+                snapshot.amountMinor(), snapshot.currency(), snapshot.createdAt(), observedAt);
+    }
+
+    private static TransferSnapshot atReadTime(TransferSnapshot snapshot, Instant observedAt) {
+        return new TransferSnapshot(snapshot.providerTransferId(), snapshot.providerPaymentId(), snapshot.state(),
+                snapshot.amountMinor(), snapshot.currency(), snapshot.linkedAccountId(), snapshot.createdAt(), observedAt);
     }
 
     public Optional<OrderSnapshot> order(String providerOrderId) {

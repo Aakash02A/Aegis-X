@@ -148,6 +148,32 @@ class ProposedMethodTest {
     }
 
     @Test
+    @DisplayName("provider observations 200 nanoseconds apart do not imply a lifecycle sequence")
+    void observationsSeparatedBy200NanosecondsDoNotInferSequence() {
+        EvidencePack.ObservationView paidApiRead = new EvidencePack.ObservationView(
+                PAYMENT, ResourceType.PAYMENT, "pay_test", EvidenceSource.PROVIDER_API_CONFIRMED,
+                EvidenceSource.PROVIDER_API_CONFIRMED.rank(), PaymentState.CAPTURED.name(), 100_000L, "INR", NOW, false);
+        EvidencePack.ObservationView failedApiRead = new EvidencePack.ObservationView(
+                PAYMENT, ResourceType.PAYMENT, "pay_test", EvidenceSource.PROVIDER_API_CONFIRMED,
+                EvidenceSource.PROVIDER_API_CONFIRMED.rank(), PaymentState.FAILED.name(), 100_000L, "INR",
+                NOW.plusNanos(200), false);
+
+        List<FindingCandidate> findings = method.evaluate(pack(
+                List.of(),
+                List.of(payment(PaymentState.CAPTURED, PaymentState.CAPTURED)),
+                List.of(),
+                List.of(),
+                List.of(paidApiRead, failedApiRead),
+                List.of(),
+                true,
+                true));
+
+        assertThat(detected(findings))
+                .as("sub-millisecond provider timestamps cannot establish which lifecycle state came later")
+                .doesNotContain(FindingType.CONFLICTING_OBSERVATIONS);
+    }
+
+    @Test
     @DisplayName("a contradiction that fresh provider evidence has settled is no longer an exception")
     void settledContradictionIsNotReported() {
         List<FindingCandidate> findings = method.evaluate(pack(

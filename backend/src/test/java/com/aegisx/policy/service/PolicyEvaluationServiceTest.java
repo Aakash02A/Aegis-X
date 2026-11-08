@@ -2,6 +2,11 @@ package com.aegisx.policy.service;
 
 import com.aegisx.ai.entity.AIAnalysis;
 import com.aegisx.ai.repository.AIAnalysisRepository;
+import com.aegisx.audit.entity.ActorType;
+import com.aegisx.audit.entity.AuditEvent;
+import com.aegisx.audit.entity.AuditEventType;
+import com.aegisx.audit.entity.AuditModule;
+import com.aegisx.audit.repository.AuditEventRepository;
 import com.aegisx.auth.entity.Role;
 import com.aegisx.auth.entity.User;
 import com.aegisx.auth.repository.UserRepository;
@@ -31,6 +36,7 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.UUID;
 
@@ -51,6 +57,7 @@ class PolicyEvaluationServiceTest {
     @Autowired private DocumentExtractionRepository extractionRepository;
     @Autowired private RequiredDocumentRepository requiredDocumentRepository;
     @Autowired private AIAnalysisRepository aiAnalysisRepository;
+    @Autowired private AuditEventRepository auditEventRepository;
     @Autowired private UserRepository userRepository;
     @Autowired private ObjectMapper objectMapper;
 
@@ -100,6 +107,7 @@ class PolicyEvaluationServiceTest {
         transaction.applyStatus(TransactionStatus.POLICY_EVALUATION);
         transactionRepository.saveAndFlush(transaction);
 
+        Instant decisionStartedAt = Instant.now();
         PolicyEvaluation result = service.evaluateTransaction(transaction.getId());
 
         assertThat(result.getId()).isNotNull();
@@ -111,6 +119,7 @@ class PolicyEvaluationServiceTest {
                 .extracting(PolicyEvaluation::getFinalDecision).isEqualTo("APPROVED");
         assertThat(transactionRepository.findById(transaction.getId()).orElseThrow().getStatus())
                 .isEqualTo(TransactionStatus.APPROVED);
+        assertPolicyDecisionAudit(transaction, "APPROVED", TransactionStatus.POLICY_EVALUATION, decisionStartedAt);
     }
 
     @Test
@@ -118,12 +127,36 @@ class PolicyEvaluationServiceTest {
     void testEvaluateAndTransitionToComplianceHold() {
         populateEvaluationEvidence(false, false);
 
+        Instant decisionStartedAt = Instant.now();
         PolicyEvaluation result = service.evaluateTransaction(transaction.getId());
 
         assertThat(result.getFinalDecision()).isEqualTo("COMPLIANCE_HOLD");
         assertThat(result.getFailedRulesCount()).isPositive();
         assertThat(result.getEvaluationJson().get("rules").isArray()).isTrue();
         assertThat(violationRepository.findByPolicyEvaluationId(result.getId())).isNotEmpty();
+        assertPolicyDecisionAudit(transaction, "COMPLIANCE_HOLD", TransactionStatus.COMPLIANCE_HOLD,
+                decisionStartedAt);
+    }
+
+    private void assertPolicyDecisionAudit(Transaction target, String decision, TransactionStatus previousStatus,
+                                          Instant decisionStartedAt) {
+        AuditEvent event = auditEventRepository.findByTransactionIdOrderByCreatedAtAsc(target.getId()).stream()
+                .filter(candidate -> candidate.getEventType() == (decision.equals("APPROVED")
+                        ? AuditEventType.POLICY_APPROVED : AuditEventType.POLICY_HOLD))
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("Missing policy decision audit for " + decision));
+
+        assertThat(event.getNewState()).isEqualTo(decision.equals("APPROVED")
+                ? TransactionStatus.APPROVED.name() : TransactionStatus.COMPLIANCE_HOLD.name());
+        assertThat(event.getModule()).isEqualTo(AuditModule.POLICY_ENGINE);
+        assertThat(event.getActorType()).isEqualTo(ActorType.POLICY_ENGINE);
+        assertThat(event.getActorId()).isNull();
+        assertThat(event.getPreviousState()).isEqualTo(previousStatus.name());
+        assertThat(event.getEventData().path("decision").asText()).isEqualTo(decision);
+        assertThat(event.getEventData().path("justification").asText()).isNotBlank();
+        assertThat(event.getEventData().path("rulesEvaluated")).hasSize(5);
+        assertThat(event.getCreatedAt()).isNotNull().isAfterOrEqualTo(decisionStartedAt)
+                .isBeforeOrEqualTo(Instant.now());
     }
 
     @Test

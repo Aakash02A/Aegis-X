@@ -24,10 +24,12 @@ import org.springframework.test.web.servlet.MockMvc;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -105,6 +107,37 @@ class IntegrityApiContractTest extends IntegrityTestSupport {
         mockMvc.perform(get("/api/integrity/benchmark/method"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.note").exists());
+    }
+
+    @Test
+    @DisplayName("integrity audit events cannot be edited or deleted through HTTP")
+    @WithMockUser(username = "operator@aegis-x.test", roles = "ADMIN")
+    void auditRowsAreReadOnlyOverHttp() throws Exception {
+        Workspace workspace = newAuthorizedWorkspace();
+        newOrderWithProviderOrder(workspace, 100_000);
+        String base = "/api/integrity/workspaces/" + workspace.getId() + "/audit";
+        var event = auditEventRepository.findByWorkspaceIdOrderByOccurredAtDesc(workspace.getId(),
+                        org.springframework.data.domain.PageRequest.of(0, 1))
+                .getContent().get(0);
+        long originalCount = auditEventRepository.countByWorkspaceId(workspace.getId());
+        String originalType = event.getEventType();
+        String originalActor = event.getActorLabel();
+        var originalOccurredAt = event.getOccurredAt();
+
+        mockMvc.perform(post(base).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"eventType\":\"FORGED\",\"actorLabel\":\"attacker\"}"))
+                .andExpect(status().isMethodNotAllowed());
+        mockMvc.perform(put(base + "/" + event.getId()).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"eventType\":\"FORGED\",\"actorLabel\":\"attacker\"}"))
+                .andExpect(status().isNotFound());
+        mockMvc.perform(delete(base + "/" + event.getId()))
+                .andExpect(status().isNotFound());
+
+        var unchanged = auditEventRepository.findById(event.getId()).orElseThrow();
+        assertThat(auditEventRepository.countByWorkspaceId(workspace.getId())).isEqualTo(originalCount);
+        assertThat(unchanged.getEventType()).isEqualTo(originalType);
+        assertThat(unchanged.getActorLabel()).isEqualTo(originalActor);
+        assertThat(unchanged.getOccurredAt()).isEqualTo(originalOccurredAt);
     }
 
     @Test

@@ -55,6 +55,10 @@ public interface PaymentProviderAdapter {
     /** Amount in integer minor units plus ISO-4217 currency. Never floating point. */
     record CreateOrderCommand(long amountMinor, String currency, String internalReference, String description) { }
 
+    /**
+     * Resource snapshots distinguish the provider's creation time from when Aegis-X received the
+     * snapshot. {@code observedAt} is the response time, not the provider resource's last-update time.
+     */
     record OrderSnapshot(
             String providerOrderId,
             OrderState state,

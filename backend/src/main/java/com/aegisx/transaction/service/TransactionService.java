@@ -197,9 +197,9 @@ public class TransactionService {
         auditService.recordStateTransition(
             updated,
             AuditEventType.TRANSACTION_STATE_CHANGED,
-            AuditModule.TRANSACTION,
+            "POLICY_ENGINE".equals(actor) ? AuditModule.POLICY_ENGINE : AuditModule.TRANSACTION,
             null,
-            ActorType.SYSTEM,
+            "POLICY_ENGINE".equals(actor) ? ActorType.POLICY_ENGINE : ActorType.SYSTEM,
             correlationId,
             previousStatus.name(),
             targetStatus.name(),
