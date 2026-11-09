@@ -32,6 +32,18 @@ export const SettlementPage = {
   },
 
   async loadSettlements() {
+    const tbody = document.getElementById('settlement-tbody');
+    const countBadge = document.getElementById('results-count');
+    if (tbody) {
+      tbody.setAttribute('aria-busy', 'true');
+      const row = document.createElement('tr');
+      const cell = Utils.textElement('td', 'animate-pulse text-center py-12 text-ink-soft', 'Loading settlement records…');
+      cell.colSpan = 7;
+      cell.setAttribute('role', 'status');
+      row.append(cell);
+      tbody.replaceChildren(row);
+    }
+    if (countBadge) countBadge.textContent = 'Loading settlement records…';
     try {
       if (Auth.getUser()?.role === 'ADMIN') {
         const overdue = await API.request('/v1/settlements/overdue');
@@ -53,8 +65,10 @@ export const SettlementPage = {
       this.filteredSettlements = [...this.allSettlements];
       this.renderTable(this.filteredSettlements);
     } catch (err) {
-      Toast.error('Failed to load settlement records: ' + err.message);
+      Toast.error('Settlement records could not be loaded.');
       this.renderTable([], true);
+    } finally {
+      tbody?.setAttribute('aria-busy', 'false');
     }
   },
 
@@ -87,19 +101,29 @@ export const SettlementPage = {
   renderTable(settlements, failed = false) {
     const tbody = document.getElementById('settlement-tbody');
     const countBadge = document.getElementById('results-count');
-    if (countBadge) countBadge.textContent = `${settlements.length} Records Found`;
+    if (countBadge) countBadge.textContent = failed ? 'Records unavailable' : `${settlements.length} Records Found`;
 
     if (!tbody) return;
 
     if (settlements.length === 0) {
-      tbody.innerHTML = `
-        <tr>
-          <td colspan="7" class="text-center py-12 text-ink-soft">
-            <i class="fa-solid fa-filter-circle-xmark w-8 h-8 mx-auto mb-2 text-ink-soft"></i>
-            <p class="font-sans text-xs">${failed ? 'Settlement records could not be loaded.' : 'No settlement records match the active criteria.'}</p>
-          </td>
-        </tr>
-      `;
+      const row = document.createElement('tr');
+      const cell = document.createElement('td');
+      cell.colSpan = 7;
+      cell.className = 'text-center py-12 text-ink-soft';
+      if (failed) cell.setAttribute('role', 'alert');
+      cell.append(Utils.textElement('p', 'font-sans text-xs', failed
+        ? 'Settlement records could not be loaded. Retry or check the connection.'
+        : 'No settlement records match the active criteria.'));
+      if (failed) {
+        const retry = document.createElement('button');
+        retry.type = 'button';
+        retry.className = 'aegis-btn-outline py-1.5 px-3 text-xs mt-3';
+        retry.textContent = 'Retry';
+        retry.addEventListener('click', () => this.loadSettlements());
+        cell.append(retry);
+      }
+      row.append(cell);
+      tbody.replaceChildren(row);
       return;
     }
 

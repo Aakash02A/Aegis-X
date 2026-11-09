@@ -19,6 +19,16 @@ export const DashboardPage = {
   },
 
   async loadDashboardData() {
+    const tbody = document.getElementById('recent-tx-tbody');
+    if (tbody) {
+      tbody.setAttribute('aria-busy', 'true');
+      const row = document.createElement('tr');
+      const cell = Utils.textElement('td', 'animate-pulse text-center py-12 text-ink-soft', 'Loading remittances…');
+      cell.colSpan = 6;
+      cell.setAttribute('role', 'status');
+      row.append(cell);
+      tbody.replaceChildren(row);
+    }
     try {
       let result = await API.request('/transactions?page=0&size=100');
       const transactions = [...(Array.isArray(result) ? result : result?.content || [])];
@@ -40,6 +50,7 @@ export const DashboardPage = {
       if (tbody) {
         const cell = Utils.textElement('td', 'text-center py-12 text-ink-soft', 'Transactions could not be loaded. Check that the backend and database are running, then retry.');
         cell.colSpan = 6;
+        cell.setAttribute('role', 'alert');
         const row = document.createElement('tr');
         row.append(cell);
         tbody.replaceChildren(row);
@@ -52,6 +63,8 @@ export const DashboardPage = {
       }
       this.renderTransactionCharts([]);
       this.renderProcessingChart(null);
+    } finally {
+      tbody?.setAttribute('aria-busy', 'false');
     }
   },
 

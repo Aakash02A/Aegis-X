@@ -19,7 +19,10 @@
       <div>
         <h2 class="font-serif text-lg font-medium text-ink">Platform Telemetry</h2>
       </div>
-      <div id="platform-status-badge" class="editorial-badge badge-neutral">Health not loaded</div>
+      <div class="flex items-center gap-3">
+        <div id="platform-status-badge" class="editorial-badge badge-neutral" role="status" aria-live="polite">Health not loaded</div>
+        <button id="refresh-operations" type="button" class="aegis-btn-outline py-1.5 px-3.5 text-xs" aria-label="Refresh operations data">Refresh</button>
+      </div>
     </header>
 
     <main class="p-6 md:p-8 space-y-8 max-w-6xl w-full mx-auto">

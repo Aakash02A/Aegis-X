@@ -439,7 +439,7 @@ body.modal-open {
   }
 }
 
-@media (max-width: 767px) {
+@media (max-width: 1023px) {
   .responsive-table {
     @apply block w-full whitespace-normal;
   }

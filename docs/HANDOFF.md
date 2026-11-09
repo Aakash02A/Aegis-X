@@ -683,6 +683,30 @@ No `.env` file is present in Git history. Current `.env.example` entries and tes
 Recorded in the commit that updates this handoff and BUILD_STATUS.
 
 ### Open items
-- F5 accessibility and per-page loading/empty/error/success review, four-width layout review, and auth-storage exposure report remain open.
-- F6 adds full merchant evidence/policy and reviewer UI walkthroughs, final visual comparison, and final verification.
-- Token remains in `sessionStorage`; the user profile (including email) remains in `localStorage`. F5 will report the exposure without changing authentication architecture.
+- F5 quality, accessibility, four-width layout, and auth-storage review are complete and recorded below. F6 still owns the full merchant evidence/policy and reviewer UI walkthroughs, final screenshot comparison, and final randomized suite.
+- The token remains in `sessionStorage`; the user profile (including email) remains in `localStorage`. F5 records the exposure without changing authentication architecture.
+
+## Frontend redesign — Phase F5: quality and accessibility (2026-11-09)
+
+### Verdict
+**COMPLETE for the supported pages, roles, and locally exercised states.** No backend, migration, authorization rule, design token, font, palette, or production feature changed.
+
+### Quality and accessibility changes
+- Added loading, retryable error, and refresh feedback to transaction detail, merchant remittances, compliance review, settlements, operations, and the Integrity workspace. Failure panels use generic copy; success messages only follow successful reloads.
+- Kept the AI advisory role-gated and evidence-dependent; policy reevaluation follows evidence upload. Loading, empty, error, and success content stays API-backed.
+- Fixed search icon/text spacing with the existing spacing utility. At 768px, the dashboard uses the existing stacked table cards and compact header; the landing hero grid now stays within the mobile viewport. Added a main navigation name and corrected transaction heading levels.
+- Added frontend assertions for the F5 states and actions. The auth token is stored in `sessionStorage`; the profile summary (`id`, `email`, `name`, `role`) is stored in `localStorage`. Same-origin script injection could read the session token; the profile, including email, persists beyond the browser tab session. This is a residual client-storage exposure; authentication storage architecture was not changed.
+
+### Verification
+- Headless Playwright with system Chrome captured **172/172** full-page screenshots across 43 page/role combinations at 1920×1080, 1366×768, 768×1024, and 390×844 in ignored `frontend/.screens/after-f5-complete/`.
+- Sanitized audit: **0 browser errors, 0 failed API/resource responses, 0 layout findings, 0 accessibility findings, 0 retry/error-state findings, and 0 route/role findings**. Retry behavior was exercised on dashboard, transaction, compliance, settlement, Integrity, and operations refresh.
+- The token/font re-extraction diff is **EMPTY**: all 21 CSS custom properties and all four `font-family` declarations match `docs/design-baseline.json`.
+- The scan reported 153 below-threshold text combinations across the role/viewport matrix. Existing palette pairings include ink-soft on paper-dim (4.29:1), rust on white (4.23:1), rust on paper (3.91:1), rust on paper-dim (3.58:1), brass on white (2.27:1), and brass on paper (2.10:1). These were reported without changing the approved colors.
+- `npm.cmd test`: **190 passed, 0 failed**. `npm.cmd run build`: successful, **59 modules transformed**. The same-run local simulated-provider API E2E passed **56/56**. Financial execution and external provider calls stayed disabled. Ports 20790, 20786, and 20796 were confirmed free after shutdown.
+
+### Phase commit
+Recorded in the commit that updates this handoff and BUILD_STATUS.
+
+### Open items
+- F6 still requires the full browser journey, baseline screenshot comparison, and final MySQL-enabled randomized backend suite.
+- The low-contrast token pairings and client-side profile/token storage exposure are recorded for product/security follow-up; palette and authentication architecture were outside this frontend phase's approved changes.

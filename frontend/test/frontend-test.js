@@ -200,6 +200,8 @@ assert(transactionJs.includes("await this.loadAllSubsystems({ reevaluatePolicy: 
 assert(transactionJs.includes('documents.length && (!policyData || reevaluatePolicy)'), 'Policy evaluation waits for evidence and can be refreshed after uploads');
 assert(transactionJs.includes("requireUser(['MERCHANT', 'COMPLIANCE_OFFICER', 'ADMIN'])"), 'Transaction detail route excludes roles that the transaction API cannot resolve');
 assert(transactionJs.includes("Auth.getUser()?.role === 'SETTLEMENT_OPERATOR'"), 'Settlement Operator transaction view hides notification actions unavailable to that role');
+assert(transactionJs.includes("'Loading transaction details…'") && transactionJs.includes("textContent = 'Retry'"), 'Transaction details expose loading and retry states');
+assert(transactionJs.includes("getElementById('refresh-transaction')"), 'Transaction details expose an accessible refresh action');
 assert(transactionJs.includes('noteText: text'), 'Review notes use the backend noteText field');
 assert(transactionJs.includes('/notifications`'), 'Transaction notification history is API backed');
 
@@ -218,9 +220,13 @@ assert(!dashboardJs.includes("API.request('/performance/metrics')"), 'Merchant d
 const settlementPageJs = fs.readFileSync(path.join(frontendDir, 'pages/settlements.js'), 'utf-8');
 assert(settlementPageJs.includes("API.request('/v1/settlements/overdue')") && settlementPageJs.includes("role === 'ADMIN'"), 'Admin settlement view uses the Admin-authorized overdue endpoint');
 assert(settlementPageJs.includes("'SETTLEMENT_OPERATOR', 'COMPLIANCE_OFFICER', 'ADMIN'"), 'Settlement page route matches the roles supported by its UI');
+assert(settlementPageJs.includes("'Loading settlement records…'") && settlementPageJs.includes("textContent = 'Retry'"), 'Settlements expose loading and retry states');
 const integrityWorkspaceJs = fs.readFileSync(path.join(frontendDir, 'pages/integrity/workspace.js'), 'utf-8');
 assert(integrityWorkspaceJs.includes("API.request('/integrity/workspaces')") && integrityWorkspaceJs.includes('integrity-workspace-switcher'), 'Integrity workspace switcher loads only the signed-in user workspace list');
 assert(integrityWorkspaceJs.includes("['ADMIN', 'COMPLIANCE_OFFICER'].includes(Auth.getUser()?.role)"), 'Integrity review and threshold controls are limited to authorized roles');
+assert(integrityWorkspaceJs.includes('async function loadWorkspacePage(root)') && integrityWorkspaceJs.includes("retry.textContent = 'Retry'"), 'Integrity pages expose loading and retry states');
+assert(operationsJs.includes("getElementById('refresh-operations')") && operationsJs.includes('aria-busy'), 'Operations exposes a live refresh and loading state');
+assert(dashboardJs.includes("'Loading remittances…'") && dashboardJs.includes("'Retry'"), 'Merchant dashboard exposes loading and retry states');
 assert(dashboardJs.includes("/transactions/${encodeURIComponent(transaction.id)}/audit"), 'Merchant activity feed reads audit events');
 assert(dashboardJs.includes('transaction-pagination'), 'Merchant transaction table has pagination controls');
 assert(dashboardJs.includes('data-transaction-id') && !dashboardJs.includes('onclick='), 'Transaction row navigation uses delegated listeners without inline handlers');

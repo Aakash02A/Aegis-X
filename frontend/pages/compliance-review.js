@@ -78,7 +78,7 @@ export const CompliancePage = {
     }
 
     if (this.loading) {
-      tbody.innerHTML = '<tr><td colspan="7" class="text-center py-12 text-ink-soft" role="status">Loading escalated cases…</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="7" class="animate-pulse text-center py-12 text-ink-soft" role="status">Loading escalated cases…</td></tr>';
       pagination?.replaceChildren();
       return;
     }

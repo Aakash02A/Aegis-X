@@ -43,6 +43,10 @@
           <i class="fa-solid fa-download w-3.5 h-3.5"></i>
           <span>Export Audit JSON</span>
         </button>
+        <button id="refresh-transaction" type="button" class="aegis-btn-outline py-1.5 px-3.5 text-xs" aria-label="Refresh transaction data">
+          <i class="fa-solid fa-arrows-rotate w-3.5 h-3.5" aria-hidden="true"></i>
+          <span>Refresh</span>
+        </button>
       </div>
     </header>
 
@@ -98,7 +102,7 @@
       <!-- TAB 1: SUMMARY -->
       <div id="tab-summary" class="tab-content-panel space-y-6">
         <div class="editorial-card p-6 bg-white">
-          <h3 class="font-serif text-xl font-medium text-ink mb-4">Regulatory Metadata &amp; Declaration</h3>
+          <h2 class="font-serif text-xl font-medium text-ink mb-4">Regulatory Metadata &amp; Declaration</h2>
           <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 text-xs font-sans">
             <div class="p-3.5 rounded-sm bg-paper-dim border border-ink/10">
               <span class="text-ink-soft uppercase font-semibold block mb-1">Merchant Identifier</span>
@@ -122,17 +126,17 @@
             </div>
           </div>
           <div id="razorpay-payment-actions" class="hidden mt-6 p-4 border border-ink/10 bg-paper-dim">
-            <h4 class="text-sm font-semibold text-ink">Pay securely with Razorpay</h4>
+            <h3 class="text-sm font-semibold text-ink">Pay securely with Razorpay</h3>
             <p class="text-xs text-ink-soft mt-1">Payment status is verified by the provider. Aegis-X records the event; it does not capture funds.</p>
             <button id="start-razorpay-payment" type="button" class="aegis-btn-rust py-2 px-4 text-xs mt-3">Continue to payment</button>
           </div>
           <div id="local-payment-actions" class="hidden mt-6 p-4 border border-ink/10 bg-paper-dim">
-            <h4 class="text-sm font-semibold text-ink">Payment · local development</h4>
+            <h3 class="text-sm font-semibold text-ink">Payment · local development</h3>
             <p class="text-xs text-ink-soft mt-1">Confirm a local test event to continue to evidence collection. This does not charge a card or call Razorpay.</p>
             <button id="confirm-local-payment" type="button" class="aegis-btn-rust py-2 px-4 text-xs mt-3">Confirm test payment</button>
           </div>
           <form id="document-request-form" class="hidden mt-4 p-4 border border-ink/10 bg-paper-dim">
-            <h4 class="text-sm font-semibold text-ink">Request documents by WhatsApp</h4>
+            <h3 class="text-sm font-semibold text-ink">Request documents by WhatsApp</h3>
             <p class="text-xs text-ink-soft mt-1">Enter the recipient number in international format using digits only, including country code.</p>
             <div class="flex flex-col sm:flex-row gap-2 mt-3">
               <input id="document-request-phone" type="tel" inputmode="numeric" pattern="[1-9][0-9]{7,14}" minlength="8" maxlength="15" required placeholder="919876543210" class="editorial-input sm:max-w-xs" />
@@ -147,7 +151,7 @@
       <div id="tab-evidence" class="tab-content-panel hidden space-y-6">
         <div class="editorial-card p-6 bg-white">
           <div class="mb-6">
-            <h3 class="font-serif text-xl font-medium text-ink">Commercial Evidence Upload</h3>
+            <h2 class="font-serif text-xl font-medium text-ink">Commercial Evidence Upload</h2>
             <p class="text-xs text-ink-soft">Upload trade invoices, packing lists, or airway bills for Apache Tika OCR extraction.</p>
           </div>
 
@@ -156,7 +160,7 @@
             <div class="p-4 rounded-full bg-paper text-ink inline-flex mb-3 border border-ink/10">
               <i class="fa-solid fa-cloud-arrow-up w-8 h-8 text-rust"></i>
             </div>
-            <h4 class="font-serif text-lg font-medium text-ink">Drag &amp; Drop Evidence Document Here</h4>
+            <h3 class="font-serif text-lg font-medium text-ink">Drag &amp; Drop Evidence Document Here</h3>
             <p class="text-xs text-ink-soft mt-1">or <span class="text-rust underline cursor-pointer">browse your files</span></p>
             <p class="text-[11px] text-ink-soft mt-3 font-mono-data">Supported: PDF, PNG, JPG, JPEG (Max 20MB)</p>
           </div>
@@ -193,7 +197,7 @@
       <div id="tab-notes" class="tab-content-panel hidden space-y-6">
         <div class="editorial-card p-6 bg-white">
           <div class="flex items-center justify-between mb-4 pb-3 border-b border-ink/10">
-            <h3 class="font-serif text-xl font-medium text-ink">Compliance Officer Audit Notes</h3>
+            <h2 class="font-serif text-xl font-medium text-ink">Compliance Officer Audit Notes</h2>
             <span class="text-xs text-ink-soft uppercase font-semibold">Permanent Record</span>
           </div>
 

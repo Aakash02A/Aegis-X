@@ -11,9 +11,31 @@ export const OperationsPage = {
     if (!await requireUser(['ADMIN'])) return;
     AppShell.mount();
     this.setupAuditSearch();
-    await this.loadMetrics();
-    await this.loadBusinessMetrics();
-    this.refreshTimer = setInterval(() => this.loadMetrics(), 30000);
+    document.getElementById('refresh-operations')?.addEventListener('click', () => this.refreshData(true));
+    await this.refreshData();
+    this.refreshTimer = setInterval(() => this.refreshData(), 30000);
+  },
+
+  async refreshData(showFeedback = false) {
+    const main = document.querySelector('main');
+    main?.setAttribute('aria-busy', 'true');
+    const badge = document.getElementById('platform-status-badge');
+    if (badge) badge.textContent = 'Refreshing service data…';
+    const cards = document.getElementById('health-cards');
+    if (cards && !cards.childElementCount) {
+      cards.append(Utils.textElement('p', 'animate-pulse text-xs text-ink-soft', 'Loading system health…'));
+    }
+    try {
+      await Promise.all([this.loadMetrics(), this.loadBusinessMetrics()]);
+      if (showFeedback) Toast.info('Refresh completed. Unavailable sources are marked in the page.');
+    } catch {
+      if (badge) badge.textContent = 'Service data unavailable';
+      const details = document.getElementById('performance-details');
+      if (details) details.textContent = 'Operations data could not be loaded. Use Refresh to try again.';
+      if (showFeedback) Toast.error('Operations data could not be refreshed.');
+    } finally {
+      main?.setAttribute('aria-busy', 'false');
+    }
   },
 
   async loadMetrics() {
@@ -142,7 +164,7 @@ export const OperationsPage = {
         const timeline = await API.request(`/transactions/${encodeURIComponent(transactionId)}/audit`);
         AuditViewer.render('operations-audit-results', timeline);
       } catch (error) {
-        Toast.error('Audit lookup failed: ' + error.message);
+        Toast.error('Audit lookup could not be completed. Check the reference and try again.');
       }
     });
   }

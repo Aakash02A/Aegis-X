@@ -63,8 +63,16 @@ export const TransactionPage = {
   },
 
   async loadTransaction() {
+    const main = document.querySelector('main');
+    main?.querySelector('[data-transaction-load-error]')?.remove();
+    const loading = Utils.textElement('p', 'animate-pulse text-sm text-ink-soft', 'Loading transaction details…');
+    loading.setAttribute('role', 'status');
+    main?.setAttribute('aria-busy', 'true');
+    main?.append(loading);
+    let loaded = false;
     try {
       const tx = await API.request(`/transactions/${this.transactionId}`);
+      loaded = true;
       this.currentTransaction = tx;
       this.renderHeader(tx);
       this.renderSummary(tx);
@@ -87,8 +95,26 @@ export const TransactionPage = {
 
       await this.loadAllSubsystems();
     } catch (err) {
-      Toast.error('Failed to load transaction: ' + err.message);
+      Toast.error('Transaction details could not be loaded.');
+      const panel = document.createElement('section');
+      panel.className = 'editorial-card p-5 bg-white space-y-3';
+      panel.setAttribute('role', 'alert');
+      panel.dataset.transactionLoadError = '';
+      panel.append(
+        Utils.textElement('p', 'text-sm text-ink', 'Transaction details could not be loaded. Check the connection and try again.'),
+      );
+      const retry = document.createElement('button');
+      retry.type = 'button';
+      retry.className = 'aegis-btn-outline py-2 px-4 text-xs';
+      retry.textContent = 'Retry';
+      retry.addEventListener('click', () => this.loadTransaction());
+      panel.append(retry);
+      main?.append(panel);
+    } finally {
+      loading.remove();
+      main?.setAttribute('aria-busy', 'false');
     }
+    return loaded;
   },
 
   renderHeader(tx) {
@@ -116,6 +142,10 @@ export const TransactionPage = {
   },
 
   setupWorkflowActions() {
+    document.getElementById('refresh-transaction')?.addEventListener('click', async () => {
+      if (await this.loadTransaction()) Toast.success('Transaction data refreshed.');
+    });
+
     document.getElementById('start-razorpay-payment')?.addEventListener('click', () => this.startRazorpayPayment());
 
     document.getElementById('confirm-local-payment')?.addEventListener('click', async () => {

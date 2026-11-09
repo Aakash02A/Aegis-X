@@ -160,7 +160,7 @@ function shell(title, subtitle, eyebrow) {
       <div id="integrity-header-actions" class="flex items-center gap-2"></div>
     </header>
     <main class="p-6 md:p-8 space-y-8 max-w-6xl w-full mx-auto">
-      <div id="integrity-body"><p class="text-sm text-ink-soft">Loading…</p></div>
+      <div id="integrity-body" aria-busy="true"><p class="animate-pulse text-sm text-ink-soft" role="status">Loading integrity workspace…</p></div>
     </main>
   </div>`;
 }
@@ -1152,6 +1152,37 @@ const RENDERERS = {
   settings: renderSettings
 };
 
+async function loadWorkspacePage(root) {
+  const body = root.querySelector('#integrity-body');
+  if (!body) return;
+  body.setAttribute('aria-busy', 'true');
+  const loading = document.createElement('p');
+  loading.className = 'animate-pulse text-sm text-ink-soft';
+  loading.setAttribute('role', 'status');
+  loading.textContent = 'Loading integrity workspace…';
+  body.replaceChildren(loading);
+  try {
+    await loadWorkspace();
+    await RENDERERS[state.page](body);
+  } catch {
+    const panel = document.createElement('div');
+    panel.className = 'editorial-card p-4 text-sm text-rust space-y-3';
+    panel.setAttribute('role', 'alert');
+    const message = document.createElement('p');
+    message.textContent = 'This integrity view could not be loaded. Check your connection and retry.';
+    const retry = document.createElement('button');
+    retry.type = 'button';
+    retry.className = 'aegis-btn-outline py-1.5 px-3 text-xs';
+    retry.textContent = 'Retry';
+    retry.addEventListener('click', () => loadWorkspacePage(root));
+    panel.append(message, retry);
+    body.replaceChildren(panel);
+  } finally {
+    body.setAttribute('aria-busy', 'false');
+    enhanceResponsiveTables(root);
+  }
+}
+
 export async function boot(page = state.page) {
   state.page = page;
   // The integrity console is back-office only. Without this guard a signed-out visitor got an
@@ -1168,21 +1199,6 @@ export async function boot(page = state.page) {
   document.body.prepend(root);
   document.getElementById('integrity-main').outerHTML = shell(title, subtitle, eyebrow);
   wireMobileNavigation(root.querySelector('aside'), root.querySelector('header'), root);
-
-  try {
-    await loadWorkspace();
-  } catch (error) {
-    document.getElementById('integrity-body').innerHTML =
-      `<div class="editorial-card p-4 text-sm text-rust">Could not load the integrity workspace: ${esc(error.message)}. Sign in and reload.</div>`;
-    return;
-  }
-
-  const body = document.getElementById('integrity-body');
-  try {
-    await RENDERERS[state.page](body);
-  } catch (error) {
-    body.innerHTML = `<div class="editorial-card p-4 text-sm text-rust">${esc(error.message)}</div>`;
-  }
-  enhanceResponsiveTables(root);
+  await loadWorkspacePage(root);
 }
 
