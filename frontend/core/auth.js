@@ -2,7 +2,8 @@
  * Aegis-X Authentication Controller
  */
 import { API } from './api.js';
-import { Toast } from './notifications.js';
+import { Toast } from '../components/toast.js';
+import { ROLE_HOME } from './constants.js';
 
 export const Auth = {
   getUser() {
@@ -68,7 +69,7 @@ export const Auth = {
           name: result.fullName || result.email || email
         });
 
-        Toast.success(`Welcome back, ${email}!`);
+        Toast.success('Welcome back.');
 
         setTimeout(() => {
           const role = result.role;
@@ -138,10 +139,7 @@ export const Auth = {
   },
 
   homeForRole(role) {
-    if (role === 'COMPLIANCE_OFFICER') return 'compliance.html';
-    if (role === 'SETTLEMENT_OPERATOR') return 'settlement.html';
-    if (role === 'ADMIN') return 'operations.html';
-    return 'dashboard.html';
+    return ROLE_HOME[role] || ROLE_HOME.MERCHANT;
   },
 
   applyRoleNavigation() {
@@ -155,4 +153,3 @@ export const Auth = {
   }
 };
 
-window.Auth = Auth;

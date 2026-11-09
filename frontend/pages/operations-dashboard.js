@@ -1,14 +1,15 @@
 /** Live operations and health data from configured backend endpoints. */
-import { API } from './api.js';
-import { Auth } from './auth.js';
-import { Toast } from './notifications.js';
-import { Utils } from './utils.js';
-import { AuditViewer } from './audit.js';
+import { API } from '../core/api.js';
+import { requireUser } from '../core/guards.js';
+import { AppShell } from '../components/app-shell.js';
+import { Toast } from '../components/toast.js';
+import { Utils } from '../core/formatters.js';
+import { AuditViewer } from '../components/audit-timeline.js';
 
 export const OperationsPage = {
   async init() {
-    if (!await Auth.requireUser(['ADMIN'])) return;
-    Auth.applyRoleNavigation();
+    if (!await requireUser(['ADMIN'])) return;
+    AppShell.mount();
     this.setupAuditSearch();
     await this.loadMetrics();
     await this.loadBusinessMetrics();

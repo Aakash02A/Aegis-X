@@ -1,7 +1,7 @@
 /**
  * Aegis-X OCR Visualizer Module (Amble & Tonsor Editorial Style)
  */
-import { Utils } from './utils.js';
+import { Utils } from '../core/formatters.js';
 
 export const OCRViewer = {
   render(containerId, ocrData) {

@@ -1,7 +1,7 @@
 /**
  * Aegis-X Cryptographic Audit Timeline Module (Amble & Tonsor Editorial Style)
  */
-import { Utils } from './utils.js';
+import { Utils } from '../core/formatters.js';
 
 export const AuditViewer = {
   render(containerId, auditEvents) {

@@ -1,7 +1,7 @@
 /**
  * Aegis-X AI Regulatory Reasoner Module (Amble & Tonsor Editorial Style)
  */
-import { Utils } from './utils.js';
+import { Utils } from '../core/formatters.js';
 
 export const AIViewer = {
   render(containerId, aiData) {

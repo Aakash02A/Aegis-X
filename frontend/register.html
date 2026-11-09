@@ -6,10 +6,10 @@
   <title>Register Merchant — Aegis-X Platform</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23C85A32'><path d='M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5'/></svg>" type="image/svg+xml" />
 
-  <link rel="stylesheet" href="css/tailwind.css" />
-  <link rel="stylesheet" href="css/animations.css" />
-  <link rel="stylesheet" href="css/components.css" />
-  <link rel="stylesheet" href="css/icons.css" />
+  <link rel="stylesheet" href="styles/tailwind.css" />
+  <link rel="stylesheet" href="styles/animations.css" />
+  <link rel="stylesheet" href="styles/components.css" />
+  <link rel="stylesheet" href="styles/icons.css" />
 </head>
 <body class="bg-paper text-ink min-h-screen flex items-center justify-center p-6">
 
@@ -102,39 +102,6 @@
     </div>
   </div>
 
-  <script type="module">
-    import { Auth } from './js/auth.js';
-    import { Toast } from './js/notifications.js';
-    import { Utils } from './js/utils.js';
-
-
-    document.getElementById('register-form').addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const fullName = document.getElementById('reg-company').value.trim();
-      const email = document.getElementById('reg-email').value.trim();
-      const phone = document.getElementById('reg-phone').value.trim();
-      const password = document.getElementById('reg-password').value;
-      const confirm = document.getElementById('reg-confirm').value;
-
-      if (password !== confirm) {
-        Toast.error('Passwords do not match.');
-        return;
-      }
-
-      const btn = document.getElementById('register-submit-btn');
-      btn.disabled = true;
-      btn.innerHTML = '<span>Creating Account...</span>';
-
-      await Auth.register({
-        fullName,
-        email,
-        password,
-        ...(phone ? { phone } : {})
-      });
-
-      btn.disabled = false;
-      btn.innerHTML = '<span>Register &amp; Proceed to Login</span><i class="fa-solid fa-arrow-right w-4 h-4"></i>';
-    });
-  </script>
+  <script type="module" src="pages/register.js"></script>
 </body>
 </html>

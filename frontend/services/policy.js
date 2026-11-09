@@ -1,7 +1,7 @@
 /**
  * Aegis-X Deterministic Policy Engine Viewer (Amble & Tonsor Editorial Style)
  */
-import { Utils } from './utils.js';
+import { Utils } from '../core/formatters.js';
 
 export const PolicyViewer = {
   render(containerId, policyData) {

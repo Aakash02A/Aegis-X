@@ -4,6 +4,13 @@
 **Branch:** `mysql-migration`
 **Production readiness:** Not established. The results below are limited to the local tests and simulated integrations listed here.
 
+## Frontend redesign tracking (2026-11-09)
+
+| Phase | Status | Evidence |
+|---|---|---|
+| F1 inventory and pre-change baseline | COMPLETE | 17 HTML pages and 15 original JS modules inventoried. 120 headless Playwright screenshots captured under ignored `frontend/.screens/baseline/` for the supported page/role combinations at 1920×1080, 1366×768, and 390×844. API E2E passed 56/56 on throwaway local `aegisx_e2e`. Baseline commit: `e270ed5`. 18 sanitized browser console-error combinations were recorded for follow-up. |
+| F2 structure and shared shell | COMPLETE | Core/components/services/pages/styles folders, shared role-filtered shell, external page scripts, integrity entry modules, shared status chip, centralized 401 cleanup. Frontend suite 148/148 passed; Vite build succeeded. Token/font baseline test passes. |
+| F3–F6 layout, roles/journeys, quality, final UI verification | NOT STARTED | No post-redesign screenshots or role-by-role UI journey results have been claimed yet. |
 ## Module status
 
 “Verified” means the listed local automated or E2E checks ran successfully. It does not imply a live external service or production deployment was tested.

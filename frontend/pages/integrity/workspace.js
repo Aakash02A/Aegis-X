@@ -10,20 +10,9 @@
  * provider-confirmed outcomes.
  */
 
-import { API } from './api.js';
-import { Auth } from './auth.js';
-
-const PAGES = [
-  { id: 'overview', file: 'integrity.html', label: 'Integrity Overview', icon: 'fa-solid fa-chart-line' },
-  { id: 'transactions', file: 'integrity-transactions.html', label: 'Transactions', icon: 'fa-solid fa-receipt' },
-  { id: 'webhooks', file: 'integrity-webhooks.html', label: 'Webhook History', icon: 'fa-solid fa-tower-broadcast' },
-  { id: 'reconciliation', file: 'integrity-reconciliation.html', label: 'Reconciliation', icon: 'fa-solid fa-code-compare' },
-  { id: 'evidence', file: 'integrity-evidence.html', label: 'Evidence Review', icon: 'fa-solid fa-file-circle-check' },
-  { id: 'exceptions', file: 'integrity-exceptions.html', label: 'Exception Queue', icon: 'fa-solid fa-triangle-exclamation' },
-  { id: 'recovery', file: 'integrity-recovery.html', label: 'Recovery Actions', icon: 'fa-solid fa-life-ring' },
-  { id: 'audit', file: 'integrity-audit.html', label: 'Audit Trail', icon: 'fa-solid fa-scroll' },
-  { id: 'settings', file: 'integrity-settings.html', label: 'Integration Settings', icon: 'fa-solid fa-gear' }
-];
+import { API } from '../../core/api.js';
+import { requireUser } from '../../core/guards.js';
+import { createSidebar } from '../../components/app-shell.js';
 
 const state = {
   workspaceId: null,
@@ -156,33 +145,6 @@ function section(title, eyebrow, body) {
 }
 
 // --------------------------------------------------------------------- layout
-
-function sidebar() {
-  const links = PAGES.map((page) => {
-    const active = page.id === state.page;
-    return `<a href="${page.file}" class="flex items-center gap-3 px-3.5 py-2.5 rounded-full text-sm font-medium ${active
-      ? 'bg-ink text-paper'
-      : 'text-ink-soft hover:text-ink hover:bg-ink/5 transition-all'}">
-      <i class="${page.icon} w-4 h-4"></i><span>${esc(page.label)}</span></a>`;
-  }).join('');
-
-  return `<aside class="w-64 bg-paper-dim border-r border-ink/10 flex flex-col justify-between hidden md:flex shrink-0">
-    <div>
-      <div class="min-h-[4.5rem] px-6 flex items-center gap-3 border-b border-ink/10">
-        <div class="w-8 h-8 rounded-full bg-ink text-paper flex items-center justify-center font-serif text-sm font-bold">A</div>
-        <div>
-          <span class="font-serif text-base tracking-tight font-semibold text-ink block">Aegis<span class="text-rust italic">X</span></span>
-          <span class="text-[9px] tracking-widest uppercase font-semibold text-ink-soft">INTEGRITY ENGINE</span>
-        </div>
-      </div>
-      <nav class="p-4 space-y-1 font-sans">${links}</nav>
-    </div>
-    <div class="p-4 border-t border-ink/10 space-y-2">
-      <div id="integrity-workspace" class="text-[11px] text-ink-soft">Workspace not loaded</div>
-      <div id="integrity-provider" class="text-[11px]"></div>
-    </div>
-  </aside>`;
-}
 
 function shell(title, subtitle, eyebrow) {
   return `<div class="flex-1 flex flex-col min-w-0">
@@ -1154,16 +1116,19 @@ const RENDERERS = {
   settings: renderSettings
 };
 
-async function boot() {
+export async function boot(page = state.page) {
+  state.page = page;
   // The integrity console is back-office only. Without this guard a signed-out visitor got an
   // "HTTP error 401" card instead of the sign-in page, and a merchant token rendered an empty shell.
-  const allowed = await Auth.requireUser(['ADMIN', 'COMPLIANCE_OFFICER', 'SETTLEMENT_OPERATOR']);
+  const allowed = await requireUser(['ADMIN', 'COMPLIANCE_OFFICER', 'SETTLEMENT_OPERATOR']);
   if (!allowed) return;
 
   const [title, subtitle, eyebrow] = PAGE_META[state.page] || PAGE_META.overview;
   const root = document.createElement('div');
   root.className = 'flex min-h-screen';
-  root.innerHTML = `${sidebar()}<div class="flex-1 flex flex-col min-w-0" id="integrity-main"></div>`;
+  root.append(createSidebar({ workspaceStatus: true }), document.createElement('div'));
+  root.lastElementChild.className = 'flex-1 flex flex-col min-w-0';
+  root.lastElementChild.id = 'integrity-main';
   document.body.prepend(root);
   document.getElementById('integrity-main').outerHTML = shell(title, subtitle, eyebrow);
 
@@ -1183,4 +1148,3 @@ async function boot() {
   }
 }
 
-boot();

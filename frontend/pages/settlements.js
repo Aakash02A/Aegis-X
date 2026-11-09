@@ -1,19 +1,21 @@
 /**
  * Aegis-X Settlement Workspace Controller
  */
-import { API } from './api.js';
-import { Auth } from './auth.js';
-import { Toast } from './notifications.js';
-import { Utils } from './utils.js';
+import { API } from '../core/api.js';
+import { requireUser } from '../core/guards.js';
+import { Auth } from '../core/auth.js';
+import { AppShell } from '../components/app-shell.js';
+import { Toast } from '../components/toast.js';
+import { Utils } from '../core/formatters.js';
+import { renderStatusChip } from '../components/status-chip.js';
 
 export const SettlementPage = {
   async init() {
-    if (!await Auth.requireUser(['SETTLEMENT_OPERATOR', 'COMPLIANCE_OFFICER'])) return;
-    Auth.applyRoleNavigation();
+    if (!await requireUser(['SETTLEMENT_OPERATOR', 'COMPLIANCE_OFFICER'])) return;
+    AppShell.mount();
     const canOperate = Auth.getUser()?.role === 'SETTLEMENT_OPERATOR';
     const reconciliationButton = document.getElementById('process-reconciliation');
     if (reconciliationButton) reconciliationButton.hidden = !canOperate;
-    window.Utils = Utils;
 
     this.allSettlements = [];
     this.filteredSettlements = [];
@@ -98,7 +100,7 @@ export const SettlementPage = {
           : Utils.escapeHtml(st.processorDisplayName || st.paymentProcessor || '—')}</td>
         <td class="font-mono-data text-ink font-medium py-3.5 px-2">${Utils.formatCurrency(st.settlementAmount, st.settlementCurrency)}</td>
         <td class="font-mono-data text-rust font-medium py-3.5 px-2">${st.processingFees == null ? '—' : Utils.formatCurrency(st.processingFees, st.settlementCurrency)}</td>
-        <td class="py-3.5 px-2">${this.renderSettlementBadge(st.status)}</td>
+        <td class="py-3.5 px-2">${renderStatusChip(st.status)}</td>
         <td class="text-xs text-ink-soft font-mono-data py-3.5 px-2">${st.retryCount ?? 0} · ${st.reconciledAt ? 'Reconciled' : 'Not reconciled'}</td>
         <td class="text-right py-3.5 px-6">
           ${st.canRetry && Auth.getUser()?.role === 'SETTLEMENT_OPERATOR' ? `
@@ -115,21 +117,6 @@ export const SettlementPage = {
     tbody.querySelectorAll('[data-retry-id]').forEach(button => {
       button.addEventListener('click', () => this.retrySettlement(button.dataset.retryId));
     });
-  },
-
-  renderSettlementBadge(status) {
-    switch (status) {
-      case 'SETTLED':
-      case 'COMPLETED':
-      case 'RECONCILED':
-        return '<span class="editorial-badge badge-approved">Settled</span>';
-      case 'FAILED':
-        return '<span class="editorial-badge badge-hold">Failed</span>';
-      case 'PROCESSING':
-        return '<span class="editorial-badge badge-brass">Processing</span>';
-      default:
-        return `<span class="editorial-badge badge-neutral">${Utils.escapeHtml(status || 'UNKNOWN')}</span>`;
-    }
   },
 
   async retrySettlement(id) {

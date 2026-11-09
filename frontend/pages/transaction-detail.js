@@ -2,23 +2,24 @@
  * Aegis-X Transaction Workspace Controller (Stage 9)
  * Orchestrates Summary, Evidence Upload, OCR, AI, Policy, Audit, and Review Notes tabs
  */
-import { API } from './api.js';
-import { Auth } from './auth.js';
-import { Toast } from './notifications.js';
-import { Utils } from './utils.js';
-import { UploadManager } from './upload.js';
-import { OCRViewer } from './ocr.js';
-import { AIViewer } from './ai.js';
-import { PolicyViewer } from './policy.js';
-import { AuditViewer } from './audit.js';
+import { API } from '../core/api.js';
+import { Auth } from '../core/auth.js';
+import { requireUser } from '../core/guards.js';
+import { AppShell } from '../components/app-shell.js';
+import { Toast } from '../components/toast.js';
+import { Utils } from '../core/formatters.js';
+import { renderStatusChip } from '../components/status-chip.js';
+import { UploadManager } from '../components/file-uploader.js';
+import { OCRViewer } from '../services/ocr.js';
+import { AIViewer } from '../services/ai-advisory.js';
+import { PolicyViewer } from '../services/policy.js';
+import { AuditViewer } from '../components/audit-timeline.js';
 
 export const TransactionPage = {
   async init() {
     // Guard page
-    if (!await Auth.requireUser(['MERCHANT', 'COMPLIANCE_OFFICER', 'SETTLEMENT_OPERATOR', 'ADMIN'])) return;
-    Auth.applyRoleNavigation();
-
-    window.Utils = Utils;
+    if (!await requireUser(['MERCHANT', 'COMPLIANCE_OFFICER', 'SETTLEMENT_OPERATOR', 'ADMIN'])) return;
+    AppShell.mount({ activePage: 'transaction.html' });
 
     const urlParams = new URLSearchParams(window.location.search);
     this.transactionId = urlParams.get('id');
@@ -89,7 +90,7 @@ export const TransactionPage = {
 
   renderHeader(tx) {
     document.getElementById('tx-id-display').textContent = tx.referenceNumber || tx.id;
-    document.getElementById('tx-status-badge').innerHTML = Utils.renderStatusBadge(tx.status);
+    document.getElementById('tx-status-badge').innerHTML = renderStatusChip(tx.status);
     document.getElementById('tx-amount-display').textContent = Utils.formatCurrency(tx.amount, tx.currency);
     document.getElementById('tx-buyer-display').textContent = tx.beneficiaryName || '—';
     document.getElementById('tx-date-display').textContent = Utils.formatDateTime(tx.createdAt);

@@ -35,7 +35,16 @@ const requiredPages = [
   'compliance.html',
   'transaction.html',
   'settlement.html',
-  'operations.html'
+  'operations.html',
+  'integrity.html',
+  'integrity-transactions.html',
+  'integrity-evidence.html',
+  'integrity-webhooks.html',
+  'integrity-reconciliation.html',
+  'integrity-exceptions.html',
+  'integrity-recovery.html',
+  'integrity-audit.html',
+  'integrity-settings.html'
 ];
 
 requiredPages.forEach(page => {
@@ -52,8 +61,8 @@ requiredPages.forEach(page => {
 // 2. Verify Stylesheets & Tokens
 console.log('\n2. Checking CSS Design Tokens & Animations:');
 const requiredCss = [
-  'css/animations.css',
-  'css/components.css'
+  'styles/animations.css',
+  'styles/components.css'
 ];
 
 requiredCss.forEach(css => {
@@ -66,7 +75,17 @@ requiredCss.forEach(css => {
   }
 });
 
-const componentsCss = fs.readFileSync(path.join(frontendDir, 'css/components.css'), 'utf-8');
+const componentsCss = fs.readFileSync(path.join(frontendDir, 'styles/components.css'), 'utf-8');
+const designBaseline = JSON.parse(fs.readFileSync(path.join(frontendDir, '..', 'docs', 'design-baseline.json'), 'utf-8'));
+const currentTokens = {};
+const currentFonts = new Set();
+for (const file of fs.readdirSync(path.join(frontendDir, 'styles')).filter(file => file.endsWith('.css'))) {
+  const css = fs.readFileSync(path.join(frontendDir, 'styles', file), 'utf-8');
+  for (const match of css.matchAll(/(--[A-Za-z0-9_-]+)\s*:\s*([^;]+);/g)) currentTokens[match[1]] = match[2].trim();
+  for (const match of css.matchAll(/font-family\s*:\s*([^;]+);/g)) currentFonts.add(match[1].trim());
+}
+assert(JSON.stringify(Object.fromEntries(Object.entries(currentTokens).sort())) === JSON.stringify(Object.fromEntries(Object.entries(designBaseline.cssCustomProperties).sort())), 'CSS custom properties match the approved design baseline exactly');
+assert(JSON.stringify([...currentFonts].sort()) === JSON.stringify([...designBaseline.fontFamilyDeclarations].sort()), 'CSS font-family declarations match the approved design baseline exactly');
 assert(componentsCss.includes('--bg-obsidian'), 'Design tokens contain --bg-obsidian');
 assert(componentsCss.includes('--brand-cyan'), 'Design tokens contain --brand-cyan');
 assert(componentsCss.includes('.aegis-card'), 'Component class .aegis-card is defined');
@@ -75,20 +94,30 @@ assert(componentsCss.includes('.aegis-btn-primary'), 'Component class .aegis-btn
 // 3. Verify JavaScript Modules
 console.log('\n3. Checking JavaScript Modules:');
 const requiredJs = [
-  'js/api.js',
-  'js/auth.js',
-  'js/dashboard.js',
-  'js/compliance.js',
-  'js/transaction.js',
-  'js/upload.js',
-  'js/ocr.js',
-  'js/ai.js',
-  'js/policy.js',
-  'js/audit.js',
-  'js/notifications.js',
-  'js/utils.js',
-  'js/operations.js'
+  'core/api.js',
+  'core/auth.js',
+  'core/guards.js',
+  'core/constants.js',
+  'components/app-shell.js',
+  'components/status-chip.js',
+  'pages/merchant-dashboard.js',
+  'pages/compliance-review.js',
+  'pages/transaction-detail.js',
+  'components/file-uploader.js',
+  'services/ocr.js',
+  'services/ai-advisory.js',
+  'services/policy.js',
+  'components/audit-timeline.js',
+  'components/toast.js',
+  'core/formatters.js',
+  'pages/operations-dashboard.js'
 ];
+requiredJs.push(
+  'pages/login.js', 'pages/register.js', 'pages/landing.js',
+  'pages/integrity/workspace.js',
+  ...['overview', 'transactions', 'evidence', 'webhooks', 'reconciliation', 'exceptions', 'recovery', 'audit', 'settings']
+    .map(page => `pages/integrity-${page}.js`)
+);
 
 requiredJs.forEach(js => {
   const filePath = path.join(frontendDir, js);
@@ -98,30 +127,34 @@ requiredJs.forEach(js => {
 
 // 4. Verify Registration -> Login Redirect Requirement
 console.log('\n4. Checking Mandatory UX Rules:');
-const authJs = fs.readFileSync(path.join(frontendDir, 'js/auth.js'), 'utf-8');
+const authJs = fs.readFileSync(path.join(frontendDir, 'core/auth.js'), 'utf-8');
 assert(authJs.includes('login.html?registered=true'), 'Registration redirects to Login without auto-login (Stage 5 fix)');
 
 // 5. Verify Evidence Upload Implementation
-const uploadJs = fs.readFileSync(path.join(frontendDir, 'js/upload.js'), 'utf-8');
+const uploadJs = fs.readFileSync(path.join(frontendDir, 'components/file-uploader.js'), 'utf-8');
 assert(uploadJs.includes('dragover'), 'Drag & drop dragover event is implemented');
 assert(uploadJs.includes('uploadDocument'), 'Multipart uploadDocument API call is integrated');
 
-const apiJs = fs.readFileSync(path.join(frontendDir, 'js/api.js'), 'utf-8');
+const apiJs = fs.readFileSync(path.join(frontendDir, 'core/api.js'), 'utf-8');
 assert(apiJs.includes('X-Correlation-ID'), 'Requests carry correlation IDs');
 assert(apiJs.includes('sessionStorage'), 'JWT storage is session scoped');
 assert(apiJs.includes("body.success === false"), 'API-level error envelopes are rejected');
 
 const authHtml = fs.readFileSync(path.join(frontendDir, 'register.html'), 'utf-8');
-assert(authHtml.includes('fullName,') && authHtml.includes('email,') && authHtml.includes('password'), 'Registration submits backend User fields');
+const registerJs = fs.readFileSync(path.join(frontendDir, 'pages/register.js'), 'utf-8');
+assert(authHtml.includes('id="reg-company"') && registerJs.includes('fullName,') && registerJs.includes('email,') && registerJs.includes('password'), 'Registration submits backend User fields');
 assert(authJs.includes("API.request('/auth/me')"), 'Protected pages refresh role from the backend');
 assert(!authJs.includes('merchant@aegisx.io'), 'Login contains no demo credentials');
+assert(['pages/login.js', 'pages/register.js', 'pages/landing.js'].every(file => fs.existsSync(path.join(frontendDir, file))), 'Public pages use external JavaScript modules');
+const allPageHtml = requiredPages.map(page => fs.readFileSync(path.join(frontendDir, page), 'utf-8'));
+assert(allPageHtml.every(content => !/<script\s+type="module">|\sonclick=/i.test(content)), 'HTML pages contain no inline modules or event handlers');
 
-const dashboardJs = fs.readFileSync(path.join(frontendDir, 'js/dashboard.js'), 'utf-8');
+const dashboardJs = fs.readFileSync(path.join(frontendDir, 'pages/merchant-dashboard.js'), 'utf-8');
 assert(dashboardJs.includes('beneficiaryName:'), 'Transaction creation uses backend beneficiaryName field');
 assert(dashboardJs.includes('purposeCode:'), 'Transaction creation uses backend purposeCode field');
 assert(dashboardJs.includes("t.status === 'EVIDENCE_PENDING'"), 'Evidence KPI matches the backend lifecycle enum');
 
-const complianceJs = fs.readFileSync(path.join(frontendDir, 'js/compliance.js'), 'utf-8');
+const complianceJs = fs.readFileSync(path.join(frontendDir, 'pages/compliance-review.js'), 'utf-8');
 assert(complianceJs.includes("/v1/compliance/queue"), 'Compliance reads the review queue API');
 assert(complianceJs.includes("/v1/compliance/review"), 'Compliance decisions use the review API');
 assert(complianceJs.includes('justification.length < 10'), 'Review decisions require justification');
@@ -135,27 +168,29 @@ const complianceHtml = fs.readFileSync(path.join(frontendDir, 'compliance.html')
 assert(complianceHtml.includes('Only escalated cases awaiting a human decision appear here.'), 'Compliance UI explains the reviewable queue scope');
 assert(!complianceHtml.includes('OCR Failure') && !complianceHtml.includes('Settlement Failure'), 'Compliance UI does not offer non-reviewable failure filters');
 
-const settlementJs = fs.readFileSync(path.join(frontendDir, 'js/settlement.js'), 'utf-8');
+const settlementJs = fs.readFileSync(path.join(frontendDir, 'pages/settlements.js'), 'utf-8');
 assert(settlementJs.includes('/v1/settlements/status/'), 'Settlements use the existing status page API');
 assert(settlementJs.includes('/retry'), 'Settlement retry uses the existing retry API');
 assert(settlementJs.includes('/reconciliation/process'), 'Settlement reconciliation uses the existing API');
+assert(settlementJs.includes('renderStatusChip') && !settlementJs.includes('renderSettlementBadge'), 'Settlement status uses the shared status chip');
 
-const transactionJs = fs.readFileSync(path.join(frontendDir, 'js/transaction.js'), 'utf-8');
+const transactionJs = fs.readFileSync(path.join(frontendDir, 'pages/transaction-detail.js'), 'utf-8');
 assert(transactionJs.includes('/transactions/${this.transactionId}/documents'), 'Evidence list uses the transaction documents API');
 assert(transactionJs.includes('/documents/${encodeURIComponent(uploadedDocument.id)}/process'), 'OCR uses the uploaded document ID');
 assert(transactionJs.includes('noteText: text'), 'Review notes use the backend noteText field');
 assert(transactionJs.includes('/notifications`'), 'Transaction notification history is API backed');
 
-const aiJs = fs.readFileSync(path.join(frontendDir, 'js/ai.js'), 'utf-8');
+const aiJs = fs.readFileSync(path.join(frontendDir, 'services/ai-advisory.js'), 'utf-8');
 assert(aiJs.includes('AI findings are advisory only. Final decisions are made by the deterministic policy engine.'), 'AI advisory notice is explicit');
 assert(!aiJs.includes('overallRiskScore') && !aiJs.includes('94.5'), 'AI view has no fabricated risk fallback');
 
-const operationsJs = fs.readFileSync(path.join(frontendDir, 'js/operations.js'), 'utf-8');
+const operationsJs = fs.readFileSync(path.join(frontendDir, 'pages/operations-dashboard.js'), 'utf-8');
 assert(operationsJs.includes("API.request('/actuator/health')"), 'Operations reads live actuator health');
 assert(operationsJs.includes("API.request('/actuator/metrics')"), 'Operations reads actuator meters');
 assert(operationsJs.includes("API.request('/performance/metrics')"), 'Operations reads backend performance observations');
 assert(dashboardJs.includes("/transactions/${encodeURIComponent(transaction.id)}/audit"), 'Merchant activity feed reads audit events');
 assert(dashboardJs.includes('transaction-pagination'), 'Merchant transaction table has pagination controls');
+assert(dashboardJs.includes('data-transaction-id') && !dashboardJs.includes('onclick='), 'Transaction row navigation uses delegated listeners without inline handlers');
 assert(complianceJs.includes('compliance-pagination'), 'Compliance table has pagination controls');
 assert(!requiredPages.map(page => fs.readFileSync(path.join(frontendDir, page), 'utf-8')).some(content => content.includes('cdn.tailwindcss.com')), 'HTML pages do not load Tailwind from a runtime CDN');
 
@@ -164,38 +199,41 @@ assert(!requiredPages.map(page => fs.readFileSync(path.join(frontendDir, page), 
 const allHtmlPages = fs.readdirSync(frontendDir).filter(file => file.endsWith('.html'));
 const externalAssetPattern = /(?:unpkg\.com|cdn\.jsdelivr\.net|cdnjs\.cloudflare\.com|fonts\.googleapis\.com|fonts\.gstatic\.com)/;
 assert(!allHtmlPages.some(page => externalAssetPattern.test(fs.readFileSync(path.join(frontendDir, page), 'utf-8'))), 'HTML pages load no runtime third-party CDN assets');
-assert(allHtmlPages.every(page => fs.readFileSync(path.join(frontendDir, page), 'utf-8').includes('css/icons.css')), 'HTML pages load the self-hosted icon stylesheet');
+assert(allHtmlPages.every(page => fs.readFileSync(path.join(frontendDir, page), 'utf-8').includes('styles/icons.css')), 'HTML pages load the self-hosted icon stylesheet');
 
 // Stylesheets are part of the runtime asset graph too, and the HTML scan above cannot see a request
 // made from CSS. components.css used to @import Google Fonts, so every page load reached a third
 // party even though the icons were already self-hosted. The fonts now come from pinned @fontsource
-// packages through css/fonts.css, and neither an @import nor a url() may point off-origin again.
-const cssDir = path.join(frontendDir, 'css');
+// packages through styles/fonts.css, and neither an @import nor a url() may point off-origin again.
+const cssDir = path.join(frontendDir, 'styles');
 const cssFiles = fs.readdirSync(cssDir).filter(file => file.endsWith('.css'));
 const externalCssUrl = /(?:@import\s+(?:url\()?\s*['"]?https?:\/\/|url\(\s*['"]?https?:\/\/)/i;
 const cssOffenders = cssFiles.filter(file => externalCssUrl.test(fs.readFileSync(path.join(cssDir, file), 'utf-8')));
 assert(cssOffenders.length === 0, `Stylesheets load no runtime third-party assets (offending: ${cssOffenders.join(', ') || 'none'})`);
-assert(cssFiles.includes('fonts.css'), 'The webfonts are self-hosted in css/fonts.css');
+assert(cssFiles.includes('fonts.css'), 'The webfonts are self-hosted in styles/fonts.css');
 assert(fs.readFileSync(path.join(cssDir, 'components.css'), 'utf-8').includes("@import './fonts.css'"), 'components.css loads the self-hosted webfont stylesheet');
 
 const packageJson = JSON.parse(fs.readFileSync(path.join(frontendDir, 'package.json'), 'utf-8'));
 const fontPackages = ['fraunces', 'inter', 'jetbrains-mono', 'urbanist', 'work-sans'];
 assert(fontPackages.every(name => packageJson.dependencies[`@fontsource/${name}`]), 'Every self-hosted webfont family is a pinned dependency');
 
-globalThis.window = { AEGIS_API_BASE_URL: 'https://aegis.test/api' };
+let redirectTarget = '';
+globalThis.window = { AEGIS_API_BASE_URL: 'https://aegis.test/api', location: { assign: target => { redirectTarget = target; } } };
+globalThis.location = { pathname: '/dashboard.html' };
 const storage = new Map([['aegis_jwt_token', 'test-session-token']]);
 globalThis.sessionStorage = {
   getItem: key => storage.get(key) ?? null,
   setItem: (key, value) => storage.set(key, value),
   removeItem: key => storage.delete(key)
 };
-globalThis.localStorage = { removeItem() {} };
+const localStorageRemovals = [];
+globalThis.localStorage = { removeItem: key => localStorageRemovals.push(key) };
 let lastRequest;
 globalThis.fetch = async (url, options) => {
   lastRequest = { url, options };
   return { ok: true, status: 200, text: async () => JSON.stringify({ success: true, data: { value: 7 } }) };
 };
-const { API } = await import('../js/api.js');
+const { API } = await import('../core/api.js');
 const envelopeData = await API.request('/v1/compliance/queue');
 assert(envelopeData.value === 7, 'API client unwraps standard success envelopes');
 assert(lastRequest.options.headers.Authorization === 'Bearer test-session-token', 'API client injects bearer token');
@@ -210,6 +248,10 @@ try {
   envelopeRejected = error.message === 'denied';
 }
 assert(envelopeRejected, 'API client rejects unsuccessful response envelopes');
+globalThis.fetch = async () => ({ ok: false, status: 401, text: async () => '{"message":"expired"}' });
+try { await API.request('/transactions'); } catch { /* expected unauthorized response */ }
+assert(redirectTarget === 'login.html?session=expired', 'API client redirects expired sessions to sign in');
+assert(!storage.has('aegis_jwt_token') && localStorageRemovals.includes('aegis_user'), '401 handling clears stored authentication state');
 
 const viteConfig = fs.readFileSync(path.join(frontendDir, 'vite.config.js'), 'utf-8');
 assert(allHtmlPages.every(page => viteConfig.includes(`'${page.replace(/\.html$/, '')}'`)), 'Production build includes every HTML entry page');

@@ -63,31 +63,6 @@ export const Utils = {
     return `${days}d ago`;
   },
 
-  renderStatusBadge(status) {
-    const s = (status || 'UNKNOWN').toUpperCase();
-    const config = {
-      APPROVED: { class: 'badge-approved', label: 'Approved', icon: 'fa-solid fa-circle-check' },
-      COMPLIANCE_HOLD: { class: 'badge-hold', label: 'Compliance Hold', icon: 'fa-solid fa-shield-halved' },
-      EVIDENCE_PENDING: { class: 'badge-neutral', label: 'Pending Evidence', icon: 'fa-solid fa-file-lines' },
-      OCR_PROCESSING: { class: 'badge-neutral', label: 'OCR Extracting', icon: 'fa-solid fa-microchip' },
-      AI_ANALYSIS: { class: 'badge-neutral', label: 'AI Reasoning', icon: 'fa-solid fa-wand-magic-sparkles' },
-      POLICY_EVALUATION: { class: 'badge-neutral', label: 'Policy Check', icon: 'fa-solid fa-scale-balanced' },
-      FAILED: { class: 'badge-hold', label: 'Failed', icon: 'fa-solid fa-circle-xmark' },
-      OCR_FAILED: { class: 'badge-hold', label: 'OCR Failed', icon: 'fa-solid fa-circle-xmark' },
-      AI_ANALYSIS_FAILED: { class: 'badge-hold', label: 'AI Analysis Failed', icon: 'fa-solid fa-circle-xmark' },
-      PAYMENT_RECEIVED: { class: 'badge-neutral', label: 'Payment Received', icon: 'fa-solid fa-circle-check' },
-      PAYMENT_FAILED: { class: 'badge-hold', label: 'Payment Failed', icon: 'fa-solid fa-circle-xmark' },
-      REJECTED: { class: 'badge-hold', label: 'Rejected', icon: 'fa-solid fa-circle-xmark' },
-      CREATED: { class: 'badge-neutral', label: 'Created', icon: 'fa-solid fa-clock' }
-    };
-
-    const c = config[s] || { class: 'badge-neutral', label: this.escapeHtml(s), icon: 'fa-solid fa-circle-info' };
-    return `<span class="editorial-badge ${c.class}">
-      <i class="${c.icon} w-3 h-3 inline"></i>
-      ${c.label}
-    </span>`;
-  },
-
   getRiskScoreBadge(score) {
     const num = Number(score) || 0;
     let badgeClass = 'text-olive-deep bg-olive-deep/10 border-olive-deep/30';

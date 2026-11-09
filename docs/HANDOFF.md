@@ -627,3 +627,24 @@ No `.env` file is present in Git history. Current `.env.example` entries and tes
 - Expired-data boundary remains **NOT SUPPORTED**, not a defect, until an authoritative data model and validity rule exist.
 - A follow-up browser automation attempt was stopped by the user's physical Escape key before a review case was verified; the browser UI result remains NOT VERIFIED. The temporary local server PIDs had exited and ports 18086/3000 had no listeners afterward.
 - Owner review/rotation of local `.env` credential candidates and reused historical example credentials remains outstanding. The changes are local; push is still the user's action.
+
+## Frontend redesign continuation — Phases F1–F2 (2026-11-09)
+
+### F1 inventory and baseline
+- Read-only inventory found 17 Vite HTML entry pages and 15 original JavaScript modules. Role coverage is Merchant (dashboard), Compliance Officer/Admin (review queue), Settlement Operator/Compliance Officer (settlements), Admin (operations), all four roles (transaction detail), and Admin/Compliance Officer/Settlement Operator (integrity pages). Public pages are landing, login, and registration.
+- API/page gaps recorded: Merchant dashboard requests `/performance/metrics`, which backend access rules restrict to Admin/Compliance Officer; Operations reports that settlement controls are unavailable; the landing footer had a transaction-detail link without its required transaction ID. No missing local HTML targets or confirmed dead buttons were found.
+- Baseline: 120 full-page screenshots across 40 page/role combinations and 1920×1080, 1366×768, and 390×844, stored under ignored `frontend/.screens/baseline/`. Playwright ran headlessly with system Chrome and throwaway users against the runner-created `aegisx_e2e` schema. The API E2E flow passed 56/56 and the runner services were stopped; ports 18290, 18286, and 3000 were verified free.
+- Baseline capture recorded 18 page/role/viewport combinations with a browser `console.error`; the sanitized summary contains no message or personal data and did not identify a source location. These console events remain to be diagnosed in later verification.
+- `docs/design-baseline.json` and the `frontend/.screens/` ignore entry were committed alone as `e270ed5`. The snapshot contains 21 CSS custom properties and four font-family declarations.
+
+### F2 structure and shared shell
+- Moved shared API, auth, guards, constants and formatters to `frontend/core/`; the shared shell, toast, file uploader, audit timeline and status chip to `frontend/components/`; AI/OCR/policy viewers to `frontend/services/`; and page controllers to `frontend/pages/`.
+- Added a shared role-filtered sidebar/profile shell, preserving the multi-page Vite entry points. Integrity has nine small page entry modules over a shared workspace renderer. Extracted public landing, login and register behavior into external modules. Removed inline logout handlers and dashboard row navigation and switched the transaction table to a delegated listener.
+- Added centralized 401 session clearing and sign-in redirection, and one status chip renderer used by transaction, dashboard, compliance and settlement views. Updated Vite/Tailwind references and frontend checks for the new paths and required exact token/font baseline.
+- No CSS token or font-family values changed. `npm.cmd test`: 148 passed, 0 failed. `npm.cmd run build`: successful, 53 modules transformed. The shared shell has not yet had a post-change visual comparison; later phases and final Playwright review remain open.
+
+### Open frontend findings
+- The browser console errors above remain undiagnosed.
+- Merchant performance metrics are not available to Merchant under current backend authorization; frontend redesign must not change backend policy.
+- The auth token stays in `sessionStorage`; the user summary including email remains in `localStorage`. Review this exposure in F5 without changing backend rules.
+- Expired evidence remains NOT SUPPORTED, not a defect, without an expiry field/cutoff. Customer capture remains NOT SUPPORTED BY DESIGN and outside Aegis-X. Money movement stays outside the policy transaction flow.

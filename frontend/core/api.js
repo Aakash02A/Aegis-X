@@ -17,6 +17,15 @@ function resolveUrl(endpoint) {
   return `${API_BASE_URL}${endpoint}`;
 }
 
+function handleUnauthorized(endpoint) {
+  if (endpoint === '/auth/login' || endpoint === '/auth/register' || location.pathname.endsWith('/login.html')) return;
+  sessionStorage.removeItem('aegis_jwt_token');
+  localStorage.removeItem('aegis_jwt_token');
+  localStorage.removeItem('aegis_user');
+  sessionStorage.setItem('aegis_auth_expired', 'true');
+  window.location.assign('login.html?session=expired');
+}
+
 async function readResponse(response) {
   const text = await response.text();
   let body = null;
@@ -72,6 +81,7 @@ export const API = {
       ...options,
       headers
     });
+    if (response.status === 401) handleUnauthorized(endpoint);
     return readResponse(response);
   },
 
@@ -87,6 +97,7 @@ export const API = {
         ...(token ? { 'Authorization': `Bearer ${token}` } : {})
       }
     });
+    if (response.status === 401) handleUnauthorized(endpoint);
     if (!response.ok) {
       throw new Error(`Could not download the document (HTTP ${response.status})`);
     }
@@ -109,6 +120,7 @@ export const API = {
       });
       request.addEventListener('load', async () => {
         try {
+          if (request.status === 401) handleUnauthorized(`/transactions/${transactionId}/documents`);
           resolve(await readResponse({
             ok: request.status >= 200 && request.status < 300,
             status: request.status,

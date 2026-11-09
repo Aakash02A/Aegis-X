@@ -1,9 +1,9 @@
 /**
  * Aegis-X Evidence Upload Controller (Amble & Tonsor Editorial Style)
  */
-import { API } from './api.js';
-import { Toast } from './notifications.js';
-import { Utils } from './utils.js';
+import { API } from '../core/api.js';
+import { Toast } from './toast.js';
+import { Utils } from '../core/formatters.js';
 
 export const UploadManager = {
   init(transactionId, onUploadComplete) {

@@ -6,60 +6,15 @@
   <title>Transaction Workspace — Aegis-X</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23C85A32'><path d='M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5'/></svg>" type="image/svg+xml" />
 
-  <link rel="stylesheet" href="css/tailwind.css" />
-  <link rel="stylesheet" href="css/animations.css" />
-  <link rel="stylesheet" href="css/components.css" />
-  <link rel="stylesheet" href="css/icons.css" />
+  <link rel="stylesheet" href="styles/tailwind.css" />
+  <link rel="stylesheet" href="styles/animations.css" />
+  <link rel="stylesheet" href="styles/components.css" />
+  <link rel="stylesheet" href="styles/icons.css" />
 </head>
 <body class="bg-paper text-ink flex min-h-screen">
 
   <!-- Sidebar -->
-  <aside class="w-64 bg-paper-dim border-r border-ink/10 flex flex-col justify-between hidden md:flex shrink-0">
-    <div>
-      <div class="min-h-[4.5rem] px-6 flex items-center gap-3 border-b border-ink/10">
-        <div class="w-8 h-8 rounded-full bg-ink text-paper flex items-center justify-center font-serif text-sm font-bold">
-          A
-        </div>
-        <div>
-          <span class="font-serif text-base tracking-tight font-semibold text-ink block">Aegis<span class="text-rust italic">X</span></span>
-          <span class="text-[9px] tracking-widest uppercase font-semibold text-ink-soft">WORKSPACE</span>
-        </div>
-      </div>
-
-      <nav class="p-4 space-y-1 font-sans">
-        <a href="integrity.html" class="flex items-center gap-3 px-3.5 py-2.5 rounded-full text-sm font-medium text-ink-soft hover:text-ink hover:bg-ink/5 transition-all">
-          <i class="fa-solid fa-shield-halved w-4 h-4"></i>
-          <span>Payment Integrity</span>
-        </a>
-        <a data-roles="MERCHANT" href="dashboard.html" class="flex items-center gap-3 px-3.5 py-2.5 rounded-full text-sm font-medium text-ink-soft hover:text-ink hover:bg-ink/5 transition-all">
-          <i class="fa-solid fa-table-columns w-4 h-4"></i>
-          <span>Merchant Console</span>
-        </a>
-        <a data-roles="COMPLIANCE_OFFICER,ADMIN" href="compliance.html" class="flex items-center gap-3 px-3.5 py-2.5 rounded-full text-sm font-medium text-ink-soft hover:text-ink hover:bg-ink/5 transition-all">
-          <i class="fa-solid fa-shield w-4 h-4"></i>
-          <span>Compliance Queue</span>
-        </a>
-        <a data-roles="SETTLEMENT_OPERATOR,COMPLIANCE_OFFICER" href="settlement.html" class="flex items-center gap-3 px-3.5 py-2.5 rounded-full text-sm font-medium text-ink-soft hover:text-ink hover:bg-ink/5 transition-all">
-          <i class="fa-solid fa-landmark w-4 h-4"></i>
-          <span>Settlement Desk</span>
-        </a>
-        <a data-roles="ADMIN" href="operations.html" class="flex items-center gap-3 px-3.5 py-2.5 rounded-full text-sm font-medium text-ink-soft hover:text-ink hover:bg-ink/5 transition-all">
-          <i class="fa-solid fa-chart-line w-4 h-4"></i>
-          <span>Operations &amp; Metrics</span>
-        </a>
-      </nav>
-    </div>
-
-    <div class="p-4 border-t border-ink/10">
-      <a href="dashboard.html" class="flex items-center gap-2 text-xs text-ink-soft hover:text-ink transition-colors font-medium">
-        <i class="fa-solid fa-arrow-left w-4 h-4"></i>
-        <span>Return to Dashboard</span>
-      </a>
-    </div>
-  </aside>
-
-  <!-- Main Viewport -->
-  <div class="flex-1 flex flex-col min-w-0">
+  <div class="flex-1 flex flex-col min-w-0" data-app-main="">
     
     <!-- Topbar -->
     <header class="min-h-[4.5rem] py-2 bg-paper/90 backdrop-blur border-b border-ink/10 px-4 sm:px-6 flex items-center justify-between gap-3 sticky top-0 z-30">
@@ -255,6 +210,6 @@
     </main>
   </div>
 
-  <script type="module" src="js/transaction.js"></script>
+  <script type="module" src="pages/transaction-detail.js"></script>
 </body>
 </html>

@@ -2,32 +2,22 @@
  * Aegis-X Merchant Dashboard Controller (Stage 7)
  * Handles metrics, quick actions, new transaction modal, and live transaction stream
  */
-import { API } from './api.js';
-import { Auth } from './auth.js';
-import { Toast } from './notifications.js';
-import { Utils } from './utils.js';
+import { API } from '../core/api.js';
+import { requireUser } from '../core/guards.js';
+import { Auth } from '../core/auth.js';
+import { AppShell } from '../components/app-shell.js';
+import { Toast } from '../components/toast.js';
+import { Utils } from '../core/formatters.js';
+import { renderStatusChip } from '../components/status-chip.js';
 
 export const DashboardPage = {
   async init() {
-    if (!await Auth.requireUser(['MERCHANT'])) return;
-    Auth.applyRoleNavigation();
-    window.Utils = Utils;
-
-    this.renderUserProfile();
+    if (!await requireUser(['MERCHANT'])) return;
+    AppShell.mount();
     this.setupNewTransactionModal();
     this.setupDashboardNavigation();
     this.setupSearch();
     await this.loadDashboardData();
-  },
-
-  renderUserProfile() {
-    const user = Auth.getUser();
-    if (user) {
-      const nameEl = document.getElementById('user-profile-name');
-      const roleEl = document.getElementById('user-profile-role');
-      if (nameEl) nameEl.textContent = user.name || user.email;
-      if (roleEl) roleEl.textContent = user.role;
-    }
   },
 
   async loadDashboardData() {
@@ -228,6 +218,14 @@ export const DashboardPage = {
   renderTransactionsTable(transactions) {
     const tbody = document.getElementById('recent-tx-tbody');
     if (!tbody) return;
+    if (tbody.dataset.navigationBound !== 'true') {
+      tbody.addEventListener('click', (event) => {
+        if (event.target.closest('a, button')) return;
+        const row = event.target.closest('tr[data-transaction-id]');
+        if (row) window.location.href = `transaction.html?id=${encodeURIComponent(row.dataset.transactionId)}`;
+      });
+      tbody.dataset.navigationBound = 'true';
+    }
     this.transactionPage = this.transactionPage || 0;
     const pageSize = 20;
     const query = (this.searchQuery || '').trim().toLocaleLowerCase();
@@ -250,12 +248,12 @@ export const DashboardPage = {
     }
 
     tbody.innerHTML = visibleTransactions.map(tx => `
-      <tr class="cursor-pointer hover:bg-paper-dim/60 transition-colors" onclick="window.location.href='transaction.html?id=${encodeURIComponent(tx.id)}'">
+      <tr data-transaction-id="${Utils.escapeHtml(tx.id)}" class="cursor-pointer hover:bg-paper-dim/60 transition-colors">
         <td class="font-mono-data font-semibold text-ink py-3.5 px-2">${Utils.escapeHtml(tx.referenceNumber || tx.id)}</td>
         <td class="font-serif text-sm text-ink font-medium py-3.5 px-2">${Utils.escapeHtml(tx.beneficiaryName || '—')}</td>
         <td class="font-mono-data text-ink font-medium py-3.5 px-2">${Utils.formatCurrency(tx.amount, tx.currency)}</td>
         <td class="font-mono-data text-ink-soft py-3.5 px-2">${Utils.escapeHtml(tx.purposeCode || '—')}</td>
-        <td class="py-3.5 px-2">${Utils.renderStatusBadge(tx.status)}</td>
+        <td class="py-3.5 px-2">${renderStatusChip(tx.status)}</td>
         <td class="text-right py-3.5 px-2">
           <a href="transaction.html?id=${encodeURIComponent(tx.id)}" class="editorial-link text-xs">
             Inspect →

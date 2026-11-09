@@ -1,5 +1,5 @@
 export default {
-  content: ['./*.html', './js/**/*.js'],
+  content: ['./*.html', './core/**/*.js', './components/**/*.js', './services/**/*.js', './pages/**/*.js'],
   theme: {
     extend: {
       colors: {

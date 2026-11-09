@@ -1,8 +1,10 @@
 /** Aegis-X Compliance Workspace Controller. */
-import { API } from './api.js';
-import { Auth } from './auth.js';
-import { Toast } from './notifications.js';
-import { Utils } from './utils.js';
+import { API } from '../core/api.js';
+import { requireUser } from '../core/guards.js';
+import { AppShell } from '../components/app-shell.js';
+import { Toast } from '../components/toast.js';
+import { Utils } from '../core/formatters.js';
+import { renderStatusChip } from '../components/status-chip.js';
 
 export const CompliancePage = {
   pageSize: 20,
@@ -16,9 +18,8 @@ export const CompliancePage = {
   submitting: false,
 
   async init() {
-    if (!await Auth.requireUser(['COMPLIANCE_OFFICER', 'ADMIN'])) return;
-    Auth.applyRoleNavigation();
-    window.Utils = Utils;
+    if (!await requireUser(['COMPLIANCE_OFFICER', 'ADMIN'])) return;
+    AppShell.mount();
     this.setupSearch();
     this.setupReviewForm();
     await this.loadTransactions(0);
@@ -125,7 +126,7 @@ export const CompliancePage = {
         <td class="font-serif text-sm text-ink font-medium py-3.5 px-2">${Utils.escapeHtml(tx.beneficiaryName || '—')}</td>
         <td class="font-mono-data text-ink font-medium py-3.5 px-2">${Utils.formatCurrency(tx.amount, tx.currency)}</td>
         <td class="text-xs text-ink-soft py-3.5 px-2">${Utils.escapeHtml(tx.purposeCode || '—')}</td>
-        <td class="py-3.5 px-2">${Utils.renderStatusBadge(tx.status)}</td>
+        <td class="py-3.5 px-2">${renderStatusChip(tx.status)}</td>
         <td class="text-right py-3.5 px-2">
           <button type="button" data-review-id="${Utils.escapeHtml(tx.transactionId)}" class="aegis-btn-ink py-1 px-3 text-xs">Review</button>
         </td>
