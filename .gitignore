@@ -86,3 +86,4 @@ backend/storage/
 backend/storage-test/
 tests/e2e/out/
 verification/
+frontend/.screens/
