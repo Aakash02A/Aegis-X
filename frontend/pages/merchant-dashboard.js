@@ -33,11 +33,7 @@ export const DashboardPage = {
       this.renderTransactionsTable(transactions);
       this.renderTransactionCharts(transactions);
       await this.loadRecentActivity(transactions);
-      try {
-        this.renderProcessingChart(await API.request('/performance/metrics'));
-      } catch {
-        this.renderProcessingChart(null);
-      }
+      this.renderProcessingChart(null);
     } catch (err) {
       Toast.error('Failed to load dashboard data: ' + err.message);
       const tbody = document.getElementById('recent-tx-tbody');

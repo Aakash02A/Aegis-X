@@ -3,7 +3,13 @@
  */
 import { API } from './api.js';
 import { Toast } from '../components/toast.js';
-import { ROLE_HOME } from './constants.js';
+import { ROLE_HOME, currentProtectedPagePath, safeReturnPath } from './constants.js';
+
+function loginUrl(returnPath = currentProtectedPagePath()) {
+  const params = new URLSearchParams();
+  if (returnPath) params.set('return', returnPath);
+  return `login.html${params.size ? `?${params}` : ''}`;
+}
 
 export const Auth = {
   getUser() {
@@ -29,24 +35,24 @@ export const Auth = {
 
   async requireUser(allowedRoles = []) {
     if (!this.isAuthenticated()) {
-      window.location.href = 'login.html';
+      window.location.assign(loginUrl());
       return false;
     }
 
     try {
       const user = await API.request('/auth/me');
       this.setUser({ id: user.id, email: user.email, name: user.fullName, role: user.role });
-    } catch {
+    } catch (error) {
       API.setAuthToken(null);
       this.setUser(null);
-      window.location.href = 'login.html';
+      if (error?.status !== 401) window.location.assign('error.html?type=authentication');
       return false;
     }
 
     const user = this.getUser();
     if (allowedRoles.length && !allowedRoles.includes(user?.role)) {
       Toast.warning('Your account does not have access to this workspace.');
-      window.location.href = this.homeForRole(user?.role);
+      window.location.assign('not-permitted.html');
       return false;
     }
     document.documentElement.classList.remove('auth-checking');
@@ -72,16 +78,8 @@ export const Auth = {
         Toast.success('Welcome back.');
 
         setTimeout(() => {
-          const role = result.role;
-          if (role === 'COMPLIANCE_OFFICER') {
-            window.location.href = 'compliance.html';
-          } else if (role === 'SETTLEMENT_OPERATOR') {
-            window.location.href = 'settlement.html';
-          } else if (role === 'ADMIN') {
-            window.location.href = 'operations.html';
-          } else {
-            window.location.href = 'dashboard.html';
-          }
+          const requested = new URLSearchParams(window.location.search).get('return');
+          window.location.assign(safeReturnPath(requested, result.role) || this.homeForRole(result.role));
         }, 600);
         return true;
       } else {
@@ -104,7 +102,11 @@ export const Auth = {
       
       // Mandatory Stage 5 rule: Redirect to Login upon registration (do not auto-login)
       setTimeout(() => {
-        window.location.href = 'login.html?registered=true';
+        const returnPath = new URLSearchParams(window.location.search).get('return');
+        const destination = returnPath
+          ? `login.html?registered=true&return=${encodeURIComponent(returnPath)}`
+          : 'login.html?registered=true';
+        window.location.assign(destination);
       }, 1200);
       return true;
     } catch (err) {
@@ -124,22 +126,20 @@ export const Auth = {
 
   guard(allowedRoles = []) {
     if (!this.isAuthenticated()) {
-      window.location.href = 'login.html';
+      window.location.assign(loginUrl());
       return false;
     }
     const user = this.getUser();
     if (allowedRoles.length > 0 && (!user || !allowedRoles.includes(user.role))) {
       Toast.warning('Unauthorized for this workspace. Redirecting...');
-      setTimeout(() => {
-        window.location.href = this.homeForRole(user?.role);
-      }, 1000);
+      window.location.assign('not-permitted.html');
       return false;
     }
     return true;
   },
 
   homeForRole(role) {
-    return ROLE_HOME[role] || ROLE_HOME.MERCHANT;
+    return ROLE_HOME[role] || 'index.html';
   },
 
   applyRoleNavigation() {

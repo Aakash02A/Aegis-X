@@ -3,6 +3,8 @@
  * Communicates with the Spring Boot backend (/api/...) and handles token injection
  */
 
+import { currentProtectedPagePath } from './constants.js';
+
 const API_BASE_URL = window.AEGIS_API_BASE_URL || 'http://localhost:8080/api';
 let correlationSequence = 0;
 
@@ -23,7 +25,10 @@ function handleUnauthorized(endpoint) {
   localStorage.removeItem('aegis_jwt_token');
   localStorage.removeItem('aegis_user');
   sessionStorage.setItem('aegis_auth_expired', 'true');
-  window.location.assign('login.html?session=expired');
+  const params = new URLSearchParams({ session: 'expired' });
+  const returnPath = currentProtectedPagePath();
+  if (returnPath) params.set('return', returnPath);
+  window.location.assign(`login.html?${params}`);
 }
 
 async function readResponse(response) {
@@ -41,7 +46,9 @@ async function readResponse(response) {
     const message = body && typeof body === 'object'
       ? body.message || body.error || `HTTP error ${response.status}`
       : body || `HTTP error ${response.status}`;
-    throw new Error(message);
+    const error = new Error(message);
+    error.status = response.status;
+    throw error;
   }
 
   if (body && typeof body === 'object' && body.success === false) {

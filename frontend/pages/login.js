@@ -7,6 +7,11 @@ if (params.get('session') === 'expired' || sessionStorage.getItem('aegis_auth_ex
   sessionStorage.removeItem('aegis_auth_expired');
   Toast.info('Your session ended. Please sign in again.');
 }
+const returnTo = params.get('return');
+if (returnTo) {
+  const registrationLink = document.querySelector('a[href="register.html"]');
+  if (registrationLink) registrationLink.href = `register.html?return=${encodeURIComponent(returnTo)}`;
+}
 
 document.getElementById('login-form')?.addEventListener('submit', async (event) => {
   event.preventDefault();

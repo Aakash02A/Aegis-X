@@ -36,6 +36,9 @@ const requiredPages = [
   'transaction.html',
   'settlement.html',
   'operations.html',
+  'not-permitted.html',
+  '404.html',
+  'error.html',
   'integrity.html',
   'integrity-transactions.html',
   'integrity-evidence.html',
@@ -116,6 +119,7 @@ const requiredJs = [
 ];
 requiredJs.push(
   'pages/login.js', 'pages/register.js', 'pages/landing.js',
+  'pages/route-outcome.js',
   'pages/integrity/workspace.js',
   ...['overview', 'transactions', 'evidence', 'webhooks', 'reconciliation', 'exceptions', 'recovery', 'audit', 'settings']
     .map(page => `pages/integrity-${page}.js`)
@@ -157,6 +161,8 @@ const registerJs = fs.readFileSync(path.join(frontendDir, 'pages/register.js'), 
 assert(authHtml.includes('id="reg-company"') && registerJs.includes('fullName,') && registerJs.includes('email,') && registerJs.includes('password'), 'Registration submits backend User fields');
 assert(authJs.includes("API.request('/auth/me')"), 'Protected pages refresh role from the backend');
 assert(!authJs.includes('merchant@aegisx.io'), 'Login contains no demo credentials');
+assert(authJs.includes('safeReturnPath(requested, result.role)'), 'Login returns only to a page allowed for the authenticated role');
+assert(authJs.includes("window.location.assign('not-permitted.html')"), 'Wrong-role access leads to the not-permitted page');
 assert(['pages/login.js', 'pages/register.js', 'pages/landing.js'].every(file => fs.existsSync(path.join(frontendDir, file))), 'Public pages use external JavaScript modules');
 const allPageHtml = requiredPages.map(page => fs.readFileSync(path.join(frontendDir, page), 'utf-8'));
 assert(allPageHtml.every(content => !/<script\s+type="module">|\sonclick=/i.test(content)), 'HTML pages contain no inline modules or event handlers');
@@ -189,17 +195,32 @@ assert(settlementJs.includes('renderStatusChip') && !settlementJs.includes('rend
 const transactionJs = fs.readFileSync(path.join(frontendDir, 'pages/transaction-detail.js'), 'utf-8');
 assert(transactionJs.includes('/transactions/${this.transactionId}/documents'), 'Evidence list uses the transaction documents API');
 assert(transactionJs.includes('/documents/${encodeURIComponent(uploadedDocument.id)}/process'), 'OCR uses the uploaded document ID');
+assert(transactionJs.includes("const canViewAdvisory = ['MERCHANT', 'COMPLIANCE_OFFICER', 'ADMIN'].includes(role)"), 'Transaction detail avoids advisory endpoints unavailable to Settlement Operators');
+assert(transactionJs.includes("await this.loadAllSubsystems({ reevaluatePolicy: true })"), 'A new evidence upload reevaluates the Java policy outcome');
+assert(transactionJs.includes('documents.length && (!policyData || reevaluatePolicy)'), 'Policy evaluation waits for evidence and can be refreshed after uploads');
+assert(transactionJs.includes("requireUser(['MERCHANT', 'COMPLIANCE_OFFICER', 'ADMIN'])"), 'Transaction detail route excludes roles that the transaction API cannot resolve');
+assert(transactionJs.includes("Auth.getUser()?.role === 'SETTLEMENT_OPERATOR'"), 'Settlement Operator transaction view hides notification actions unavailable to that role');
 assert(transactionJs.includes('noteText: text'), 'Review notes use the backend noteText field');
 assert(transactionJs.includes('/notifications`'), 'Transaction notification history is API backed');
 
 const aiJs = fs.readFileSync(path.join(frontendDir, 'services/ai-advisory.js'), 'utf-8');
 assert(aiJs.includes('AI findings are advisory only. Final decisions are made by the deterministic policy engine.'), 'AI advisory notice is explicit');
 assert(!aiJs.includes('overallRiskScore') && !aiJs.includes('94.5'), 'AI view has no fabricated risk fallback');
+const policyJs = fs.readFileSync(path.join(frontendDir, 'services/policy.js'), 'utf-8');
+assert(policyJs.includes('No policy outcome has been recorded yet.') && !policyJs.includes('pending AI analysis'), 'Policy waiting copy does not make AI a prerequisite for deterministic evaluation');
 
 const operationsJs = fs.readFileSync(path.join(frontendDir, 'pages/operations-dashboard.js'), 'utf-8');
 assert(operationsJs.includes("API.request('/actuator/health')"), 'Operations reads live actuator health');
 assert(operationsJs.includes("API.request('/actuator/metrics')"), 'Operations reads actuator meters');
+assert(operationsJs.includes("API.request('/actuator/prometheus')") && !operationsJs.includes("API.request('/prometheus')"), 'Operations uses the configured actuator Prometheus route');
 assert(operationsJs.includes("API.request('/performance/metrics')"), 'Operations reads backend performance observations');
+assert(!dashboardJs.includes("API.request('/performance/metrics')"), 'Merchant dashboard does not call a staff-only performance endpoint');
+const settlementPageJs = fs.readFileSync(path.join(frontendDir, 'pages/settlements.js'), 'utf-8');
+assert(settlementPageJs.includes("API.request('/v1/settlements/overdue')") && settlementPageJs.includes("role === 'ADMIN'"), 'Admin settlement view uses the Admin-authorized overdue endpoint');
+assert(settlementPageJs.includes("'SETTLEMENT_OPERATOR', 'COMPLIANCE_OFFICER', 'ADMIN'"), 'Settlement page route matches the roles supported by its UI');
+const integrityWorkspaceJs = fs.readFileSync(path.join(frontendDir, 'pages/integrity/workspace.js'), 'utf-8');
+assert(integrityWorkspaceJs.includes("API.request('/integrity/workspaces')") && integrityWorkspaceJs.includes('integrity-workspace-switcher'), 'Integrity workspace switcher loads only the signed-in user workspace list');
+assert(integrityWorkspaceJs.includes("['ADMIN', 'COMPLIANCE_OFFICER'].includes(Auth.getUser()?.role)"), 'Integrity review and threshold controls are limited to authorized roles');
 assert(dashboardJs.includes("/transactions/${encodeURIComponent(transaction.id)}/audit"), 'Merchant activity feed reads audit events');
 assert(dashboardJs.includes('transaction-pagination'), 'Merchant transaction table has pagination controls');
 assert(dashboardJs.includes('data-transaction-id') && !dashboardJs.includes('onclick='), 'Transaction row navigation uses delegated listeners without inline handlers');
@@ -230,7 +251,10 @@ const fontPackages = ['fraunces', 'inter', 'jetbrains-mono', 'urbanist', 'work-s
 assert(fontPackages.every(name => packageJson.dependencies[`@fontsource/${name}`]), 'Every self-hosted webfont family is a pinned dependency');
 
 let redirectTarget = '';
-globalThis.window = { AEGIS_API_BASE_URL: 'https://aegis.test/api', location: { assign: target => { redirectTarget = target; } } };
+globalThis.window = { AEGIS_API_BASE_URL: 'https://aegis.test/api', location: {
+  href: 'https://aegis.test/dashboard.html', origin: 'https://aegis.test', pathname: '/dashboard.html', search: '',
+  assign: target => { redirectTarget = target; }
+} };
 globalThis.location = { pathname: '/dashboard.html' };
 const storage = new Map([['aegis_jwt_token', 'test-session-token']]);
 globalThis.sessionStorage = {
@@ -246,6 +270,11 @@ globalThis.fetch = async (url, options) => {
   return { ok: true, status: 200, text: async () => JSON.stringify({ success: true, data: { value: 7 } }) };
 };
 const { API } = await import('../core/api.js');
+const { safeReturnPath } = await import('../core/constants.js');
+assert(safeReturnPath('transaction.html?id=sample', 'MERCHANT') === 'transaction.html?id=sample', 'Same-origin role-allowed return paths preserve the page query');
+assert(safeReturnPath('compliance.html', 'MERCHANT') === null, 'Return paths cannot cross role boundaries');
+assert(safeReturnPath('transaction.html?id=sample', 'SETTLEMENT_OPERATOR') === null, 'Return paths cannot open transaction details unavailable to Settlement Operators');
+assert(safeReturnPath('https://outside.example/operations.html', 'ADMIN') === null, 'Return paths cannot leave the application origin');
 const envelopeData = await API.request('/v1/compliance/queue');
 assert(envelopeData.value === 7, 'API client unwraps standard success envelopes');
 assert(lastRequest.options.headers.Authorization === 'Bearer test-session-token', 'API client injects bearer token');
@@ -260,9 +289,12 @@ try {
   envelopeRejected = error.message === 'denied';
 }
 assert(envelopeRejected, 'API client rejects unsuccessful response envelopes');
+globalThis.window.location.search = '?id=sample';
 globalThis.fetch = async () => ({ ok: false, status: 401, text: async () => '{"message":"expired"}' });
-try { await API.request('/transactions'); } catch { /* expected unauthorized response */ }
-assert(redirectTarget === 'login.html?session=expired', 'API client redirects expired sessions to sign in');
+let unauthorizedStatus;
+try { await API.request('/transactions'); } catch (error) { unauthorizedStatus = error.status; }
+assert(redirectTarget === 'login.html?session=expired&return=dashboard.html%3Fid%3Dsample', 'API client redirects expired sessions back to the current page');
+assert(unauthorizedStatus === 401, 'API errors retain their HTTP status for route guards');
 assert(!storage.has('aegis_jwt_token') && localStorageRemovals.includes('aegis_user'), '401 handling clears stored authentication state');
 
 const viteConfig = fs.readFileSync(path.join(frontendDir, 'vite.config.js'), 'utf-8');

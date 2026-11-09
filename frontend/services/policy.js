@@ -9,7 +9,7 @@ export const PolicyViewer = {
     if (!container) return;
     container.replaceChildren();
     if (!policyData) {
-      container.append(Utils.textElement('p', 'p-8 text-sm text-ink-soft', 'Policy evaluation is pending AI analysis.'));
+      container.append(Utils.textElement('p', 'p-8 text-sm text-ink-soft', 'No policy outcome has been recorded yet.'));
       return;
     }
 

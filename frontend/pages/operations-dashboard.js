@@ -17,11 +17,10 @@ export const OperationsPage = {
   },
 
   async loadMetrics() {
-    const prometheusRequest = API.request('/prometheus').catch(() => API.request('/actuator/prometheus'));
     const [health, meters, prometheus, performance] = await Promise.allSettled([
       API.request('/actuator/health'),
       API.request('/actuator/metrics'),
-      prometheusRequest,
+      API.request('/actuator/prometheus'),
       API.request('/performance/metrics')
     ]);
     this.renderHealth(health.status === 'fulfilled' ? health.value : null);

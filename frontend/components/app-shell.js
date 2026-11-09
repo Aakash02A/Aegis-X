@@ -59,6 +59,9 @@ export function createSidebar({ activePage = currentPageFile(), className = '', 
     for (const route of INTEGRITY_ROUTES) {
       const link = element('a', 'flex items-center gap-3 px-3.5 py-2 rounded-full text-xs font-medium transition-all');
       link.href = route.page;
+      link.dataset.integrityRoute = route.page;
+      const selectedWorkspace = sessionStorage.getItem('aegis_integrity_workspace');
+      if (selectedWorkspace) link.href += `?workspace=${encodeURIComponent(selectedWorkspace)}`;
       link.classList.add(route.page === activePage ? 'bg-ink' : 'text-ink-soft', route.page === activePage ? 'text-paper' : 'hover:text-ink');
       if (route.page !== activePage) link.classList.add('hover:bg-ink/5');
       if (route.page === activePage) link.setAttribute('aria-current', 'page');
@@ -73,11 +76,17 @@ export function createSidebar({ activePage = currentPageFile(), className = '', 
   const footer = element('div', 'p-4 border-t border-ink/10');
   if (workspaceStatus) {
     footer.classList.add('space-y-2');
+    const workspaceLabel = element('label', 'block text-[10px] uppercase tracking-wider text-ink-soft', 'Workspace');
+    const workspaceSelect = element('select', 'mt-1 w-full min-w-0 border border-ink/20 rounded px-2 py-1 bg-paper text-ink text-xs');
+    workspaceSelect.id = 'integrity-workspace-switcher';
+    workspaceSelect.setAttribute('aria-label', 'Choose an integrity workspace');
+    workspaceSelect.append(element('option', '', 'Loading workspaces…'));
+    workspaceLabel.append(workspaceSelect);
     const workspace = element('div', 'text-[11px] text-ink-soft', 'Workspace not loaded');
     workspace.id = 'integrity-workspace';
     const provider = element('div', 'text-[11px]');
     provider.id = 'integrity-provider';
-    footer.append(workspace, provider);
+    footer.append(workspaceLabel, workspace, provider);
   }
   const profile = element('div', 'p-3 rounded-sm bg-white border border-ink/10 flex items-center justify-between');
   const identity = element('div', 'flex items-center gap-2.5 overflow-hidden');

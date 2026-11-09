@@ -1,6 +1,12 @@
 import { Auth } from '../core/auth.js';
 import { Toast } from '../components/toast.js';
 
+const returnTo = new URLSearchParams(window.location.search).get('return');
+if (returnTo) {
+  const loginLink = document.querySelector('a[href="login.html"]');
+  if (loginLink) loginLink.href = `login.html?return=${encodeURIComponent(returnTo)}`;
+}
+
 document.getElementById('register-form')?.addEventListener('submit', async (event) => {
   event.preventDefault();
   const fullName = document.getElementById('reg-company').value.trim();

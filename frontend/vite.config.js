@@ -26,7 +26,7 @@ export default defineConfig({
   },
   build: {
     rollupOptions: {
-      input: ['index', 'login', 'register', 'dashboard', 'transaction', 'compliance', 'settlement', 'operations',
+      input: ['index', 'login', 'register', 'dashboard', 'transaction', 'compliance', 'settlement', 'operations', 'not-permitted', '404', 'error',
         'integrity', 'integrity-transactions', 'integrity-evidence', 'integrity-webhooks',
         'integrity-reconciliation',
         'integrity-exceptions', 'integrity-recovery', 'integrity-audit', 'integrity-settings']

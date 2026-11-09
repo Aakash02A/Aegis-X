@@ -12,6 +12,7 @@
 
 import { API } from '../../core/api.js';
 import { requireUser } from '../../core/guards.js';
+import { Auth } from '../../core/auth.js';
 import { createSidebar, wireMobileNavigation } from '../../components/app-shell.js';
 import { enhanceResponsiveTables } from '../../components/responsive-table.js';
 
@@ -181,9 +182,39 @@ const PAGE_META = {
 const base = () => `/integrity/workspaces/${state.workspaceId}`;
 
 async function loadWorkspace() {
-  const workspace = await API.request('/integrity/workspaces/default');
+  const workspaces = await API.request('/integrity/workspaces');
+  if (!Array.isArray(workspaces) || workspaces.length === 0) {
+    throw new Error('No integrity workspaces are assigned to this account.');
+  }
+  const requestedId = new URLSearchParams(location.search).get('workspace') ||
+    sessionStorage.getItem('aegis_integrity_workspace');
+  let selected = workspaces.find((item) => item.id === requestedId);
+  if (!selected) {
+    const defaultWorkspace = await API.request('/integrity/workspaces/default');
+    selected = workspaces.find((item) => item.id === defaultWorkspace.id) || workspaces[0];
+  }
+  const workspace = await API.request(`/integrity/workspaces/${encodeURIComponent(selected.id)}`);
+  sessionStorage.setItem('aegis_integrity_workspace', workspace.id);
   state.workspace = workspace;
   state.workspaceId = workspace.id;
+  const switcher = document.getElementById('integrity-workspace-switcher');
+  if (switcher) {
+    switcher.replaceChildren(...workspaces.map((item) => {
+      const option = document.createElement('option');
+      option.value = item.id;
+      option.textContent = item.name;
+      option.selected = item.id === workspace.id;
+      return option;
+    }));
+    switcher.addEventListener('change', () => {
+      const params = new URLSearchParams(location.search);
+      params.set('workspace', switcher.value);
+      window.location.assign(`${location.pathname}?${params}`);
+    });
+  }
+  document.querySelectorAll('[data-integrity-route]').forEach((link) => {
+    link.href = `${link.dataset.integrityRoute}?workspace=${encodeURIComponent(workspace.id)}`;
+  });
   const node = document.getElementById('integrity-workspace');
   if (node) node.innerHTML = `${esc(workspace.name)}<br />${badge(workspace.environment, 'neutral')} ${badge(workspace.providerMode, tone(workspace.providerMode))}`;
   if (document.getElementById('integrity-provider')) {
@@ -582,6 +613,7 @@ async function renderExceptionDetail() {
   const host = document.getElementById('exception-detail');
   const detail = await api.exception(state.exceptionId);
   const item = detail.exceptionCase || detail.exception || detail;
+  const canReview = ['ADMIN', 'COMPLIANCE_OFFICER'].includes(Auth.getUser()?.role);
 
   const recommendations = (detail.recommendations || []).map((recommendation) => `
     <div class="editorial-card p-4 space-y-2">
@@ -595,8 +627,8 @@ async function renderExceptionDetail() {
       ${recommendation.riskNote ? `<p class="text-xs text-rust">Risk: ${esc(recommendation.riskNote)}</p>` : ''}
       ${recommendation.executionOutcome ? `<p class="text-xs text-ink-soft">Outcome: ${esc(recommendation.executionOutcome)}</p>` : ''}
       <div class="flex flex-wrap gap-2">
-        <button data-decide="approve:${esc(recommendation.id)}" class="px-3 py-1.5 rounded-full bg-ink text-paper text-xs font-medium">Approve</button>
-        <button data-decide="reject:${esc(recommendation.id)}" class="px-3 py-1.5 rounded-full border border-ink/30 text-xs font-medium text-ink">Reject</button>
+        ${canReview ? `<button data-decide="approve:${esc(recommendation.id)}" class="px-3 py-1.5 rounded-full bg-ink text-paper text-xs font-medium">Approve</button>
+        <button data-decide="reject:${esc(recommendation.id)}" class="px-3 py-1.5 rounded-full border border-ink/30 text-xs font-medium text-ink">Reject</button>` : ''}
         <button data-decide="execute:${esc(recommendation.id)}" class="px-3 py-1.5 rounded-full border border-ink/30 text-xs font-medium text-ink">Execute (read-only only)</button>
       </div>
     </div>`).join('') || '<p class="text-sm text-ink-soft">No recommendation attached to this case.</p>';
@@ -632,7 +664,7 @@ async function renderExceptionDetail() {
       ${jsonBlock('Evidence still missing', item.missingEvidenceJson)}
       ${item.resolutionSummary ? `<div class="editorial-eyebrow mt-3">Recorded resolution</div><p class="text-sm text-ink">${esc(item.resolutionSummary)}</p>` : ''}
     </div>
-    <div class="editorial-card p-4 space-y-3">
+    ${canReview ? `<div class="editorial-card p-4 space-y-3">
       <div class="editorial-eyebrow">Human review</div>
       <div class="grid gap-2">
         <textarea id="review-note" rows="2" placeholder="Investigation note" class="w-full border border-ink/20 rounded px-2 py-1 bg-paper text-ink text-sm"></textarea>
@@ -642,9 +674,10 @@ async function renderExceptionDetail() {
           <button data-act="resolve" class="px-3 py-1.5 rounded-full bg-olive-deep text-paper text-xs font-medium">Resolve</button>
           <button data-act="dismiss" class="px-3 py-1.5 rounded-full border border-ink/30 text-xs font-medium text-ink">Dismiss</button>
         </div>
-        <p class="text-[11px] text-ink-soft">A resolution is provisional: the next reconciliation run that still sees this discrepancy will reopen the case automatically.</p>
       </div>
+      <p class="text-[11px] text-ink-soft">A resolution is provisional: the next reconciliation run that still sees this discrepancy will reopen the case automatically.</p>
     </div>
+    ` : '<div class="editorial-card p-4 text-sm text-ink-soft">This case is read-only for your role. A Compliance Officer or Admin records the human decision.</div>'}
   `)}
   ${section('Recommendations', 'what the engine suggests next', recommendations)}
   ${section('Finding history', `${(detail.findings || []).length} finding(s)`, findings)}
@@ -733,6 +766,7 @@ async function renderAudit(root) {
 
 async function renderSettings(root) {
   const workspace = state.workspace;
+  const canManage = ['ADMIN', 'COMPLIANCE_OFFICER'].includes(Auth.getUser()?.role);
   const method = await api.benchmarkMethod().catch(() => null);
 
   root.innerHTML = `<div class="space-y-8">
@@ -745,11 +779,11 @@ async function renderSettings(root) {
         <div><span class="editorial-eyebrow block">Staleness threshold</span>${esc(workspace.stalenessThresholdSeconds)} seconds</div>
         <div><span class="editorial-eyebrow block">Live payment execution</span>${badge('NOT IMPLEMENTED', 'neutral')}</div>
       </div>
-      <div class="editorial-card p-4 flex flex-wrap items-end gap-3 mt-3">
+      ${canManage ? `<div class="editorial-card p-4 flex flex-wrap items-end gap-3 mt-3">
         <label class="text-xs text-ink-soft">Staleness threshold (seconds)
           <input id="threshold" type="number" min="60" value="${esc(workspace.stalenessThresholdSeconds)}" class="mt-1 block border border-ink/20 rounded px-2 py-1 bg-paper text-ink text-sm" /></label>
         <button id="save-threshold" class="px-4 py-2 rounded-full bg-ink text-paper text-sm font-medium">Save threshold</button>
-      </div>
+      </div>` : '<p class="text-xs text-ink-soft">Only Admins and Compliance Officers can change the staleness threshold.</p>'}
     `)}
     ${section('Provider credentials', 'secrets are never returned to the browser', `
       <div class="editorial-card p-4 space-y-3 text-sm">
@@ -764,14 +798,14 @@ async function renderSettings(root) {
         <div class="flex flex-wrap items-end gap-3">
           <label class="text-xs text-ink-soft">Seed
             <input id="benchmark-seed" type="number" value="${esc(method?.seed ?? 20261010)}" class="mt-1 block border border-ink/20 rounded px-2 py-1 bg-paper text-ink text-sm" /></label>
-          <button id="run-benchmark" class="px-4 py-2 rounded-full bg-ink text-paper text-sm font-medium">Run benchmark</button>
+          ${canManage ? '<button id="run-benchmark" class="px-4 py-2 rounded-full bg-ink text-paper text-sm font-medium">Run benchmark</button>' : '<span class="text-xs text-ink-soft">Benchmark runs are restricted to Admins and Compliance Officers.</span>'}
         </div>
         <div id="benchmark-result"></div>
       </div>
     `)}
   </div>`;
 
-  document.getElementById('save-threshold').addEventListener('click', async () => {
+  document.getElementById('save-threshold')?.addEventListener('click', async () => {
     try {
       const seconds = Number(document.getElementById('threshold').value);
       const updated = await api.setThreshold(seconds);
@@ -792,7 +826,7 @@ async function renderSettings(root) {
     }
   });
 
-  document.getElementById('run-benchmark').addEventListener('click', async () => {
+  document.getElementById('run-benchmark')?.addEventListener('click', async () => {
     const host = document.getElementById('benchmark-result');
     host.innerHTML = '<p class="text-xs text-ink-soft">Running…</p>';
     try {

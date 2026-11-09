@@ -659,3 +659,30 @@ No `.env` file is present in Git history. Current `.env.example` entries and tes
 - The auth token stays in `sessionStorage`; the user summary including email remains in `localStorage`. Review this exposure in F5 without changing backend rules.
 - Expired evidence remains NOT SUPPORTED, not a defect, without an expiry field/cutoff. Customer capture remains NOT SUPPORTED BY DESIGN and outside Aegis-X. Money movement stays outside the policy transaction flow.
 - F4 role and return-path journeys, F5 accessibility/states/768px review, and F6 final visual comparison and full verification remain open.
+
+## Frontend redesign — Phase F4: roles, navigation, and journeys (2026-11-09)
+
+### Verdict
+**COMPLETE for the supported frontend/API role contract and the checks listed below.** No backend authorization rule or route was changed.
+
+### Role and journey changes
+- Sidebar items are generated from role-specific route metadata. The profile uses the user returned by `/auth/me` and displays the real name, role, and a stable initial. Integrity workspace selection loads the signed-in user's `/integrity/workspaces` list; integrity decision and threshold controls are hidden from Settlement Operators.
+- Protected routes send signed-out users to login with a same-origin return path. Return destinations are restricted to known pages that the authenticated role may open. API 401 responses clear session and user state and preserve the current protected page; role failures go to `not-permitted.html`. Static `404.html` and generic `error.html` pages avoid exposing raw details.
+- The transaction page is allowed for Merchant, Compliance Officer, and Admin. Settlement Operator access redirects to not-permitted: the existing transaction controller does not resolve that role for transaction detail and returns 404. This frontend restriction avoids a broken route without changing backend rules. The page does not call AI/policy endpoints until evidence exists; a new evidence upload triggers a Java policy re-evaluation. The policy waiting state no longer implies AI is required.
+- The settlement view uses the existing overdue list for Admin, the status list for Compliance Officer and Settlement Operator, and role-gated process/retry controls. The operations page now uses `/actuator/prometheus`, the configured actuator route, instead of first requesting a nonexistent root `/prometheus` URL.
+- Browser journeys verified logged-out return paths, Merchant-to-Operations denial, Settlement Operator transaction denial, 401 cleanup and message, and registration → login → Merchant dashboard. The existing API E2E additionally exercised registration/authentication, policy outcomes, reviewer rejection, reconciliation, and audit.
+
+### Verification
+- Headless Playwright with system Chrome captured 120/120 screenshots for 40 page/role combinations at 1920×1080, 1366×768, and 390×844 in ignored `frontend/.screens/after-f4-final/`.
+- Result: **0 browser-error combinations, 0 failed API/resource responses, 0 mobile overflow/drawer/table-label findings, and 0 route/role findings**. The capture includes role and return-path checks; no credential or raw browser error text was written.
+- The simulated-provider API E2E flow passed **56/56** on the runner's disposable `aegisx_e2e` schema. Financial execution and live provider calls remained disabled. Services were stopped and ports 19990, 19986, and 3006 were verified free.
+- `npm.cmd test`: **184 passed, 0 failed**. `npm.cmd run build`: successful, **59 modules transformed**. `git diff --check -- frontend` passed; a repository-wide whitespace check still reports the pre-existing user change in `backend/.gitattributes:3`, which was not edited or staged.
+- No CSS token, font, spacing, radius, shadow, logo, or icon-style changes were made. F6 will compare the final screenshots and rerun the exact token/font extraction.
+
+### Phase commit
+Recorded in the commit that updates this handoff and BUILD_STATUS.
+
+### Open items
+- F5 accessibility and per-page loading/empty/error/success review, four-width layout review, and auth-storage exposure report remain open.
+- F6 adds full merchant evidence/policy and reviewer UI walkthroughs, final visual comparison, and final verification.
+- Token remains in `sessionStorage`; the user profile (including email) remains in `localStorage`. F5 will report the exposure without changing authentication architecture.

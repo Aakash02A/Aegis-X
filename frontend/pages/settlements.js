@@ -11,9 +11,16 @@ import { renderStatusChip } from '../components/status-chip.js';
 
 export const SettlementPage = {
   async init() {
-    if (!await requireUser(['SETTLEMENT_OPERATOR', 'COMPLIANCE_OFFICER'])) return;
+    if (!await requireUser(['SETTLEMENT_OPERATOR', 'COMPLIANCE_OFFICER', 'ADMIN'])) return;
     AppShell.mount();
-    const canOperate = Auth.getUser()?.role === 'SETTLEMENT_OPERATOR';
+    const role = Auth.getUser()?.role;
+    const canOperate = ['SETTLEMENT_OPERATOR', 'ADMIN'].includes(role);
+    if (role === 'ADMIN') {
+      const heading = document.querySelector('[data-page-heading] h1');
+      const subtitle = document.querySelector('[data-page-heading] p:not(.editorial-eyebrow)');
+      if (heading) heading.textContent = 'Overdue settlement review';
+      if (subtitle) subtitle.textContent = 'Review overdue items and reconciliation outcomes available to Admins.';
+    }
     const reconciliationButton = document.getElementById('process-reconciliation');
     if (reconciliationButton) reconciliationButton.hidden = !canOperate;
 
@@ -26,6 +33,13 @@ export const SettlementPage = {
 
   async loadSettlements() {
     try {
+      if (Auth.getUser()?.role === 'ADMIN') {
+        const overdue = await API.request('/v1/settlements/overdue');
+        this.allSettlements = Array.isArray(overdue) ? overdue : [];
+        this.filteredSettlements = [...this.allSettlements];
+        this.renderTable(this.filteredSettlements);
+        return;
+      }
       const statuses = [
         'INITIATED', 'PROCESSING', 'SUBMITTED', 'PENDING', 'COMPLETED',
         'FAILED', 'REJECTED', 'RECONCILING', 'RECONCILED',
@@ -103,7 +117,7 @@ export const SettlementPage = {
         <td class="py-3.5 px-2">${renderStatusChip(st.status)}</td>
         <td class="text-xs text-ink-soft font-mono-data py-3.5 px-2">${st.retryCount ?? 0} · ${st.reconciledAt ? 'Reconciled' : 'Not reconciled'}</td>
         <td class="text-right py-3.5 px-6">
-          ${st.canRetry && Auth.getUser()?.role === 'SETTLEMENT_OPERATOR' ? `
+          ${st.canRetry && ['SETTLEMENT_OPERATOR', 'ADMIN'].includes(Auth.getUser()?.role) ? `
           <button type="button" data-retry-id="${Utils.escapeHtml(st.id)}" class="aegis-btn-ink py-1 px-3 text-xs inline-flex items-center gap-1">
             <i class="fa-solid fa-arrows-rotate w-3 h-3"></i> Retry
           </button>

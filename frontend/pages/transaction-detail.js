@@ -18,7 +18,7 @@ import { AuditViewer } from '../components/audit-timeline.js';
 export const TransactionPage = {
   async init() {
     // Guard page
-    if (!await requireUser(['MERCHANT', 'COMPLIANCE_OFFICER', 'SETTLEMENT_OPERATOR', 'ADMIN'])) return;
+    if (!await requireUser(['MERCHANT', 'COMPLIANCE_OFFICER', 'ADMIN'])) return;
     AppShell.mount({ activePage: 'transaction.html' });
 
     const urlParams = new URLSearchParams(window.location.search);
@@ -69,18 +69,21 @@ export const TransactionPage = {
       this.renderHeader(tx);
       this.renderSummary(tx);
 
-      // Initialize Upload Manager
-      UploadManager.init(this.transactionId, async () => {
-        const uploadedDocument = UploadManager.lastUploadedDocument;
-        if (uploadedDocument?.id) {
-          try {
-            await API.request(`/documents/${encodeURIComponent(uploadedDocument.id)}/process`, { method: 'POST' });
-          } catch (error) {
-            Toast.warning(`Evidence was stored, but OCR could not start: ${error.message}`);
+      if (Auth.getUser()?.role === 'MERCHANT') {
+        UploadManager.init(this.transactionId, async () => {
+          const uploadedDocument = UploadManager.lastUploadedDocument;
+          if (uploadedDocument?.id) {
+            try {
+              await API.request(`/documents/${encodeURIComponent(uploadedDocument.id)}/process`, { method: 'POST' });
+            } catch (error) {
+              Toast.warning(`Evidence was stored, but OCR could not start: ${error.message}`);
+            }
           }
-        }
-        await this.loadAllSubsystems();
-      });
+          await this.loadAllSubsystems({ reevaluatePolicy: true });
+        });
+      } else {
+        document.getElementById('evidence-dropzone')?.classList.add('hidden');
+      }
 
       await this.loadAllSubsystems();
     } catch (err) {
@@ -206,7 +209,7 @@ export const TransactionPage = {
     });
   },
 
-  async loadAllSubsystems() {
+  async loadAllSubsystems({ reevaluatePolicy = false } = {}) {
     try {
       this.currentTransaction = await API.request(`/transactions/${this.transactionId}`);
       this.renderHeader(this.currentTransaction);
@@ -235,8 +238,12 @@ export const TransactionPage = {
     this.extractions = extractions;
     OCRViewer.render('tab-ocr', { documents, extractions });
 
-    let aiData = await this.getSubsystemResult(`/transactions/${this.transactionId}/ai-analysis`);
-    if (!aiData && extractions.length) {
+    const role = Auth.getUser()?.role;
+    const canViewAdvisory = ['MERCHANT', 'COMPLIANCE_OFFICER', 'ADMIN'].includes(role);
+    let aiData = canViewAdvisory && documents.length
+      ? await this.getSubsystemResult(`/transactions/${this.transactionId}/ai-analysis`)
+      : null;
+    if (canViewAdvisory && !aiData && extractions.length) {
       try {
         await API.request(`/transactions/${this.transactionId}/ai-analysis`, { method: 'POST' });
         aiData = await this.getSubsystemResult(`/transactions/${this.transactionId}/ai-analysis`);
@@ -245,9 +252,20 @@ export const TransactionPage = {
       }
     }
     AIViewer.render('tab-ai', aiData);
+    if (!canViewAdvisory) {
+      document.getElementById('tab-ai')?.replaceChildren(
+        Utils.textElement('p', 'p-8 text-sm text-ink-soft', 'AI advisory is not available to the Settlement Operator role.')
+      );
+    }
 
-    let policyData = await this.getSubsystemResult(`/transactions/${this.transactionId}/policy-evaluation`);
-    if (!policyData && aiData) {
+    let policyData = canViewAdvisory && documents.length
+      ? await this.getSubsystemResult(`/transactions/${this.transactionId}/policy-evaluation`)
+      : null;
+    const policyEligibleStates = new Set([
+      'PAYMENT_RECEIVED', 'EVIDENCE_PENDING', 'OCR_PROCESSING', 'OCR_FAILED',
+      'AI_ANALYSIS', 'AI_ANALYSIS_FAILED', 'POLICY_EVALUATION', 'COMPLIANCE_HOLD'
+    ]);
+    if (canViewAdvisory && documents.length && (!policyData || reevaluatePolicy) && policyEligibleStates.has(this.currentTransaction?.status)) {
       try {
         await API.request(`/transactions/${this.transactionId}/policy-evaluation`, { method: 'POST' });
         policyData = await this.getSubsystemResult(`/transactions/${this.transactionId}/policy-evaluation`);
@@ -256,6 +274,11 @@ export const TransactionPage = {
       }
     }
     PolicyViewer.render('tab-policy', policyData);
+    if (!canViewAdvisory) {
+      document.getElementById('tab-policy')?.replaceChildren(
+        Utils.textElement('p', 'p-8 text-sm text-ink-soft', 'Policy outcomes are not available to the Settlement Operator role.')
+      );
+    }
 
     try {
       const auditData = await API.request(`/transactions/${this.transactionId}/audit`);
@@ -373,6 +396,11 @@ export const TransactionPage = {
   setupNotifications() {
     const button = document.getElementById('notifications-toggle');
     const panel = document.getElementById('transaction-notifications-panel');
+    if (Auth.getUser()?.role === 'SETTLEMENT_OPERATOR') {
+      button?.classList.add('hidden');
+      panel?.classList.add('hidden');
+      return;
+    }
     button?.addEventListener('click', async () => {
       const open = panel.classList.toggle('hidden') === false;
       button.setAttribute('aria-expanded', String(open));
