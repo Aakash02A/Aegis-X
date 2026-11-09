@@ -10,7 +10,10 @@
 |---|---|---|
 | F1 inventory and pre-change baseline | COMPLETE | 17 HTML pages and 15 original JS modules inventoried. 120 headless Playwright screenshots captured under ignored `frontend/.screens/baseline/` for the supported page/role combinations at 1920×1080, 1366×768, and 390×844. API E2E passed 56/56 on throwaway local `aegisx_e2e`. Baseline commit: `e270ed5`. 18 sanitized browser console-error combinations were recorded for follow-up. |
 | F2 structure and shared shell | COMPLETE | Core/components/services/pages/styles folders, shared role-filtered shell, external page scripts, integrity entry modules, shared status chip, centralized 401 cleanup. Frontend suite 148/148 passed; Vite build succeeded. Token/font baseline test passes. |
-| F3–F6 layout, roles/journeys, quality, final UI verification | NOT STARTED | No post-redesign screenshots or role-by-role UI journey results have been claimed yet. |
+| F3 layout redesign | COMPLETE | Shared responsive header/sidebar/drawer and labeled mobile table cards. Headless Playwright recaptured 120/120 screens; mobile overflow, labels, drawer, Escape, and focus-wrap checks had 0 findings. API E2E reported 56/56 on `aegisx_e2e`. Frontend suite 155/155; Vite build succeeded (55 modules). 18 sanitized console-error combinations remain open. |
+| F4 roles, navigation, and journeys | NOT STARTED | Role-specific route coverage and return-path journeys remain to verify. |
+| F5 quality and accessibility | NOT STARTED | Loading/empty/error/success coverage, accessibility review, 768px checks, and auth-storage risk report remain open. |
+| F6 final UI verification | NOT STARTED | Full screenshot comparison and the final backend randomized suite remain open. |
 ## Module status
 
 “Verified” means the listed local automated or E2E checks ran successfully. It does not imply a live external service or production deployment was tested.

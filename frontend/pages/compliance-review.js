@@ -178,6 +178,8 @@ export const CompliancePage = {
       return;
     }
     if (this.submitting || !this.currentReviewId || !['APPROVED', 'REJECTED'].includes(decision)) return;
+    const actionLabel = decision === 'APPROVED' ? 'approve' : 'reject';
+    if (!window.confirm(`Confirm ${actionLabel} for this transaction using the justification shown?`)) return;
 
     this.submitting = true;
     const buttons = [...(form?.querySelectorAll('[data-review-decision]') || [])];

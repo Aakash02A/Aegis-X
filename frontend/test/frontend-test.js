@@ -99,6 +99,8 @@ const requiredJs = [
   'core/guards.js',
   'core/constants.js',
   'components/app-shell.js',
+  'components/page-header.js',
+  'components/responsive-table.js',
   'components/status-chip.js',
   'pages/merchant-dashboard.js',
   'pages/compliance-review.js',
@@ -124,6 +126,16 @@ requiredJs.forEach(js => {
   const exists = fs.existsSync(filePath);
   assert(exists, `Module [${js}] exists`);
 });
+
+const appShellJs = fs.readFileSync(path.join(frontendDir, 'components/app-shell.js'), 'utf-8');
+const responsiveTableJs = fs.readFileSync(path.join(frontendDir, 'components/responsive-table.js'), 'utf-8');
+const pageHeaderJs = fs.readFileSync(path.join(frontendDir, 'components/page-header.js'), 'utf-8');
+assert(appShellJs.includes('data-workspace-menu') && appShellJs.includes('aria-expanded'), 'Shared shell exposes an accessible mobile navigation control');
+assert(appShellJs.includes("event.key === 'Escape'") && appShellJs.includes('aside.inert'), 'Mobile navigation supports Escape and hides closed links from keyboard and assistive technology');
+assert(responsiveTableJs.includes('data-label') && responsiveTableJs.includes('MutationObserver'), 'Responsive tables label both initial and dynamically added rows');
+assert(pageHeaderJs.includes('[data-page-heading]') && pageHeaderJs.includes('header.insertBefore'), 'Shared page heading mounts in the responsive application header');
+const dashboardHtml = fs.readFileSync(path.join(frontendDir, 'dashboard.html'), 'utf-8');
+assert(!dashboardHtml.includes('md:hidden flex items-center gap-2'), 'Dashboard does not duplicate the shared mobile brand mark');
 
 // 4. Verify Registration -> Login Redirect Requirement
 console.log('\n4. Checking Mandatory UX Rules:');

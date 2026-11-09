@@ -1,5 +1,7 @@
 import { APP_ROUTES, INTEGRITY_ROUTES } from '../core/constants.js';
 import { Auth } from '../core/auth.js';
+import { enhanceResponsiveTables } from './responsive-table.js';
+import { mountPageHeader } from './page-header.js';
 
 function element(tag, className, text) {
   const node = document.createElement(tag);
@@ -50,6 +52,7 @@ export function createSidebar({ activePage = currentPageFile(), className = '', 
     link.append(icon, element('span', '', route.label));
     nav.append(link);
   }
+  top.append(brandRow, nav);
   if (workspaceStatus) {
     const subnav = element('nav', 'px-4 pb-4 space-y-1 font-sans');
     subnav.setAttribute('aria-label', 'Payment Integrity pages');
@@ -66,7 +69,6 @@ export function createSidebar({ activePage = currentPageFile(), className = '', 
     }
     top.append(subnav);
   }
-  top.append(brandRow, nav);
 
   const footer = element('div', 'p-4 border-t border-ink/10');
   if (workspaceStatus) {
@@ -100,11 +102,95 @@ export function createSidebar({ activePage = currentPageFile(), className = '', 
   return aside;
 }
 
+export function wireMobileNavigation(aside, header, host) {
+  if (!aside || !header || !host || header.querySelector('[data-workspace-menu]')) return;
+  header.classList.add('flex-wrap');
+  for (const child of header.children) child.classList.add('min-w-0', 'flex-wrap');
+  const menu = element('button', 'md:hidden shrink-0 aegis-btn-outline py-2 px-3 text-xs');
+  menu.type = 'button';
+  menu.dataset.workspaceMenu = '';
+  menu.setAttribute('aria-label', 'Open workspace navigation');
+  menu.setAttribute('aria-expanded', 'false');
+  menu.setAttribute('aria-controls', 'workspace-nav');
+  const menuIcon = element('i', 'fa-solid fa-bars w-4 h-4');
+  menuIcon.setAttribute('aria-hidden', 'true');
+  menu.append(menuIcon, element('span', 'sr-only', 'Menu'));
+  header.prepend(menu);
+
+  const backdrop = element('button', 'hidden fixed inset-0 z-40 bg-ink/40 md:hidden');
+  backdrop.type = 'button';
+  backdrop.setAttribute('aria-label', 'Close workspace navigation');
+  host.insertBefore(backdrop, header.closest('[data-app-main]') || host.lastElementChild);
+
+  let returnFocus = menu;
+  const isMobile = () => window.matchMedia('(max-width: 767px)').matches;
+  const closeMenu = () => {
+    if (!isMobile()) return;
+    aside.classList.add('hidden');
+    aside.classList.remove('fixed', 'inset-y-0', 'left-0', 'z-50');
+    backdrop.classList.add('hidden');
+    document.body.classList.remove('overflow-hidden');
+    menu.setAttribute('aria-expanded', 'false');
+    aside.inert = isMobile();
+    if (isMobile()) returnFocus.focus();
+  };
+  const openMenu = () => {
+    returnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : menu;
+    aside.classList.remove('hidden');
+    aside.classList.add('fixed', 'inset-y-0', 'left-0', 'z-50');
+    backdrop.classList.remove('hidden');
+    document.body.classList.add('overflow-hidden');
+    menu.setAttribute('aria-expanded', 'true');
+    aside.inert = false;
+    aside.querySelector('a')?.focus();
+  };
+  aside.id = 'workspace-nav';
+  aside.inert = isMobile();
+  menu.addEventListener('click', openMenu);
+  backdrop.addEventListener('click', closeMenu);
+  aside.querySelectorAll('a').forEach((link) => link.addEventListener('click', closeMenu));
+  aside.addEventListener('keydown', (event) => {
+    if (event.key !== 'Tab') return;
+    const focusable = [...aside.querySelectorAll('a[href], button:not([disabled])')];
+    if (!focusable.length) return;
+    if (event.shiftKey && document.activeElement === focusable[0]) {
+      event.preventDefault();
+      focusable.at(-1).focus();
+    } else if (!event.shiftKey && document.activeElement === focusable.at(-1)) {
+      event.preventDefault();
+      focusable[0].focus();
+    }
+  });
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && menu.getAttribute('aria-expanded') === 'true') closeMenu();
+  });
+  window.matchMedia('(min-width: 768px)').addEventListener('change', (event) => {
+    if (event.matches) {
+      aside.classList.remove('fixed', 'inset-y-0', 'left-0', 'z-50');
+      backdrop.classList.add('hidden');
+      document.body.classList.remove('overflow-hidden');
+      menu.setAttribute('aria-expanded', 'false');
+      aside.inert = false;
+    } else {
+      aside.classList.add('hidden');
+      aside.inert = true;
+    }
+  });
+}
+
 export const AppShell = {
   mount(options = {}) {
     const aside = createSidebar(options);
     const main = document.querySelector('[data-app-main]');
     if (main?.parentElement) main.parentElement.insertBefore(aside, main);
+    if (main) {
+      const header = main.querySelector('header');
+      if (header) {
+        wireMobileNavigation(aside, header, main.parentElement);
+        mountPageHeader(main, header);
+      }
+      enhanceResponsiveTables(main);
+    }
     return aside;
   }
 };

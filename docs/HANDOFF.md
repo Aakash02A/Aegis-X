@@ -628,7 +628,7 @@ No `.env` file is present in Git history. Current `.env.example` entries and tes
 - A follow-up browser automation attempt was stopped by the user's physical Escape key before a review case was verified; the browser UI result remains NOT VERIFIED. The temporary local server PIDs had exited and ports 18086/3000 had no listeners afterward.
 - Owner review/rotation of local `.env` credential candidates and reused historical example credentials remains outstanding. The changes are local; push is still the user's action.
 
-## Frontend redesign continuation — Phases F1–F2 (2026-11-09)
+## Frontend redesign continuation — Phases F1–F3 (2026-11-09)
 
 ### F1 inventory and baseline
 - Read-only inventory found 17 Vite HTML entry pages and 15 original JavaScript modules. Role coverage is Merchant (dashboard), Compliance Officer/Admin (review queue), Settlement Operator/Compliance Officer (settlements), Admin (operations), all four roles (transaction detail), and Admin/Compliance Officer/Settlement Operator (integrity pages). Public pages are landing, login, and registration.
@@ -643,8 +643,19 @@ No `.env` file is present in Git history. Current `.env.example` entries and tes
 - Added centralized 401 session clearing and sign-in redirection, and one status chip renderer used by transaction, dashboard, compliance and settlement views. Updated Vite/Tailwind references and frontend checks for the new paths and required exact token/font baseline.
 - No CSS token or font-family values changed. `npm.cmd test`: 148 passed, 0 failed. `npm.cmd run build`: successful, 53 modules transformed. The shared shell has not yet had a post-change visual comparison; later phases and final Playwright review remain open.
 
+### F3 layout redesign
+- Added one role-filtered, full-height sidebar and header treatment to protected pages. At mobile widths the sidebar becomes an inert-by-default drawer with a backdrop, Escape close, return focus, and keyboard focus wrapping. Integrity subnavigation follows the shared brand and main navigation.
+- Moved marked page titles and subtitles into the shared header, converted wide data tables to labeled stacked cards under 768px, and made integrity's generated tables label dynamic rows. Removed the duplicate dashboard wordmark and its former fixed-bottom navigation.
+- Improved responsive form and webhook endpoint wrapping after headless measurements found overflow on Integrity Reconciliation (100px) and Webhooks (4px). A repeat check found zero horizontal overflow, missing responsive labels, drawer state, Escape, or focus-wrap findings across protected mobile pages.
+- Updated transaction, landing, dashboard, integrity, and settlement copy to describe evidence collection, AI advice, deterministic policy outcomes, provider-reported payment state, and reconciliation accurately. Added explicit confirmation for compliance decisions and settlement actions; no backend contract or money-movement path changed.
+- Final F3 headless capture: 120/120 full-page screenshots across 40 page/role combinations at 1920×1080, 1366×768, and 390×844 in ignored `frontend/.screens/after-f3-final/`. The sanitized browser-error count remains 18 page/role/viewport combinations and is still undiagnosed. Screens were captured with the installed Playwright 1.62.0 driver and system Chrome; `npx --offline playwright --version` could not resolve an uncached npm package.
+- The API flow reported 56/56 passing checks on `aegisx_e2e`, including policy, reconciliation, and audit. The wrapper returned a nonzero process status after printing its cleanup message despite the all-pass report; the discrepancy remains to be checked during F6. Ports 18290, 18286, 3000, 19390, 19386, 3001, 19490, 19486, and 3002 were subsequently confirmed free.
+- `npm.cmd test`: 155 passed, 0 failed. `npm.cmd run build`: successful, 55 modules transformed. The test suite asserts exact equality of CSS custom properties and font-family declarations against `docs/design-baseline.json`.
+- The layout changes are intentional: shared navigation/header placement, mobile table cards, removed duplicate/fixed navigation, and wrapping controls. F6 still owns the full baseline image comparison and 768px review.
+
 ### Open frontend findings
-- The browser console errors above remain undiagnosed.
+- The 18 browser console-error combinations remain undiagnosed; the F3 capture records only sanitized source categories, not messages.
 - Merchant performance metrics are not available to Merchant under current backend authorization; frontend redesign must not change backend policy.
 - The auth token stays in `sessionStorage`; the user summary including email remains in `localStorage`. Review this exposure in F5 without changing backend rules.
 - Expired evidence remains NOT SUPPORTED, not a defect, without an expiry field/cutoff. Customer capture remains NOT SUPPORTED BY DESIGN and outside Aegis-X. Money movement stays outside the policy transaction flow.
+- F4 role and return-path journeys, F5 accessibility/states/768px review, and F6 final visual comparison and full verification remain open.

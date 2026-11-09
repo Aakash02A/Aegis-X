@@ -406,43 +406,6 @@ body.modal-open {
   overflow: hidden;
 }
 
-.dashboard-mobile-nav {
-  position: fixed;
-  inset-inline: 0;
-  bottom: 0;
-  z-index: 40;
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  padding: 0.45rem 0.5rem calc(0.45rem + env(safe-area-inset-bottom));
-  border-top: 1px solid var(--color-line);
-  background: rgba(248, 246, 240, 0.96);
-  backdrop-filter: blur(14px);
-  box-shadow: 0 -8px 24px rgba(20, 18, 16, 0.08);
-}
-
-.dashboard-mobile-nav a,
-.dashboard-mobile-nav button {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 0.2rem;
-  border: 0;
-  background: transparent;
-  color: var(--color-ink-soft);
-  font: inherit;
-  font-size: 0.65rem;
-  text-decoration: none;
-  cursor: pointer;
-}
-
-.dashboard-mobile-nav a:focus-visible,
-.dashboard-mobile-nav button:focus-visible {
-  outline: 2px solid var(--color-rust);
-  outline-offset: 3px;
-}
-
 /* Font Awesome Icons
    Markup sizes icons with Tailwind width/height utilities, but a font glyph is laid out at
    font-size, not at the box size. Coupling the two keeps each icon the size the SVG it replaced
@@ -452,12 +415,6 @@ body.modal-open {
 .fa-solid.w-4 { font-size: 1rem; }
 .fa-solid.w-5 { font-size: 1.25rem; }
 .fa-solid.w-8 { font-size: 2rem; }
-
-@media (min-width: 768px) {
-  .dashboard-mobile-nav {
-    display: none;
-  }
-}
 
 @media (max-width: 639px) {
   #toast-container {
@@ -479,5 +436,32 @@ body.modal-open {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+  }
+}
+
+@media (max-width: 767px) {
+  .responsive-table {
+    @apply block w-full whitespace-normal;
+  }
+
+  .responsive-table thead {
+    @apply sr-only;
+  }
+
+  .responsive-table tbody {
+    @apply grid gap-3;
+  }
+
+  .responsive-table tr {
+    @apply grid gap-2 border border-ink/10 rounded-sm bg-white p-3;
+  }
+
+  .responsive-table td {
+    @apply grid grid-cols-2 gap-2 items-start border-0 py-1 px-0 whitespace-normal;
+  }
+
+  .responsive-table td::before {
+    content: attr(data-label);
+    @apply text-[10px] font-mono-data uppercase tracking-wider text-ink-soft;
   }
 }

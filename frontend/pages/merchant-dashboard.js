@@ -4,7 +4,6 @@
  */
 import { API } from '../core/api.js';
 import { requireUser } from '../core/guards.js';
-import { Auth } from '../core/auth.js';
 import { AppShell } from '../components/app-shell.js';
 import { Toast } from '../components/toast.js';
 import { Utils } from '../core/formatters.js';
@@ -15,7 +14,6 @@ export const DashboardPage = {
     if (!await requireUser(['MERCHANT'])) return;
     AppShell.mount();
     this.setupNewTransactionModal();
-    this.setupDashboardNavigation();
     this.setupSearch();
     await this.loadDashboardData();
   },
@@ -292,13 +290,6 @@ export const DashboardPage = {
       });
       pagination.append(previous, next);
     }
-  },
-
-  setupDashboardNavigation() {
-    document.querySelector('[data-dashboard-action="create"]')?.addEventListener('click', () => {
-      document.getElementById('open-new-tx-modal')?.click();
-    });
-    document.querySelector('[data-dashboard-action="logout"]')?.addEventListener('click', () => Auth.logout());
   },
 
   setupSearch() {

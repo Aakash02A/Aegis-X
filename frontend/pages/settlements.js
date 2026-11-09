@@ -120,6 +120,7 @@ export const SettlementPage = {
   },
 
   async retrySettlement(id) {
+    if (!window.confirm('Retry this settlement request? The provider may report a new outcome.')) return;
     try {
       await API.request(`/v1/settlements/${encodeURIComponent(id)}/retry`, { method: 'POST' });
       Toast.success('Settlement retry triggered.');
@@ -130,6 +131,7 @@ export const SettlementPage = {
   },
 
   async processReconciliation() {
+    if (!window.confirm('Run settlement reconciliation now? This reads provider evidence and does not move funds.')) return;
     const button = document.getElementById('process-reconciliation');
     if (button) button.disabled = true;
     try {

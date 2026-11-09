@@ -28,7 +28,7 @@
     </header>
 
     <main class="p-6 md:p-8 space-y-6 max-w-6xl w-full mx-auto">
-      <div class="border-b border-ink/10 pb-6">
+      <div data-page-heading class="border-b border-ink/10 pb-6">
         <div class="editorial-eyebrow mb-2">Statutory Scrutiny</div>
         <h1 class="font-serif text-3xl sm:text-4xl font-medium text-ink tracking-tight">Compliance Investigation Queue</h1>
         <p class="text-xs text-ink-soft mt-1">Cross-examine trade evidence, inspect AI reasoner discrepancies, and clear statutory holds.</p>
@@ -48,7 +48,7 @@
       <!-- Compliance Table -->
       <div class="editorial-card p-6 bg-white overflow-hidden">
         <div class="overflow-x-auto">
-          <table class="w-full text-left font-sans text-xs">
+          <table data-responsive-table class="responsive-table w-full text-left font-sans text-xs">
             <thead>
               <tr class="border-b border-ink/10 text-ink-soft uppercase text-[10px] tracking-wider font-semibold">
                 <th class="py-3 px-2">Transaction Reference</th>
@@ -98,7 +98,7 @@
       <form id="review-decision-form" class="pt-4 space-y-3">
         <label for="review-justification" class="block text-xs font-semibold text-ink">Decision justification (required)</label>
         <textarea id="review-justification" class="editorial-input" rows="3" required minlength="10" maxlength="2000" placeholder="Record the evidence and rule basis for this decision."></textarea>
-        <div class="flex justify-end gap-2">
+        <div class="sticky bottom-0 -mx-6 px-6 py-4 bg-white border-t border-ink/10 flex justify-end gap-2">
           <button class="aegis-btn-outline py-2 px-4 text-xs" type="button" data-review-decision="REJECTED">Reject</button>
           <button class="aegis-btn-ink py-2 px-4 text-xs" type="button" data-review-decision="APPROVED">Approve</button>
         </div>

@@ -12,7 +12,8 @@
 
 import { API } from '../../core/api.js';
 import { requireUser } from '../../core/guards.js';
-import { createSidebar } from '../../components/app-shell.js';
+import { createSidebar, wireMobileNavigation } from '../../components/app-shell.js';
+import { enhanceResponsiveTables } from '../../components/responsive-table.js';
 
 const state = {
   workspaceId: null,
@@ -103,12 +104,13 @@ function table(columns, rows, options = {}) {
   const body = rows.map((row) => {
     const cells = columns.map((column) => {
       const rendered = column.render ? column.render(row) : esc(row[column.key] ?? '—');
-      return `<td class="px-3 py-2 align-top text-ink">${rendered}</td>`;
+      return `<td data-label="${esc(column.label)}" class="px-3 py-2 align-top text-ink">${rendered}</td>`;
     }).join('');
-    const click = options.onRow ? ` class="cursor-pointer hover:bg-ink/5" data-row="${esc(options.onRow(row))}"` : '';
-    return `<tr${click} class="border-t border-ink/10">${cells}</tr>`;
+    const rowClass = options.onRow ? 'border-t border-ink/10 cursor-pointer hover:bg-ink/5' : 'border-t border-ink/10';
+    const rowData = options.onRow ? `data-row="${esc(options.onRow(row))}"` : '';
+    return `<tr class="${rowClass}" ${rowData}>${cells}</tr>`;
   }).join('');
-  return `<div class="overflow-x-auto"><table class="w-full text-sm">
+  return `<div class="overflow-x-auto"><table data-responsive-table class="responsive-table w-full text-sm">
     <thead class="bg-paper-dim">${head}</thead><tbody>${body}</tbody></table></div>`;
 }
 
@@ -147,16 +149,16 @@ function section(title, eyebrow, body) {
 // --------------------------------------------------------------------- layout
 
 function shell(title, subtitle, eyebrow) {
-  return `<div class="flex-1 flex flex-col min-w-0">
+  return `<div class="flex-1 flex flex-col min-w-0" data-integrity-content>
     <header class="min-h-[4.5rem] py-2 bg-paper/90 backdrop-blur border-b border-ink/10 px-4 sm:px-6 flex items-center justify-between gap-3 sticky top-0 z-30">
-      <div>
+      <div class="min-w-0">
         <div class="editorial-eyebrow">${esc(eyebrow)}</div>
         <h1 class="font-serif text-lg font-medium text-ink">${esc(title)}</h1>
+        <p class="text-xs text-ink-soft truncate">${esc(subtitle)}</p>
       </div>
       <div id="integrity-header-actions" class="flex items-center gap-2"></div>
     </header>
     <main class="p-6 md:p-8 space-y-8 max-w-6xl w-full mx-auto">
-      <p class="text-sm text-ink-soft">${esc(subtitle)}</p>
       <div id="integrity-body"><p class="text-sm text-ink-soft">Loading…</p></div>
     </main>
   </div>`;
@@ -465,7 +467,7 @@ async function renderWebhooks(root) {
     </div>
     <div class="editorial-card p-4 text-sm text-ink-soft">
       Signature verification uses HMAC-SHA256 over the exact raw request body. A duplicate delivery is acknowledged, never reprocessed.
-      Endpoint: <code>${esc(history.endpointTemplate || '/api/integrity/webhooks/{workspaceId}')}</code>
+      Endpoint: <code class="break-all">${esc(history.endpointTemplate || '/api/integrity/webhooks/{workspaceId}')}</code>
       ${history.failedEventCount > 0 ? `<div class="mt-2 text-rust">${esc(history.failedEventCount)} event(s) failed processing and need investigation.</div>` : ''}
     </div>
     ${section('Events', 'persisted provider events', eventRows)}
@@ -485,8 +487,8 @@ async function renderReconciliation(root) {
   }).join('');
 
   const runForm = `<div class="editorial-card p-4 flex flex-wrap gap-3 items-end">
-    <label class="text-xs text-ink-soft">Decision procedure
-      <select id="strategy" class="mt-1 block border border-ink/20 rounded px-2 py-1 bg-paper text-ink text-sm">${methodOptions}</select></label>
+    <label class="min-w-0 flex-1 text-xs text-ink-soft">Decision procedure
+      <select id="strategy" class="mt-1 block w-full min-w-0 max-w-full border border-ink/20 rounded px-2 py-1 bg-paper text-ink text-sm">${methodOptions}</select></label>
     <button id="run-reconciliation" class="px-4 py-2 rounded-full bg-ink text-paper text-sm font-medium">Run reconciliation</button>
     <div id="run-result" class="text-xs text-ink-soft"></div>
   </div>`;
@@ -1067,7 +1069,7 @@ async function renderEvidence(root) {
     <div class="editorial-card p-4 text-sm text-ink-soft">
       ${esc(model.limitation)}
       <div class="mt-2 text-xs">Readiness values: ${esc(model.readinessModel)}. Processing values: ${esc(model.processingModel || model.processingStatusModel)}.</div>
-      <div class="mt-2 text-xs">Evidence status is deliberately not the payment status (${esc((model.mutuallyExclusiveFrom || []).join(', '))}): a captured payment can be waiting on an invoice, and a missing invoice does not make the payment unreal.</div>
+      <div class="mt-2 text-xs">Evidence status is separate from provider payment status (${esc((model.mutuallyExclusiveFrom || []).join(', '))}). A provider-reported captured payment can still be waiting on an invoice; Aegis-X does not capture funds.</div>
       <div class="mt-2"><button id="run-all-assess" class="px-3 py-1.5 rounded-full border border-ink/30 text-xs text-ink">Assess every order</button></div>
     </div>
     ${section('Evidence review queue', `${readiness.length} assessed order(s)`, queue)}
@@ -1131,6 +1133,7 @@ export async function boot(page = state.page) {
   root.lastElementChild.id = 'integrity-main';
   document.body.prepend(root);
   document.getElementById('integrity-main').outerHTML = shell(title, subtitle, eyebrow);
+  wireMobileNavigation(root.querySelector('aside'), root.querySelector('header'), root);
 
   try {
     await loadWorkspace();
@@ -1146,5 +1149,6 @@ export async function boot(page = state.page) {
   } catch (error) {
     body.innerHTML = `<div class="editorial-card p-4 text-sm text-rust">${esc(error.message)}</div>`;
   }
+  enhanceResponsiveTables(root);
 }
 

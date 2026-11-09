@@ -1,3 +1,6 @@
+import { API } from '../core/api.js';
+import { Auth } from '../core/auth.js';
+
 let activeScrollFrame = null;
 
 function scrollToSection(target) {
@@ -30,3 +33,15 @@ document.querySelectorAll('a[href^="#"]').forEach((link) => {
     link.closest('details')?.removeAttribute('open');
   });
 });
+
+if (API.getAuthToken()) {
+  API.request('/auth/me').then((user) => {
+    const destination = Auth.homeForRole(user.role);
+    document.querySelectorAll('[data-console-link]').forEach((link) => {
+      link.href = destination;
+      const label = link.querySelector('span') || link;
+      label.textContent = 'Go to console';
+      link.setAttribute('aria-label', 'Go to console');
+    });
+  }).catch(() => {});
+}

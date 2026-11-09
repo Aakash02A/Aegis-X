@@ -32,19 +32,25 @@
 
     <main class="p-6 md:p-8 space-y-6 max-w-6xl w-full mx-auto">
 
+      <div data-page-heading class="border-b border-ink/10 pb-6">
+        <div class="editorial-eyebrow mb-2">Settlement Desk</div>
+        <h1 class="font-serif text-3xl sm:text-4xl font-medium text-ink tracking-tight">Settlement status</h1>
+        <p class="text-xs text-ink-soft mt-1">Review provider settlement outcomes and reconciliation. Money movement occurs outside Aegis-X.</p>
+      </div>
+
       <p class="text-xs text-ink-soft" role="note">SIMULATED settlements do not move funds.</p>
       
       <!-- Search & Filters -->
       <div class="editorial-card p-6 bg-white grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
         <div class="md:col-span-6">
-          <label class="block text-[10px] uppercase font-semibold tracking-wider text-ink-soft mb-1.5">Search Remittance Ref / Beneficiary</label>
+          <label for="settlement-search" class="block text-[10px] uppercase font-semibold tracking-wider text-ink-soft mb-1.5">Search Remittance Ref / Beneficiary</label>
           <div class="relative">
             <i class="fa-solid fa-magnifying-glass w-4 h-4 text-ink-soft absolute left-3.5 top-1/2 -translate-y-1/2"></i>
             <input type="text" id="settlement-search" placeholder="Search settlement / transaction..." class="editorial-input pl-10" />
           </div>
         </div>
         <div class="md:col-span-3">
-          <label class="block text-[10px] uppercase font-semibold tracking-wider text-ink-soft mb-1.5">Status Filter</label>
+          <label for="filter-status" class="block text-[10px] uppercase font-semibold tracking-wider text-ink-soft mb-1.5">Status Filter</label>
           <select id="filter-status" class="editorial-input">
             <option value="ALL">All Settlements</option>
             <option value="PENDING">Pending Setup</option>
@@ -57,7 +63,7 @@
 
       <!-- Table View -->
       <div class="editorial-card bg-white overflow-hidden overflow-x-auto">
-        <table class="w-full text-left font-sans whitespace-nowrap">
+        <table data-responsive-table class="responsive-table w-full text-left font-sans">
           <thead>
             <tr class="bg-paper-dim/50 border-b border-ink/10 text-[10px] uppercase tracking-wider text-ink-soft font-semibold">
               <th class="py-4 px-6 font-semibold">Settlement ID</th>
