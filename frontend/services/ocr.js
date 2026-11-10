@@ -17,13 +17,13 @@ export const OCRViewer = {
 
     const heading = Utils.textElement('h3', 'font-serif text-xl text-ink', 'OCR extraction results');
     container.append(heading);
-    documents.forEach(document => {
-      const extraction = extractions.find(item => item.documentId === document.id);
+    documents.forEach(evidence => {
+      const extraction = extractions.find(item => item.documentId === evidence.id);
       const panel = document.createElement('section');
       panel.className = 'editorial-card bg-white p-5 mt-4';
       panel.append(
-        Utils.textElement('h4', 'font-semibold text-sm text-ink', document.originalFilename),
-        Utils.textElement('p', 'text-xs text-ink-soft mt-1', `${document.documentType || '—'} · ${extraction?.status || document.documentStatus || 'Processing'}`),
+        Utils.textElement('h4', 'font-semibold text-sm text-ink', evidence.originalFilename),
+        Utils.textElement('p', 'text-xs text-ink-soft mt-1', `${evidence.documentType || '—'} · ${extraction?.status || evidence.documentStatus || 'Processing'}`),
         Utils.textElement('p', 'text-xs text-ink-soft mt-2', `Confidence: ${extraction?.confidence == null ? 'Not reported' : `${extraction.confidence}%`}`),
         Utils.textElement('p', 'text-xs text-ink-soft', `Processing duration: Not provided by the extraction API`)
       );

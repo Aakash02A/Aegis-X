@@ -1,6 +1,6 @@
 # Aegis-X Build Status
 
-**Assessment date:** 2026-11-09
+**Assessment date:** 2026-11-10
 **Branch:** `mysql-migration`
 **Production readiness:** Not established. The results below are limited to the local tests and simulated integrations listed here.
 
@@ -13,7 +13,7 @@
 | F3 layout redesign | COMPLETE | Shared responsive header/sidebar/drawer and labeled mobile table cards. Headless Playwright recaptured 120/120 screens; mobile overflow, labels, drawer, Escape, and focus-wrap checks had 0 findings. API E2E reported 56/56 on `aegisx_e2e`. Frontend suite 155/155; Vite build succeeded (55 modules). 18 sanitized console-error combinations remain open. |
 | F4 roles, navigation, and journeys | COMPLETE | Authenticated role data drives the sidebar/profile; return paths are same-origin and role-checked; 401, wrong-role, expired-session, and registration/login journeys passed. Headless capture: 120/120 screenshots, 0 browser errors, 0 mobile findings, 0 route/role findings, 0 failed API resources. API E2E: 56/56. Frontend tests: 184 passed; build: 59 modules. See `docs/HANDOFF.md`. |
 | F5 quality and accessibility | COMPLETE | Headless Playwright: 172/172 screens at four widths; 0 browser/API/layout/accessibility/retry/role findings. Frontend tests 190/190; build 59 modules. Token/font diff empty (21 properties, 4 declarations). Existing low-contrast pairings and client-side auth-storage risk are documented in `docs/HANDOFF.md`. |
-| F6 final UI verification | NOT STARTED | Full screenshot comparison and the final backend randomized suite remain open. |
+| F6 final UI verification | IN PROGRESS | OCR evidence-rendering shadowing bug fixed with a regression test. Frontend tests: 191/191; build: 59 modules. The 18 UI journey checks passed. API E2E was blocked before flow execution because local MySQL rejected connections (`Too many connections`); final screenshot comparison and randomized backend suite remain open. See `docs/HANDOFF.md`. |
 ## Module status
 
 “Verified” means the listed local automated or E2E checks ran successfully. It does not imply a live external service or production deployment was tested.

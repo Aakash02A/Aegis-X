@@ -2,65 +2,57 @@
 
 > **Intelligent Compliance Automation for Modern Financial Institutions**
 
-Aegis-X transforms manual fintech compliance workflows into intelligent, automated pipelines with AI advisory capabilities and deterministic policy enforcement. Built with **Java 21 + Spring Boot 3**, featuring real-time processing, enterprise security, and complete audit trails.
+Aegis-X implements fintech compliance workflows with advisory AI and deterministic policy enforcement. Built with **Java 21 + Spring Boot 3**, it records the decisions and audit events covered by the verification suite.
 
 ## 🚀 Live Demo & Resources
 
 | Resource | Link | Description |
 |----------|------|-------------|
-| **🌐 Live Demo** | [aegis-x-demo.netlify.app](https://aegis-x-demo.netlify.app) | Complete working system with real integrations |
-| **📡 API Backend** | [aegis-x-api.railway.app](https://aegis-x-api.railway.app) | RESTful API with Swagger documentation |
-| **📊 API Docs** | [/swagger-ui.html](https://aegis-x-api.railway.app/swagger-ui.html) | Interactive API documentation |
+| **🌐 Demo Link** | [aegis-x-demo.netlify.app](https://aegis-x-demo.netlify.app) | Availability and external integrations are not verified |
+| **📡 API Backend** | [aegis-x-api.railway.app](https://aegis-x-api.railway.app) | Listed deployment endpoint; availability is not verified |
+| **📊 API Docs** | [/swagger-ui.html](https://aegis-x-api.railway.app/swagger-ui.html) | Listed API documentation endpoint; availability is not verified |
 | **💻 Source Code** | [GitHub Repository](https://github.com/Aakash02A/Aegis-X) | Complete codebase with documentation |
-| **🎥 Demo Video** | [2-Minute Demo](./DEMO_SCRIPT.md) | Guided walkthrough script |
+| **🎥 Demo Script** | [Guided walkthrough](./DEMO_SCRIPT.md) | Local walkthrough notes |
 
 ## ⚡ Key Features & Demo Highlights
 
 ### 🤖 **AI-Powered Document Analysis** 
 - **OCR Text Extraction**: Tesseract + Apache Tika for multi-format support
-- **GPT Risk Assessment**: OpenAI analysis for compliance flag detection  
-- **Intelligent Classification**: Automatic document type and content validation
+- **Optional AI Advice**: Structured findings, missing-evidence notes, and suggested checks; model output cannot set a payment decision
+- **Untrusted Document Text**: OCR content is passed as data, parsed into a fixed response schema, and unknown fields such as `decision` are discarded
+- **Confidence Labels**: Pattern-based extraction scores are labeled `HEURISTIC`; they are not calibrated probabilities or policy gates
 
-### 🔄 **Real-time Processing Pipeline**
+### 🔄 **Processing Pipeline**
 ```
-Payment → Evidence → OCR → AI Analysis → Policy → Decision
-  3s        10s      10s       15s       2s      ✅ <45s Total
+Payment → Evidence → OCR structured fields → Deterministic policy → Decision
+                         └── optional AI advice (not a policy input)
 ```
 
 ### 📊 **Deterministic Policy Engine**
 - **Java Rules Authority**: Final compliance decisions made by deterministic logic
-- **AI Advisory Role**: GPT provides insights, rules make decisions
+- **AI Advisory Role**: Optional model findings are kept outside the deterministic rule context
+- **Five Current Rules**: Document completeness, beneficiary match, exact amount consistency, currency consistency, and purpose-code whitelist
+- **Decision Inputs**: Transaction fields, required-document checklist, and selected OCR structured fields; no AI value or OCR confidence score
+- **Verdicts**: All five rules passing gives `APPROVED`; any failing rule gives `COMPLIANCE_HOLD`
 - **Complete Explainability**: Every decision traced and auditable
 
-### 🛡️ **Enterprise-Grade Security**
-- **Security Grade: B+** (12/14 controls implemented)
+### 🛡️ **Implemented Security Controls**
 - JWT Authentication with RBAC (Role-Based Access Control)
 - HMAC webhook signature validation
 - SQL injection prevention + XSS protection
 - Security headers (CSP, HSTS, X-Frame-Options)
 
-### 🏆 **Hackathon Demo Workflow** 
-Experience the complete compliance journey in **under 2 minutes**:
+### 🏆 **Local Workflow**
+The documented workflow can run with the simulated provider and local storage:
 
-1. **🏢 Merchant Registration** (5s) → Create account and transaction
-2. **💳 Payment Integration** (3s) → Razorpay webhook processes payment  
-3. **📱 Evidence Collection** (10s) → WhatsApp document requests
-4. **🔍 OCR Processing** (10s) → Text extraction from uploads
-5. **🧠 AI Analysis** (15s) → GPT compliance risk assessment
-6. **⚖️ Policy Evaluation** (2s) → Java rules render final decision
-7. **📊 Real-time Dashboard** (5s) → Live updates and audit trail
-
-**Total Processing Time**: ~45 seconds (vs industry standard 2-5 days)
+1. **Merchant Registration** → Create an account and transaction
+2. **Payment Event** → Simulated or configured Test Mode provider
+3. **Evidence Upload** → Upload and extract document fields
+4. **Optional AI Advice** → Structured findings; output does not determine the verdict
+5. **Policy Evaluation** → Deterministic Java rules evaluate verified transaction, checklist, and OCR fields
+6. **Dashboard and Audit** → Review current records and covered audit events
 
 ---
-
-## 📈 Business Impact
-
-| Metric | Current (Manual) | Aegis-X (Automated) | Improvement |
-|--------|------------------|---------------------|-------------|
-| **Processing Time** | 2-5 days | <45 seconds | **99%+ faster** |
-| **Cost per Transaction** | $15-25 | $2-3 | **90% reduction** |
-| **Error Rate** | 15-20% | <1% | **95%+ accuracy** |
 | **Audit Compliance** | Manual logs | 100% automated | **Complete traceability** |
 
 ---
@@ -87,8 +79,8 @@ graph TB
     %% Processing Pipeline
     TS --> SM[⚙️ State Machine]
     DS --> OCR[🔍 OCR Service<br/>Tesseract + Tika]
-    OCR --> AI[🧠 AI Service<br/>Spring AI + OpenAI]
-    AI --> PE[⚖️ Policy Engine<br/>Deterministic Java]
+    OCR --> PE[⚖️ Policy Engine<br/>Deterministic Java]
+    OCR -. optional advisory input .-> AI[🧠 AI Service<br/>Spring AI]
     
     %% Data Layer
     TS --> DB[(🗄️ MySQL 8.4<br/>ACID + Audit Trail)]
@@ -97,7 +89,7 @@ graph TB
     DS --> FS[💾 File Storage]
     
     %% External Integrations
-    AI --> OPENAI[🤖 OpenAI GPT API]
+    AI --> OPENAI[🤖 OpenAI API, if configured]
     DS --> WHATSAPP[📱 WhatsApp Graph API]
     
     %% Monitoring
@@ -108,43 +100,24 @@ graph TB
 ### **Core Architectural Principles**
 
 > **🤖 AI Advises, Java Decides**
-> - **AI Layer**: Analyzes documents, identifies risks, provides insights
-> - **Policy Engine**: Makes final compliance decisions using deterministic rules
-> - **Complete Audit**: Every decision traceable with full reasoning
+> - **AI Layer**: Optional advisory findings; OCR text is untrusted and model output cannot set a decision
+> - **Policy Engine**: Uses five fixed rules; AI output and OCR confidence are not decision inputs
+> - **Audit Events**: Policy and review decisions record actor, outcome, and supporting context
 
 ### **Technology Stack**
 - **Backend**: Java 21 + Spring Boot 3.3.4 + Spring Security 6
 - **Frontend**: Vanilla JavaScript + Vite 6 + Tailwind CSS 3
 - **Database**: MySQL 8.4 with Flyway migrations (`db/migration`)  
-- **AI Integration**: Spring AI 1.0.5 + OpenAI GPT-3.5
+- **AI Integration**: Spring AI with an optional configured OpenAI model
 - **Security**: JWT + RBAC + CORS + CSRF protection
 - **Deployment**: Railway (backend) + Netlify (frontend)
 - **Processing**: Apache Tika + Tesseract OCR
 
 ---
 
-## 🎯 Live Demo Experience
+## 🎯 Demo Link
 
-### **Try It Yourself**
-👉 **[aegis-x-demo.netlify.app](https://aegis-x-demo.netlify.app)**
-
-**Demo Credentials:**
-- **Merchant**: `demo-merchant@aegis-x.com` / `DemoPass123!`
-- **Compliance Officer**: `compliance@aegis-x.com` / `CompliancePass123!`
-
-### **What You'll Experience:**
-1. **Real Integrations**: Working Razorpay, WhatsApp, and OpenAI APIs
-2. **Live Processing**: Watch documents flow through OCR → AI → Policy pipeline  
-3. **Real-time Dashboard**: See compliance statistics update in real-time
-4. **Complete Audit Trail**: Every action logged with timestamps
-5. **Production Security**: JWT authentication, input validation, security headers
-
-### **Demo Validation Results** ✅
-- **Demo Workflow**: All 7 steps working end-to-end  
-- **Performance**: All response times under target thresholds
-- **Security**: B+ grade (12/14 security controls implemented)
-- **Integration**: Razorpay, WhatsApp, OpenAI all verified working
-- **Monitoring**: Real-time metrics and health checks active
+The [demo frontend](https://aegis-x-demo.netlify.app) is listed here for reference; its availability and behavior have not been verified. Live Razorpay, WhatsApp, and OpenAI calls have not been verified.
 
 ---
 
@@ -216,7 +189,7 @@ cd frontend && npm ci && npm run dev
 #    Health check: http://localhost:8080/actuator/health (expect "database":"MySQL", status UP)
 ```
 
-Startup takes roughly 15–20 seconds on a cold Maven cache. Stop each process with `Ctrl+C`.
+Startup time depends on the local Maven cache and machine. Stop each process with `Ctrl+C`.
 
 If the backend dies with `ClassFormatError: Invalid method Code length 0 in class file …` (or any
 other class-file error), `target/classes` is stale — most often left behind by an interrupted
@@ -233,77 +206,52 @@ stateDiagram-v2
     CREATED --> PAYMENT_RECEIVED : Razorpay Webhook (3s)
     PAYMENT_RECEIVED --> EVIDENCE_PENDING : Document Request Sent (2s)
     EVIDENCE_PENDING --> OCR_PROCESSING : Files Uploaded (1s)
-    OCR_PROCESSING --> AI_ANALYSIS : Text Extracted (10s)
-    AI_ANALYSIS --> POLICY_EVALUATION : Risk Assessment Complete (15s)
+    OCR_PROCESSING --> AI_ANALYSIS : Optional advisory analysis
+    AI_ANALYSIS --> POLICY_EVALUATION : Policy runs independently of AI
+    AI_ANALYSIS --> AI_ANALYSIS_FAILED : AI error or invalid response
+    AI_ANALYSIS_FAILED --> POLICY_EVALUATION : Policy runs without AI result
     POLICY_EVALUATION --> APPROVED : Policy Rules Pass (2s)
     POLICY_EVALUATION --> COMPLIANCE_HOLD : Policy Rules Fail (2s)
     APPROVED --> [*] : ✅ Settlement Authorized
     COMPLIANCE_HOLD --> [*] : ⚠️ Manual Review Required
 ```
 
-### **Processing Performance Targets**
-| Component | Target | Measured | Status |
-|-----------|--------|----------|---------|
-| Authentication | <2s | 1.2s | ✅ **PASS** |
-| Transaction Creation | <3s | 2.1s | ✅ **PASS** |
-| OCR Processing | <10s | 8.3s | ✅ **PASS** |
-| AI Analysis | <15s | 12.7s | ✅ **PASS** |
-| Policy Evaluation | <2s | 0.8s | ✅ **PASS** |
-| Dashboard Load | <3s | 2.4s | ✅ **PASS** |
-| **Total Pipeline** | **<45s** | **~35s** | ✅ **PASS** |
+### **Performance Verification**
+No load test or end-to-end latency benchmark was run for this verification. No response-time or throughput claim is made.
 
 ---
 
 ## 🔐 Security & Compliance
 
-### **Security Assessment: Grade B+** 
-*12 of 14 security controls implemented*
+The application implements JWT authentication, role checks, webhook signature validation, upload limits, and security headers. These are implementation notes, not an independent security assessment or grade. Production configuration rejects missing or weak JWT secrets and empty CORS origins.
 
-| Security Control | Status | Implementation |
-|------------------|--------|----------------|
-| **JWT Authentication** | ✅ | HMAC-SHA256 with configurable expiration |
-| **Role-Based Access (RBAC)** | ✅ | MERCHANT, COMPLIANCE_OFFICER, ADMIN roles |
-| **Input Validation** | ✅ | Bean Validation + custom sanitization |
-| **SQL Injection Prevention** | ✅ | JPA parameterized queries only |
-| **XSS Protection** | ✅ | Output encoding + CSP headers |
-| **CSRF Protection** | ✅ | Spring Security CSRF tokens |
-| **Webhook Signature Validation** | ✅ | HMAC-SHA256 constant-time comparison |
-| **File Upload Security** | ✅ | Type validation + size limits (20MB) |
-| **Security Headers** | ✅ | CSP, HSTS, X-Frame-Options, X-Content-Type |
-| **Rate Limiting** | ✅ | 5 req/min auth, 100 req/min general |
-| **HTTPS Enforcement** | ✅ | Production deployment enforced |
-| **Information Disclosure** | ✅ | Sanitized error messages |
-| **Session Management** | ⚠️ | Stateless JWT (no server sessions) |
-| **Password Security** | ⚠️ | BCrypt hashing (complexity rules recommended) |
-
-### **Compliance Features**
-- **Complete Audit Trail**: Every transaction step logged with timestamps
-- **Immutable Records**: Append-only audit log prevents tampering
-- **Decision Explainability**: AI insights + policy rules = traceable decisions  
-- **Data Privacy**: No sensitive data sent to external AI services
-- **Regulatory Reporting**: Structured data for compliance export
+### **Audit and Operations Notes**
+- Policy decisions and manual review decisions produce audit events covered by tests.
+- Audit APIs reject write attempts; database-level or cryptographic tamper resistance is not claimed.
+- OpenAI is optional. A live model call has not been verified; configured calls may send document-derived text to the provider.
+- The in-memory rate limiter is single-instance only; each additional process has its own allowance.
 
 ---
 
 ## 🔧 Development & Testing
 
 ### **Automated Validation Framework**
-We've built comprehensive validation to ensure demo readiness:
+Verification commands and evidence are recorded in `docs/HANDOFF.md`.
 
 ```bash
-# Run all validation tests
-./run-demo-validation.ps1
+# Backend unit and integration suite
+cd backend
+./mvnw test
+cd ..
 
-# Individual validation components:
+# MySQL-backed HTTP end-to-end flow (uses local aegisx_audit)
+bash tests/e2e/run-e2e.sh
 ```
 
-### **Test Coverage & Quality**
-- **✅ Demo Workflow**: End-to-end merchant journey (register → approve)
-- **✅ Integration Tests**: Razorpay, WhatsApp, OpenAI API verification
-- **✅ Performance Tests**: Response time and concurrent load testing  
-- **✅ Security Tests**: Authentication, authorization, injection prevention
-- **✅ Unit Tests**: Core business logic and policy engine rules
-- **✅ Repository Tests**: Database operations and transaction management
+### **Verification Scope**
+- Backend tests cover policy, persistence, authorization, audit, and simulated-provider behavior.
+- Live Razorpay, WhatsApp, and OpenAI services are **NOT VERIFIED**.
+- Load and latency benchmarks are **NOT VERIFIED**.
 
 ### **Development Setup**
 ```bash
@@ -342,9 +290,11 @@ The `com.aegisx.integrity` bounded context is Aegis-X's payment-operations layer
 lifecycle events, keeps a canonical transaction history, reconciles provider records against internal
 order and transfer records, explains inconsistencies, and recommends safe next actions.
 
-**It is an orchestration and decision-support layer.** Razorpay remains responsible for executing the
-supported payment operations. Aegis-X never moves money on its own initiative, and there is no code
-path that does.
+**It collects evidence, provides optional AI advice, records Java-decided policy outcomes, and
+reconciles provider data.** Aegis-X has no customer payment capture or refund path; those actions
+occur at the external provider and their results are observed here. The separate RazorpayX payout
+adapter can submit Test Mode payouts only. It is disabled by default and requires an approved
+settlement and an authorized API role. Live funds movement is outside the supported product scope.
 
 **The central invariant:** the system always distinguishes a **provider-confirmed financial outcome**
 from an **internal hypothesis** about that outcome. Webhook observations, API-confirmed state,
@@ -366,8 +316,8 @@ after a recorded `FAILED`, which wins and is still flagged as a conflict. An int
 internal records, which outrank inferred values.
 * **Explainable exception classification** — each case states why it exists, the evidence it rests on,
 what is still unknown, and a recommended next action.
-* **Human-gated recovery recommendations** — money-moving actions are recorded and can be approved,
-but the prototype *refuses to execute them*.
+* **Human-gated recovery recommendations** — actions are recorded for review; the integrity recovery
+endpoint is read-only and does not dispatch provider mutations.
 * **An append-only audit trail** and an operations dashboard whose every figure is a database read.
 
 ### Documentation
@@ -496,7 +446,7 @@ cannot produce.
 ├── 🧠 ai/                   # Spring AI integration & OpenAI analysis
 ├── ⚖️ policy/               # Deterministic Java compliance rule engine
 ├── 👨‍💼 compliance/           # Manual compliance review & officer workflow
-├── 📋 audit/                # Immutable audit trail & event logging
+├── 📋 audit/                # Audit events and event logging
 ├── 🔗 integration/          # External service gateways (Razorpay, WhatsApp)
 ├── 📱 notification/         # WhatsApp messaging & alert dispatching
 ├── 📊 performance/          # Monitoring, metrics, and performance tracking
@@ -533,7 +483,7 @@ cannot produce.
 ```text
 ├── 📋 README.md                        # This comprehensive guide
 ├── 🏗️ ARCHITECTURE_DIAGRAM.md         # Detailed system architecture  
-├── 🎯 DEMO_SCRIPT.md                   # 2-minute hackathon demo script
+├── 🎯 DEMO_SCRIPT.md                   # Local walkthrough script
 ├── ✅ DEMO_PREPARATION_CHECKLIST.md    # Pre-demo validation checklist
 ├── 🎨 AEGIS_X_PITCH_DECK.md           # Hackathon presentation slides
 ├── 📝 PRESENTATION_NOTES.md           # Speaking notes & Q&A prep
@@ -703,7 +653,7 @@ CORS_ALLOWED_ORIGINS=https://your-frontend-domain.com
 
 ### **External API Integration**
 ```bash
-# OpenAI (Required for AI Analysis)
+# OpenAI (Optional advisory analysis; not required for policy decisions)
 OPENAI_API_KEY=your_openai_api_key_here
 
 # Razorpay (Required for Payment Processing)
@@ -750,7 +700,7 @@ application degrades rather than failing when one is absent — see
 | `DB_URL` | ✅ | MySQL connection URL (parameters are required) | `jdbc:mysql://localhost:3306/aegisx?connectionTimeZone=UTC&forceConnectionTimeZoneToSession=true` |
 | `DB_USERNAME` / `DB_PASSWORD` | ✅ | MySQL account | `aegisx` |
 | `JWT_SECRET` | ✅ | HMAC signing key (32+ chars) | `your-super-secure-jwt-secret...` |
-| `OPENAI_API_KEY` | — | OpenAI API authentication (AI advice degrades when absent) | `your_openai_api_key` |
+| `OPENAI_API_KEY` | — | Optional OpenAI API authentication for advisory findings | `your_openai_api_key` |
 | `RAZORPAY_KEY_ID` / `RAZORPAY_KEY_SECRET` | — | Razorpay **Test Mode** keys | `rzp_test_abc123` |
 | `RAZORPAY_WEBHOOK_SECRET` | — | Razorpay webhook signature verification | `your_webhook_secret` |
 | `WHATSAPP_ACCESS_TOKEN` | — | WhatsApp Graph API token | `EAAx...` |
@@ -881,13 +831,13 @@ you already run on that port is left alone.
 4. ✅ Builds and starts all services (Database + Backend + Frontend)
 5. ✅ Waits for services to be ready (health checks)
 6. ✅ Opens frontend in browser automatically
-7. ✅ Shows service URLs and demo credentials
+7. ✅ Shows service URLs and local access instructions
 
 **Launcher Features:**
 - **Smart Environment Setup**: Automatically copies `.env.example` to `.env`
 - **Health Monitoring**: Waits for backend to be ready before declaring success
 - **User-Friendly Output**: Color-coded status messages and clear instructions
-- **Demo Credentials**: Shows login details for immediate testing
+- **Local Access Instructions**: Shows setup guidance for the local stack
 - **Log Monitoring**: Optional live log viewing with `docker compose logs -f`
 
 **Manual Alternative** (if launcher doesn't work):
@@ -909,158 +859,18 @@ start frontend/index.html
 
 ---
 
-## 📝 Final Phase 15 Commit Message
+## Verification History
 
-After implementing all Phase 15 features, use this commit message:
-
-```bash
-git add .
-git commit -m "feat: Phase 15 - End-to-End Validation & Demo Readiness
-
-🎯 HACKATHON DEPLOYMENT COMPLETE
-
-✅ Demo Workflow Validation:
-- Complete merchant journey validation (register → payment → OCR → AI → policy → audit)
-- PowerShell runner script for Windows compatibility
-- Real transaction flow with sample data generation
-
-✅ Real Integration Verification:
-- Razorpay sandbox webhook integration tested and verified
-- WhatsApp Cloud API document request/response flow working
-- OpenAI GPT-3.5 analysis integration validated
-- Database connectivity and migration verification
-- Complete integration test automation with verification scripts
-
-✅ Operations Dashboard Enhancement:
-- Replaced all placeholder data with real backend integration
-- Real-time transaction statistics and risk assessment display
-- Live audit trail and recent activity from actual database
-- Enhanced transaction detail pages with OCR results and AI analysis
-- Operations monitoring with system health and application metrics
-- Real-time update system with automatic data refresh and animations
-- Comprehensive CSS improvements with Bootstrap animations
-
-✅ Performance Validation Framework:
-- Detailed performance requirements and measurement targets
-- Automated performance testing with concurrent load simulation
-- Response time validation: OCR <10s, AI <15s, Policy <2s, Auth <2s, Dashboard <3s
-- Backend performance monitoring with Spring AOP aspects
-- Performance benchmarking tool with visualization and reporting
-- All performance targets achieved and validated
-
-✅ Security Verification & Hardening:
-- Comprehensive security checklist covering 14 critical controls
-- Automated security testing for authentication, authorization, injection prevention
-- Security grade: B+ (12/14 controls implemented)
-- JWT authentication, input validation, SQL injection prevention
-- XSS protection, CSRF protection, webhook signature validation
-- Security headers configuration (CSP, HSTS, X-Frame-Options, CORS)
-- File upload security and rate limiting implementation
-
-✅ Architecture Documentation:
-- Complete system architecture documentation with visual diagrams
-- Mermaid diagrams for system overview, data flow, and deployment
-- Technology stack documentation and architectural decision records
-- Component interaction diagrams and state machine documentation
-- Python script for generating presentation-ready architecture visuals
-
-✅ Hackathon Presentation Materials:
-- Professional 8-slide pitch deck covering problem, solution, architecture, demo
-- 2-minute live demo script with precise timing and navigation instructions
-- Comprehensive presentation notes with Q&A preparation and backup strategies
-- Demo preparation checklist with 24-hour, 2-hour, and 30-minute validation phases
-- Visual slide generator for creating presentation graphics
-
-✅ Production Deployment Readiness:
-- Windows batch file launcher for one-click application startup
-- Complete environment configuration documentation
-- Railway backend and Netlify frontend deployment guides
-- Docker production setup with health checks and monitoring
-- Security checklist and post-deployment validation procedures
-
-🔧 Technical Implementation:
-- Enhanced frontend with real-time updates and dashboard polish
-- Backend performance monitoring with PerformanceMonitoringAspect
-- Security headers configuration with SecurityHeadersConfig
-- Comprehensive validation scripts for demo, integration, performance, security
-- Test data generators and automated workflow verification
-
-📊 Validation Results:
-- Demo workflow: ✅ PASS (complete merchant journey working)
-- Integration verification: ✅ PASS (all external APIs validated)  
-- Performance validation: ✅ PASS (all response times under targets)
-- Security verification: ✅ B+ GRADE (12/14 security controls)
-- System health: ✅ READY (production deployment verified)
-
-🚀 DEMO STATUS: LIVE & READY
-- Frontend: https://aegis-x-demo.netlify.app
-- Backend: https://aegis-x-api.railway.app  
-- Complete workflow: Registration → Payment → OCR → AI → Policy → Approval
-- Processing time: <45 seconds (vs industry standard 2-5 days)
-- Real integrations: Razorpay + WhatsApp + OpenAI working
-
-This completes the Aegis-X hackathon submission with production-ready 
-AI-powered fintech compliance orchestration platform."
-```
+No independent performance benchmark, external integration verification, or security grade is claimed here. Phase-specific evidence, commands, and limitations are recorded in [docs/HANDOFF.md](docs/HANDOFF.md).
 
 ---
+## Project Summary
 
-## 🎯 Hackathon Summary
+Aegis-X combines evidence handling, advisory AI, deterministic policy evaluation, and audit records. AI output does not make payment decisions.
 
-### **What We Built**
-**Aegis-X** is a production-ready AI-powered fintech compliance orchestration platform that transforms manual compliance workflows into intelligent, automated pipelines. Built with **Java 21 + Spring Boot 3**, featuring real-time processing, enterprise security, and complete audit trails.
-
-### **Key Achievements** 🏆
-- **⚡ 99%+ Speed Improvement**: 45 seconds vs industry standard 2-5 days
-- **🤖 Hybrid AI Architecture**: GPT provides insights, Java rules make decisions  
-- **🛡️ Enterprise Security**: B+ security grade (12/14 controls implemented)
-- **🔄 Real Integrations**: Working Razorpay, WhatsApp, OpenAI APIs
-- **📊 Complete Audit Trail**: Every decision traceable and explainable
-- **🚀 Production Ready**: Full deployment on Railway + Netlify
-
-### **Technical Excellence**
-- **Modern Stack**: Java 21, Spring Boot 3.3.4, Spring Security 6, MySQL 8.4
-- **AI Integration**: Spring AI 1.0.5 + OpenAI GPT-3.5 with deterministic policy overlay
-- **Performance**: All response times under target thresholds (<45s total pipeline)
-- **Security**: JWT + RBAC + CORS + CSRF + input validation + security headers
-- **Deployment**: Docker containerization with Railway/Netlify production hosting
-
-### **Business Impact** 📈
-| Metric | Industry Standard | Aegis-X | Improvement |
-|--------|------------------|---------|-------------|
-| Processing Time | 2-5 days | <45 seconds | **99%+ faster** |
-| Cost per Transaction | $15-25 | $2-3 | **90% reduction** |
-| Error Rate | 15-20% | <1% | **95%+ accuracy** |
-| Audit Compliance | Manual | 100% automated | **Complete traceability** |
-
-### **Live Demo** 🎬
-👉 **Try it now**: [aegis-x-demo.netlify.app](https://aegis-x-demo.netlify.app)
-
-**Complete workflow in under 2 minutes:**
-1. Merchant registration and transaction creation
-2. Razorpay payment processing  
-3. WhatsApp document collection
-4. OCR text extraction (Tesseract + Tika)
-5. AI risk analysis (OpenAI GPT-3.5)
-6. Policy evaluation (deterministic Java rules)
-7. Real-time compliance dashboard updates
-8. Complete audit trail generation
-
-### **What Makes Us Different** 🌟
-- **AI Advises, Java Decides**: Unique hybrid architecture ensuring regulatory compliance
-- **Real-World Ready**: Production deployment with enterprise security standards
-- **Complete Solution**: End-to-end workflow from payment to settlement authorization
-- **Hackathon Validated**: Comprehensive testing framework with performance/security verification
-- **Open Source**: Full codebase available with detailed documentation
-
-### **Next Steps** 🚀
-- **Pilot Programs**: Ready for fintech integration partnerships
-- **ML Enhancement**: Custom model training on compliance data
-- **Platform Expansion**: Multi-tenant SaaS deployment
-- **Regulatory Certification**: Pursue compliance certifications for broader adoption
+Current verification results and unsupported modules are listed in [docs/HANDOFF.md](docs/HANDOFF.md). The repository does not claim production readiness.
 
 ---
-
 ## 📞 Contact & Links
 
 ### **🔗 Resources**
@@ -1070,20 +880,15 @@ AI-powered fintech compliance orchestration platform."
 - **📚 API Documentation**: [Swagger UI](https://aegis-x-api.railway.app/swagger-ui.html)
 
 ### **📋 Documentation**
-- **🎯 [Demo Script](./DEMO_SCRIPT.md)**: 2-minute guided walkthrough
+- **🎯 [Demo Script](./DEMO_SCRIPT.md)**: Local guided walkthrough
 - **🏗️ [Architecture Guide](./ARCHITECTURE_DIAGRAM.md)**: Detailed system design
 - **🎨 [Pitch Deck](./AEGIS_X_PITCH_DECK.md)**: Hackathon presentation
 - **🔧 [Railway Deploy](./RAILWAY_DEPLOY.md)**: Backend deployment guide
 - **🌐 [Netlify Deploy](./NETLIFY_DEPLOY.md)**: Frontend deployment guide
 
-### **🎯 Quick Demo Access**
-```bash
-# Try the live system immediately:
-# 1. Visit: https://aegis-x-demo.netlify.app
-# 2. Login with: demo-merchant@aegis-x.com / DemoPass123!
-# 3. Create transaction → Upload documents → Watch AI processing
-# 4. See compliance decision in <45 seconds
-```
+### **Demo Availability**
+
+The external demo link is listed above; its availability and behavior have not been verified.
 
 ### **⚙️ Local Setup (One Command)**
 ```bash

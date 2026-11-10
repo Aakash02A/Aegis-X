@@ -710,3 +710,19 @@ Recorded in the commit that updates this handoff and BUILD_STATUS.
 ### Open items
 - F6 still requires the full browser journey, baseline screenshot comparison, and final MySQL-enabled randomized backend suite.
 - The low-contrast token pairings and client-side profile/token storage exposure are recorded for product/security follow-up; palette and authentication architecture were outside this frontend phase's approved changes.
+
+## Frontend redesign — Phase F6: final verification (2026-11-10)
+
+### Status
+**IN PROGRESS.** The OCR evidence-rendering failure is fixed and its focused frontend checks pass. The API E2E runner did not reach its HTTP flow because the local MySQL server rejected the backend connection limit.
+
+### Evidence and changes
+- Renamed the OCR evidence-loop item from `document` to `evidence`; the former shadowed the browser's global `document` and caused rendering to throw on transactions with evidence.
+- Added a frontend regression check that renders an evidence record and extracted fields.
+- The F6 UI journey run passed **18/18** checks, including merchant evidence/policy, reviewer audit, and operator workspace paths.
+- `npm.cmd --prefix frontend test`: **191 passed, 0 failed**. `npm.cmd --prefix frontend run build`: successful, **59 modules transformed**.
+- The API-only E2E runner recreated its approved disposable `aegisx_audit` database, then failed backend startup because MySQL reported **“Too many connections.”** No API flow ran. The backend stopped; the runner's remaining loopback mock was verified and stopped, and its ports were confirmed free.
+
+### Open items
+- Rerun API E2E after the local MySQL connection-limit issue is resolved.
+- Complete the baseline screenshot comparison and final randomized backend suite before marking F6 complete.

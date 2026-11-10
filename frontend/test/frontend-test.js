@@ -303,6 +303,27 @@ assert(redirectTarget === 'login.html?session=expired&return=dashboard.html%3Fid
 assert(unauthorizedStatus === 401, 'API errors retain their HTTP status for route guards');
 assert(!storage.has('aegis_jwt_token') && localStorageRemovals.includes('aegis_user'), '401 handling clears stored authentication state');
 
+class TestElement {
+  constructor(tagName) {
+    this.tagName = tagName;
+    this.children = [];
+  }
+  append(...elements) { this.children.push(...elements); }
+  replaceChildren(...elements) { this.children = elements; }
+}
+const ocrContainer = new TestElement('div');
+globalThis.document = {
+  createElement: tagName => new TestElement(tagName),
+  getElementById: id => id === 'tab-ocr' ? ocrContainer : null
+};
+const { OCRViewer } = await import('../services/ocr.js');
+OCRViewer.render('tab-ocr', {
+  documents: [{ id: 'evidence-1', originalFilename: 'invoice.pdf', documentType: 'INVOICE' }],
+  extractions: [{ documentId: 'evidence-1', status: 'COMPLETED', confidence: 99, extractedData: { invoiceNumber: 'F6-TEST-1' } }]
+});
+const renderedOcrText = (node) => [node.textContent || '', ...node.children.map(renderedOcrText)].join(' ');
+assert(ocrContainer.children.length === 2 && renderedOcrText(ocrContainer).includes('F6-TEST-1'), 'OCR viewer renders evidence and extracted fields without shadowing the page document');
+
 const viteConfig = fs.readFileSync(path.join(frontendDir, 'vite.config.js'), 'utf-8');
 assert(allHtmlPages.every(page => viteConfig.includes(`'${page.replace(/\.html$/, '')}'`)), 'Production build includes every HTML entry page');
 
