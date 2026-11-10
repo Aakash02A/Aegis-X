@@ -86,4 +86,5 @@ class ComplianceReviewQueueAgingTest {
         assertThat(item.getPriorityScore()).isEqualTo(35);
         assertThat(item.isHighPriority()).isFalse();
     }
+
 }

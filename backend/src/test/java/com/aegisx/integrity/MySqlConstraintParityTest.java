@@ -120,7 +120,7 @@ class MySqlConstraintParityTest extends MySqlIntegrityTestSupport {
     @DisplayName("every UNIQUE index from the PostgreSQL history exists here too")
     void uniqueIndexesMatchThePostgresHistory() {
         // The PostgreSQL names are auto-generated for five of these, so the mapping is explicit
-        // rather than inferred. Both engines total sixteen unique indexes.
+        // rather than inferred. Both engines total nineteen unique indexes.
         List<String> present = jdbc().queryForList(
                 "SELECT CONCAT(table_name, '|', index_name) AS x FROM information_schema.statistics "
                         + "WHERE table_schema = DATABASE() AND non_unique = 0 "
@@ -143,10 +143,16 @@ class MySqlConstraintParityTest extends MySqlIntegrityTestSupport {
                         "pi_webhook_events|uq_pi_webhook_events_workspace_provider_event",
                         "pi_workspaces|uq_pi_workspaces_name",
                         "settlements|uq_settlements_reference",
+                        // V34: prevent more than one settlement for a transaction.
+                        "settlements|uq_settlements_transaction_id",
                         "transactions|uq_transactions_reference_number",
+                        // V31: prevent reusing a Razorpay order across transactions.
+                        "transactions|uq_transactions_razorpay_order_id",
                         "users|uq_users_email",
                         "webhook_events|uq_webhook_events_event_id",
-                        "required_documents|uq_required_doc_tx_type");
+                        "required_documents|uq_required_doc_tx_type",
+                        // V33: prevent duplicate membership for a user/workspace pair.
+                        "workspace_members|uq_workspace_members_user_workspace");
     }
 
     @Test

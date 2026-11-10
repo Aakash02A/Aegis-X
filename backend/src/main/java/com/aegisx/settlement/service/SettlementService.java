@@ -1,5 +1,7 @@
 package com.aegisx.settlement.service;
 
+import com.aegisx.auth.entity.User;
+import com.aegisx.auth.repository.UserRepository;
 import com.aegisx.settlement.dto.SettlementRequest;
 import com.aegisx.settlement.dto.SettlementResponse;
 import com.aegisx.settlement.entity.PaymentProcessor;
@@ -7,19 +9,24 @@ import com.aegisx.settlement.entity.Settlement;
 import com.aegisx.settlement.entity.SettlementStatus;
 import com.aegisx.settlement.repository.SettlementRepository;
 import com.aegisx.transaction.entity.Transaction;
+import com.aegisx.transaction.entity.TransactionStatus;
 import com.aegisx.transaction.repository.TransactionRepository;
 import com.aegisx.audit.service.AuditService;
 import com.aegisx.audit.entity.AuditModule;
 import com.aegisx.audit.entity.AuditEventType;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.LockModeType;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
@@ -39,25 +46,60 @@ public class SettlementService {
 
     private final SettlementRepository settlementRepository;
     private final TransactionRepository transactionRepository;
+    private final UserRepository userRepository;
     private final SettlementProcessorService settlementProcessorService;
     private final AuditService auditService;
     private final ObjectMapper objectMapper;
+    private final RazorpayXClient razorpayXClient;
+    private final EntityManager entityManager;
 
     /**
      * Initiates a new settlement for a transaction.
      */
+    @Transactional(noRollbackFor = IllegalArgumentException.class)
     public SettlementResponse initiateSettlement(SettlementRequest request, String initiatedBy) {
+        if (request == null) {
+            throw new IllegalArgumentException("Settlement request is required");
+        }
         log.info("Initiating settlement for transaction: {}", request.getTransactionId());
-        
-        // Validate request
-        request.validate();
-        
+
+        if (request.getTransactionId() == null) {
+            request.validate();
+        }
+
         // Check if transaction exists and is eligible for settlement
         Transaction transaction = transactionRepository.findById(request.getTransactionId())
                 .orElseThrow(() -> new IllegalArgumentException("Transaction not found"));
-        
+
+        if (request.getSettlementAmount() != null
+                && request.getSettlementAmount().compareTo(BigDecimal.ZERO) <= 0) {
+            auditRejectedAmount(transaction.getId(), "Settlement amount must be positive");
+            throw new IllegalArgumentException("Settlement amount must be positive");
+        }
+
+        request.validate();
+
         if (!isTransactionEligibleForSettlement(transaction)) {
             throw new IllegalStateException("Transaction is not eligible for settlement");
+        }
+
+        if (request.getSettlementAmount().compareTo(transaction.getAmount()) > 0) {
+            auditRejectedAmount(transaction.getId(),
+                    "Settlement amount exceeds the approved transaction amount");
+            throw new IllegalArgumentException(
+                    "Settlement amount cannot exceed the approved transaction amount");
+        }
+
+        if (!request.getPaymentProcessor().supportsNewSettlements()) {
+            throw new IllegalArgumentException("No settlement integration is available for this processor");
+        }
+
+        if (request.getPaymentProcessor() == PaymentProcessor.RAZORPAYX
+                && (!"INR".equals(transaction.getCurrency())
+                || !"INR".equals(request.getSettlementCurrency())
+                || request.getSettlementAmount().compareTo(transaction.getAmount()) > 0)) {
+            throw new IllegalArgumentException(
+                    "RazorpayX settlement must be INR and cannot exceed the transaction amount");
         }
         
         // Check if settlement already exists
@@ -85,6 +127,10 @@ public class SettlementService {
         
         // Save settlement
         Settlement saved = settlementRepository.save(settlement);
+        if (request.getPaymentProcessor() == PaymentProcessor.RAZORPAYX) {
+            saved.setProcessorDetails(null, razorpayXClient.createBeneficiaryFundAccount(saved, request));
+            saved = settlementRepository.save(saved);
+        }
         
         // Audit log
         auditService.logEvent(AuditEventType.SETTLEMENT_INITIATED, AuditModule.SETTLEMENT,
@@ -99,13 +145,20 @@ public class SettlementService {
     /**
      * Processes a settlement by submitting to payment processor.
      */
+    @Transactional(noRollbackFor = SettlementProcessingException.class)
     public SettlementResponse processSettlement(UUID settlementId) {
         log.info("Processing settlement: {}", settlementId);
         
-        Settlement settlement = getSettlementById(settlementId);
+        Settlement settlement = settlementRepository.findByIdForUpdate(settlementId)
+                .orElseThrow(() -> new IllegalArgumentException("Settlement not found"));
         
         if (settlement.getStatus() != SettlementStatus.INITIATED) {
             throw new IllegalStateException("Settlement is not in INITIATED status");
+        }
+        Transaction transaction = settlement.getTransaction();
+        entityManager.refresh(transaction, LockModeType.PESSIMISTIC_WRITE);
+        if (!isTransactionEligibleForSettlement(transaction)) {
+            throw new IllegalStateException("Transaction is no longer approved for settlement");
         }
         
         try {
@@ -115,10 +168,29 @@ public class SettlementService {
             
             // Submit to payment processor
             SettlementProcessorResult result = settlementProcessorService.submitSettlement(settlement);
-            
+            if (!result.isSuccess()) {
+                throw new IllegalStateException(result.getErrorMessage() == null
+                        ? "Settlement provider rejected the request" : result.getErrorMessage());
+            }
+
+            SettlementStatus initialStatus = result.getInitialStatus() == null
+                    ? SettlementStatus.PENDING : result.getInitialStatus();
+            if (settlement.getPaymentProcessor() == PaymentProcessor.SIMULATED) {
+                if (initialStatus != SettlementStatus.PENDING || result.getProcessorTransactionId() != null) {
+                    throw new IllegalStateException("Simulated settlement returned provider execution evidence");
+                }
+            } else if (settlement.getPaymentProcessor() != PaymentProcessor.RAZORPAYX
+                    || result.getProcessorTransactionId() == null
+                    || result.getProcessorTransactionId().isBlank()) {
+                throw new IllegalStateException("Settlement response lacks real provider evidence");
+            }
+
             // Update settlement with processor details
             settlement.setProcessorDetails(result.getProcessorTransactionId(), result.getMetadata());
-            settlement.updateStatus(SettlementStatus.SUBMITTED, null);
+            if (!isValidStatusTransition(settlement.getStatus(), initialStatus)) {
+                throw new IllegalStateException("Settlement provider returned an unsupported status");
+            }
+            settlement.updateStatus(initialStatus, null);
             
             if (result.getExpectedCompletion() != null) {
                 settlement.setExpectedCompletion(result.getExpectedCompletion());
@@ -126,17 +198,20 @@ public class SettlementService {
             
             Settlement updated = settlementRepository.save(settlement);
             
-            // Audit log
-            auditService.logEvent(AuditEventType.SETTLEMENT_SUBMITTED, AuditModule.SETTLEMENT,
-                    "Settlement submitted to processor", settlement.getTransaction().getId());
-            
-            log.info("Settlement submitted: {} with processor ID: {}", 
-                    settlement.getSettlementReference(), result.getProcessorTransactionId());
+            AuditEventType eventType = initialStatus == SettlementStatus.SUBMITTED
+                    ? AuditEventType.SETTLEMENT_SUBMITTED : AuditEventType.SETTLEMENT_STATUS_UPDATED;
+            String description = settlement.getPaymentProcessor() == PaymentProcessor.SIMULATED
+                    ? "Settlement marked SIMULATED; no money moved"
+                    : "Provider returned settlement status " + initialStatus;
+            auditService.logEvent(eventType, AuditModule.SETTLEMENT,
+                    description, settlement.getTransaction().getId());
+
+            log.info("Settlement {} recorded with status {}", settlement.getSettlementReference(), initialStatus);
             
             return SettlementResponse.fromEntity(updated);
             
         } catch (Exception e) {
-            log.error("Failed to process settlement: {}", settlementId, e);
+            log.error("Failed to process settlement {}: {}", settlementId, e.getMessage());
             
             settlement.updateStatus(SettlementStatus.FAILED, e.getMessage());
             settlementRepository.save(settlement);
@@ -144,8 +219,81 @@ public class SettlementService {
             auditService.logEvent(AuditEventType.SETTLEMENT_FAILED, AuditModule.SETTLEMENT,
                     "Settlement processing failed: " + e.getMessage(), settlement.getTransaction().getId());
             
-            throw new RuntimeException("Settlement processing failed", e);
+            throw new SettlementProcessingException("Settlement processing failed", e);
         }
+    }
+
+    @Transactional
+    public String applyRazorpayXPayoutWebhook(String payoutId,
+                                               String settlementReference,
+                                               BigDecimal amountMinor,
+                                               String currency,
+                                               String providerStatus,
+                                               String reason,
+                                               String utr) {
+        Settlement settlement = settlementRepository.findBySettlementReference(settlementReference)
+                .orElseThrow(() -> new IllegalArgumentException("Unknown RazorpayX settlement reference"));
+        if (settlement.getPaymentProcessor() != PaymentProcessor.RAZORPAYX
+                || payoutId == null || payoutId.isBlank()
+                || (settlement.getProcessorTransactionId() != null
+                && !settlement.getProcessorTransactionId().equals(payoutId))
+                || amountMinor == null
+                || amountMinor.compareTo(settlement.getSettlementAmount().movePointRight(2)) != 0
+                || !"INR".equals(currency)) {
+            throw new IllegalArgumentException("RazorpayX payout webhook does not match the stored settlement");
+        }
+
+        SettlementStatus newStatus = switch (providerStatus == null ? ""
+                : providerStatus.toLowerCase(java.util.Locale.ROOT)) {
+            case "queued", "pending", "processing", "initiated" -> SettlementStatus.PENDING;
+            case "processed" -> SettlementStatus.COMPLETED;
+            case "failed", "reversed" -> SettlementStatus.FAILED;
+            case "rejected" -> SettlementStatus.REJECTED;
+            case "cancelled" -> SettlementStatus.CANCELLED;
+            default -> SettlementStatus.MANUAL_REVIEW;
+        };
+        if ((settlement.getStatus() == SettlementStatus.COMPLETED
+                && newStatus == SettlementStatus.PENDING)
+                || (settlement.getStatus() == SettlementStatus.RECONCILED
+                && (newStatus == SettlementStatus.PENDING || newStatus == SettlementStatus.COMPLETED))) {
+            return settlement.getTransaction().getReferenceNumber();
+        }
+        if (settlement.getStatus() == SettlementStatus.RECONCILED && newStatus == SettlementStatus.FAILED) {
+            newStatus = SettlementStatus.RECONCILIATION_FAILED;
+        }
+        if (settlement.getStatus() != newStatus) {
+            boolean providerOutcomeCorrection = (settlement.getProcessorTransactionId() == null
+                    && (settlement.getStatus() == SettlementStatus.INITIATED
+                    || settlement.getStatus() == SettlementStatus.PROCESSING
+                    || settlement.getStatus() == SettlementStatus.FAILED
+                    || settlement.getStatus() == SettlementStatus.REJECTED
+                    || settlement.getStatus() == SettlementStatus.MANUAL_REVIEW))
+                    || settlement.getStatus() == SettlementStatus.FAILED
+                    || settlement.getStatus() == SettlementStatus.REJECTED
+                    || settlement.getStatus() == SettlementStatus.MANUAL_REVIEW
+                    || (settlement.getStatus() == SettlementStatus.COMPLETED
+                    && newStatus == SettlementStatus.FAILED)
+                    || (settlement.getStatus() == SettlementStatus.RECONCILED
+                    && newStatus == SettlementStatus.RECONCILIATION_FAILED);
+            if (!isValidStatusTransition(settlement.getStatus(), newStatus) && !providerOutcomeCorrection) {
+                throw new IllegalStateException("Invalid RazorpayX payout status transition");
+            }
+            settlement.updateStatus(newStatus, reason);
+        }
+        com.fasterxml.jackson.databind.node.ObjectNode metadata = settlement.getProcessorMetadata()
+                instanceof com.fasterxml.jackson.databind.node.ObjectNode existing
+                ? existing.deepCopy() : objectMapper.createObjectNode();
+        metadata.put("payoutId", payoutId);
+        metadata.put("payoutStatus", providerStatus);
+        if (utr != null && !utr.isBlank()) {
+            metadata.put("utr", utr);
+        }
+        settlement.setProcessorDetails(payoutId, metadata);
+        settlementRepository.save(settlement);
+        auditService.logEvent(mapStatusToAuditEvent(newStatus), AuditModule.SETTLEMENT,
+                "RazorpayX payout status updated to " + newStatus,
+                settlement.getTransaction().getId());
+        return settlement.getTransaction().getReferenceNumber();
     }
 
     /**
@@ -156,6 +304,10 @@ public class SettlementService {
                                                     String reason,
                                                     JsonNode processorData) {
         log.info("Updating settlement status: {} to {}", settlementReference, newStatus);
+
+        if (newStatus == SettlementStatus.SUBMITTED || newStatus == SettlementStatus.RECONCILED) {
+            throw new IllegalStateException("Settlement status requires real provider evidence");
+        }
         
         Settlement settlement = settlementRepository.findBySettlementReference(settlementReference)
                 .orElseThrow(() -> new IllegalArgumentException("Settlement not found"));
@@ -198,6 +350,16 @@ public class SettlementService {
         return SettlementResponse.fromEntity(settlement);
     }
 
+    @Transactional(readOnly = true)
+    public SettlementResponse getSettlement(UUID settlementId, Authentication authentication) {
+        User requester = requireRequester(authentication);
+        Settlement settlement = isMerchant(authentication)
+                ? settlementRepository.findByIdAndMerchantId(settlementId, requester.getId())
+                        .orElseThrow(() -> new IllegalArgumentException("Settlement not found"))
+                : getSettlementById(settlementId);
+        return SettlementResponse.fromEntity(settlement);
+    }
+
     /**
      * Gets settlement by reference number.
      */
@@ -205,6 +367,17 @@ public class SettlementService {
     public SettlementResponse getSettlementByReference(String reference) {
         Settlement settlement = settlementRepository.findBySettlementReference(reference)
                 .orElseThrow(() -> new IllegalArgumentException("Settlement not found"));
+        return SettlementResponse.fromEntity(settlement);
+    }
+
+    @Transactional(readOnly = true)
+    public SettlementResponse getSettlementByReference(String reference, Authentication authentication) {
+        User requester = requireRequester(authentication);
+        Settlement settlement = isMerchant(authentication)
+                ? settlementRepository.findByReferenceAndMerchantId(reference, requester.getId())
+                        .orElseThrow(() -> new IllegalArgumentException("Settlement not found"))
+                : settlementRepository.findBySettlementReference(reference)
+                        .orElseThrow(() -> new IllegalArgumentException("Settlement not found"));
         return SettlementResponse.fromEntity(settlement);
     }
 
@@ -217,6 +390,30 @@ public class SettlementService {
         return settlements.stream()
                 .map(SettlementResponse::fromEntity)
                 .collect(Collectors.toList());
+    }
+
+    @Transactional(readOnly = true)
+    public List<SettlementResponse> getTransactionSettlements(UUID transactionId, Authentication authentication) {
+        User requester = requireRequester(authentication);
+        if (isMerchant(authentication)
+                && transactionRepository.findByIdAndMerchantId(transactionId, requester.getId()).isEmpty()) {
+            throw new IllegalArgumentException("Transaction not found");
+        }
+        return getTransactionSettlements(transactionId);
+    }
+
+    private User requireRequester(Authentication authentication) {
+        if (authentication == null || !authentication.isAuthenticated()
+                || authentication.getName() == null || authentication.getName().isBlank()) {
+            throw new IllegalArgumentException("Settlement not found");
+        }
+        return userRepository.findByEmail(authentication.getName())
+                .orElseThrow(() -> new IllegalArgumentException("Settlement not found"));
+    }
+
+    private boolean isMerchant(Authentication authentication) {
+        return authentication.getAuthorities().stream()
+                .anyMatch(authority -> "ROLE_MERCHANT".equals(authority.getAuthority()));
     }
 
     /**
@@ -272,6 +469,12 @@ public class SettlementService {
         if (!settlement.canRetry()) {
             throw new IllegalStateException("Settlement cannot be retried");
         }
+        if (settlement.getPaymentProcessor() == PaymentProcessor.RAZORPAYX
+                && settlement.getProcessorTransactionId() != null
+                && !settlement.getProcessorTransactionId().isBlank()) {
+            throw new IllegalStateException(
+                    "RazorpayX has assigned a payout ID; reconcile the existing payout before retrying");
+        }
         
         settlement.incrementRetry();
         settlement.updateStatus(SettlementStatus.INITIATED, reason);
@@ -295,8 +498,9 @@ public class SettlementService {
         
         Settlement settlement = getSettlementById(settlementId);
         
-        if (settlement.isFinal()) {
-            throw new IllegalStateException("Cannot cancel settlement in final status");
+        if (settlement.getStatus() != SettlementStatus.INITIATED) {
+            throw new IllegalStateException(
+                    "Only an unsubmitted settlement can be cancelled; provider-submitted payouts require provider confirmation");
         }
         
         settlement.updateStatus(SettlementStatus.CANCELLED, reason);
@@ -334,21 +538,48 @@ public class SettlementService {
         List<Settlement> settlements = settlementRepository.findSettlementsPendingReconciliation();
         
         for (Settlement settlement : settlements) {
+            if (settlement.getPaymentProcessor() != PaymentProcessor.RAZORPAYX) {
+                settlement.updateStatus(SettlementStatus.MANUAL_REVIEW,
+                        "No live provider reconciliation is configured for this processor");
+                settlementRepository.save(settlement);
+                continue;
+            }
             try {
                 settlement.updateStatus(SettlementStatus.RECONCILING, null);
                 settlementRepository.save(settlement);
-                
-                // Perform reconciliation logic here
-                // This would typically involve calling bank APIs or processing files
-                
-                settlement.updateStatus(SettlementStatus.RECONCILED, null);
+
+                JsonNode providerPayout = settlementProcessorService.querySettlementStatus(settlement);
+                long expectedAmount = settlement.getSettlementAmount().movePointRight(2).longValueExact();
+                if (!settlement.getProcessorTransactionId().equals(providerPayout.path("id").asText())
+                        || !settlement.getSettlementReference().equals(providerPayout.path("reference_id").asText())
+                        || providerPayout.path("amount").asLong(-1) != expectedAmount
+                        || !"INR".equals(providerPayout.path("currency").asText())) {
+                    throw new IllegalStateException("Provider payout does not match stored settlement");
+                }
+
+                String providerStatus = providerPayout.path("status").asText();
+                com.fasterxml.jackson.databind.node.ObjectNode reconciliationData = objectMapper.createObjectNode();
+                reconciliationData.put("id", providerPayout.path("id").asText());
+                reconciliationData.put("reference_id", providerPayout.path("reference_id").asText());
+                reconciliationData.put("amount", expectedAmount);
+                reconciliationData.put("currency", providerPayout.path("currency").asText());
+                reconciliationData.put("status", providerStatus);
+                if (providerPayout.hasNonNull("utr")) {
+                    reconciliationData.put("utr", providerPayout.path("utr").asText());
+                }
+                settlement.setProcessorDetails(settlement.getProcessorTransactionId(), reconciliationData);
+                if ("processed".equalsIgnoreCase(providerStatus)) {
+                    settlement.updateStatus(SettlementStatus.RECONCILED, null);
+                } else {
+                    settlement.updateStatus(SettlementStatus.RECONCILIATION_FAILED,
+                            "Provider payout status is " + providerStatus);
+                }
                 settlementRepository.save(settlement);
-                
-                log.info("Settlement reconciled: {}", settlement.getSettlementReference());
+                log.info("RazorpayX payout reconciliation completed for {}", settlement.getSettlementReference());
                 
             } catch (Exception e) {
-                log.error("Reconciliation failed for settlement: {}", 
-                         settlement.getSettlementReference(), e);
+                log.error("Reconciliation failed for settlement {}: {}",
+                        settlement.getSettlementReference(), e.getMessage());
                 
                 settlement.updateStatus(SettlementStatus.RECONCILIATION_FAILED, e.getMessage());
                 settlementRepository.save(settlement);
@@ -357,6 +588,11 @@ public class SettlementService {
     }
 
     // Helper methods
+
+    private void auditRejectedAmount(UUID transactionId, String reason) {
+        auditService.logEvent(AuditEventType.SETTLEMENT_FAILED, AuditModule.SETTLEMENT,
+                "Settlement request rejected: " + reason, transactionId);
+    }
     
     private Settlement getSettlementById(UUID settlementId) {
         return settlementRepository.findById(settlementId)
@@ -364,9 +600,8 @@ public class SettlementService {
     }
 
     private boolean isTransactionEligibleForSettlement(Transaction transaction) {
-        // Check if transaction is approved and ready for settlement
-        return transaction.getStatus().name().equals("APPROVED") || 
-               transaction.getStatus().name().equals("COMPLIANCE_APPROVED");
+        // APPROVED is the legacy status corresponding to the policy engine's ALLOWED decision.
+        return transaction.getStatus() == TransactionStatus.APPROVED;
     }
 
     private boolean isValidStatusTransition(SettlementStatus from, SettlementStatus to) {
@@ -413,7 +648,14 @@ public class SettlementService {
         private String processorTransactionId;
         private LocalDateTime expectedCompletion;
         private JsonNode metadata;
+        private SettlementStatus initialStatus;
         private boolean success;
         private String errorMessage;
+    }
+
+    public static class SettlementProcessingException extends RuntimeException {
+        public SettlementProcessingException(String message, Throwable cause) {
+            super(message, cause);
+        }
     }
 }

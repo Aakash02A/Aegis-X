@@ -6,6 +6,7 @@ import com.aegisx.evidence.dto.EvidenceRequirementRequest;
 import com.aegisx.evidence.dto.MissingDocumentsResponse;
 import com.aegisx.evidence.entity.EvidenceChecklist;
 import com.aegisx.evidence.service.EvidenceChecklistService;
+import com.aegisx.transaction.service.TransactionService;
 import com.aegisx.common.response.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -15,6 +16,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -33,15 +35,18 @@ import java.util.UUID;
 public class EvidenceController {
 
     private final EvidenceChecklistService evidenceChecklistService;
+    private final TransactionService transactionService;
 
     @Operation(summary = "Get evidence checklist for transaction", 
                description = "Retrieves the evidence checklist showing document requirements and upload status")
     @GetMapping("/checklist/{transactionId}")
     @PreAuthorize("hasRole('MERCHANT') or hasRole('COMPLIANCE_OFFICER') or hasRole('ADMIN')")
     public ResponseEntity<ApiResponse<EvidenceChecklistResponse>> getChecklist(
-            @Parameter(description = "Transaction ID") @PathVariable UUID transactionId) {
+            @Parameter(description = "Transaction ID") @PathVariable UUID transactionId,
+            Authentication authentication) {
         
         log.debug("Getting evidence checklist for transaction: {}", transactionId);
+        transactionService.getAuthorizedTransaction(transactionId, authentication);
         
         Optional<EvidenceChecklist> checklist = evidenceChecklistService.getChecklistByTransactionId(transactionId);
         
@@ -58,9 +63,11 @@ public class EvidenceController {
     @GetMapping("/missing/{transactionId}")
     @PreAuthorize("hasRole('MERCHANT') or hasRole('COMPLIANCE_OFFICER') or hasRole('ADMIN')")
     public ResponseEntity<ApiResponse<MissingDocumentsResponse>> getMissingDocuments(
-            @Parameter(description = "Transaction ID") @PathVariable UUID transactionId) {
+            @Parameter(description = "Transaction ID") @PathVariable UUID transactionId,
+            Authentication authentication) {
         
         log.debug("Getting missing documents for transaction: {}", transactionId);
+        transactionService.getAuthorizedTransaction(transactionId, authentication);
         
         List<DocumentType> missingTypes = evidenceChecklistService.getMissingDocuments(transactionId);
         Optional<EvidenceChecklist> checklist = evidenceChecklistService.getChecklistByTransactionId(transactionId);
@@ -109,9 +116,11 @@ public class EvidenceController {
     @PreAuthorize("hasRole('MERCHANT') or hasRole('COMPLIANCE_OFFICER') or hasRole('ADMIN')")
     public ResponseEntity<ApiResponse<EvidenceChecklistResponse>> markDocumentUploaded(
             @Parameter(description = "Transaction ID") @PathVariable UUID transactionId,
-            @Parameter(description = "Document type") @RequestParam DocumentType documentType) {
+            @Parameter(description = "Document type") @RequestParam DocumentType documentType,
+            Authentication authentication) {
         
         log.info("Marking document {} as uploaded for transaction: {}", documentType, transactionId);
+        transactionService.getAuthorizedTransaction(transactionId, authentication);
         
         EvidenceChecklist updatedChecklist = evidenceChecklistService.markDocumentUploaded(transactionId, documentType);
         EvidenceChecklistResponse response = EvidenceChecklistResponse.fromEntity(updatedChecklist);
@@ -128,8 +137,10 @@ public class EvidenceController {
     @GetMapping("/complete/{transactionId}")
     @PreAuthorize("hasRole('MERCHANT') or hasRole('COMPLIANCE_OFFICER') or hasRole('ADMIN')")
     public ResponseEntity<ApiResponse<Boolean>> isEvidenceComplete(
-            @Parameter(description = "Transaction ID") @PathVariable UUID transactionId) {
+            @Parameter(description = "Transaction ID") @PathVariable UUID transactionId,
+            Authentication authentication) {
         
+        transactionService.getAuthorizedTransaction(transactionId, authentication);
         boolean isComplete = evidenceChecklistService.isEvidenceComplete(transactionId);
         
         String message = isComplete ? 
@@ -159,8 +170,10 @@ public class EvidenceController {
     @GetMapping("/summary/{transactionId}")
     @PreAuthorize("hasRole('MERCHANT') or hasRole('COMPLIANCE_OFFICER') or hasRole('ADMIN')")
     public ResponseEntity<ApiResponse<EvidenceSummaryResponse>> getEvidenceSummary(
-            @Parameter(description = "Transaction ID") @PathVariable UUID transactionId) {
+            @Parameter(description = "Transaction ID") @PathVariable UUID transactionId,
+            Authentication authentication) {
         
+        transactionService.getAuthorizedTransaction(transactionId, authentication);
         List<DocumentType> missingTypes = evidenceChecklistService.getMissingDocuments(transactionId);
         boolean isComplete = evidenceChecklistService.isEvidenceComplete(transactionId);
         

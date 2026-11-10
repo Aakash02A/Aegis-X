@@ -3,6 +3,7 @@ package com.aegisx.policy.rules;
 import org.springframework.stereotype.Component;
 
 import java.util.Set;
+import java.util.Locale;
 
 /**
  * PurposeCodeRule verifies that transaction purpose code is valid.
@@ -45,7 +46,7 @@ public class PurposeCodeRule implements PolicyRule {
             return fail("Transaction purpose code missing");
         }
         
-        String purposeCode = context.getTransaction().getPurpose().trim().toUpperCase();
+        String purposeCode = context.getTransaction().getPurpose().trim().toUpperCase(Locale.ROOT);
         
         if (purposeCode.isEmpty()) {
             return fail("Transaction purpose code is empty");

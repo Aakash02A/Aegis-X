@@ -5,10 +5,12 @@ import com.aegisx.storage.config.StorageProperties;
 import lombok.RequiredArgsConstructor;
 import org.springframework.core.io.Resource;
 import org.springframework.core.io.UrlResource;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.net.MalformedURLException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -17,6 +19,7 @@ import java.nio.file.StandardCopyOption;
 import java.util.UUID;
 
 @Service
+@ConditionalOnProperty(name = "app.storage.type", havingValue = "local", matchIfMissing = true)
 @RequiredArgsConstructor
 public class LocalStorageService implements StorageService {
 
@@ -32,10 +35,28 @@ public class LocalStorageService implements StorageService {
         Path transactionPath = rootPath.resolve(transactionId.toString()).resolve(documentType.name().toLowerCase());
         Files.createDirectories(transactionPath);
 
-        String originalName = file.getOriginalFilename() == null ? "upload" : Paths.get(file.getOriginalFilename()).getFileName().toString();
+        String suppliedName = file.getOriginalFilename() == null ? "upload" : file.getOriginalFilename();
+        String originalName = suppliedName.replace('\\', '/');
+        originalName = originalName.substring(originalName.lastIndexOf('/') + 1);
+        if (originalName.isBlank() || originalName.equals(".") || originalName.equals("..")) {
+            originalName = "upload";
+        }
+        // Leave room for the UUID prefix within filesystems that limit a name to 255 bytes.
+        if (originalName.length() > 217) {
+            originalName = originalName.substring(0, 217);
+        }
         String sanitizedName = UUID.randomUUID() + "_" + originalName;
         Path target = transactionPath.resolve(sanitizedName);
-        Files.copy(file.getInputStream(), target, StandardCopyOption.REPLACE_EXISTING);
+        try (InputStream input = file.getInputStream()) {
+            Files.copy(input, target, StandardCopyOption.REPLACE_EXISTING);
+        } catch (IOException | RuntimeException failure) {
+            try {
+                Files.deleteIfExists(target);
+            } catch (IOException cleanupFailure) {
+                failure.addSuppressed(cleanupFailure);
+            }
+            throw failure;
+        }
 
         return target.toString();
     }

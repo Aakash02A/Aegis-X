@@ -72,10 +72,11 @@ public class NotificationController {
      * @return List of notifications
      */
     @GetMapping("/{id}/notifications")
-    @PreAuthorize("isAuthenticated()")
-    public ResponseEntity<?> getNotificationHistory(@PathVariable("id") UUID transactionId) {
+    @PreAuthorize("hasAnyRole('MERCHANT', 'COMPLIANCE_OFFICER', 'ADMIN')")
+    public ResponseEntity<?> getNotificationHistory(@PathVariable("id") UUID transactionId, Authentication authentication) {
         try {
             log.info("Retrieving notification history: transactionId={}", transactionId);
+            transactionService.getAuthorizedTransaction(transactionId, authentication);
             
             // Query all notifications for transaction
             List<NotificationMessage> messages = notificationRepository
@@ -90,6 +91,8 @@ public class NotificationController {
             
             return ResponseEntity.ok(responses);
             
+        } catch (com.aegisx.common.exception.TransactionNotFoundException e) {
+            throw e;
         } catch (Exception e) {
             log.error("Error retrieving notification history: transactionId={}, error={}", 
                 transactionId, e.getMessage(), e);
@@ -107,10 +110,11 @@ public class NotificationController {
      * @return List of outbound notifications
      */
     @GetMapping("/{id}/notifications/outbound")
-    @PreAuthorize("isAuthenticated()")
-    public ResponseEntity<?> getOutboundNotifications(@PathVariable("id") UUID transactionId) {
+    @PreAuthorize("hasAnyRole('MERCHANT', 'COMPLIANCE_OFFICER', 'ADMIN')")
+    public ResponseEntity<?> getOutboundNotifications(@PathVariable("id") UUID transactionId, Authentication authentication) {
         try {
             log.info("Retrieving outbound notifications: transactionId={}", transactionId);
+            transactionService.getAuthorizedTransaction(transactionId, authentication);
             
             List<NotificationMessage> messages = notificationRepository
                 .findByTransactionIdOrderByCreatedAtDesc(transactionId);
@@ -122,6 +126,8 @@ public class NotificationController {
             
             return ResponseEntity.ok(responses);
             
+        } catch (com.aegisx.common.exception.TransactionNotFoundException e) {
+            throw e;
         } catch (Exception e) {
             log.error("Error retrieving outbound notifications: transactionId={}, error={}", 
                 transactionId, e.getMessage(), e);
@@ -139,10 +145,11 @@ public class NotificationController {
      * @return List of inbound notifications
      */
     @GetMapping("/{id}/notifications/inbound")
-    @PreAuthorize("isAuthenticated()")
-    public ResponseEntity<?> getInboundNotifications(@PathVariable("id") UUID transactionId) {
+    @PreAuthorize("hasAnyRole('MERCHANT', 'COMPLIANCE_OFFICER', 'ADMIN')")
+    public ResponseEntity<?> getInboundNotifications(@PathVariable("id") UUID transactionId, Authentication authentication) {
         try {
             log.info("Retrieving inbound notifications: transactionId={}", transactionId);
+            transactionService.getAuthorizedTransaction(transactionId, authentication);
             
             List<NotificationMessage> messages = notificationRepository
                 .findByTransactionIdOrderByCreatedAtDesc(transactionId);
@@ -153,7 +160,8 @@ public class NotificationController {
                 .collect(Collectors.toList());
             
             return ResponseEntity.ok(responses);
-            
+        } catch (com.aegisx.common.exception.TransactionNotFoundException e) {
+            throw e;
         } catch (Exception e) {
             log.error("Error retrieving inbound notifications: transactionId={}, error={}", 
                 transactionId, e.getMessage(), e);

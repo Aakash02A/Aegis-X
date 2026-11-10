@@ -6,6 +6,7 @@ import com.aegisx.ai.repository.AIAnalysisRepository;
 import com.aegisx.ai.service.AIAnalysisService;
 import com.aegisx.ai.service.AIProcessingCoordinator;
 import com.aegisx.common.exception.AIAnalysisException;
+import com.aegisx.common.exception.TransactionNotFoundException;
 import com.aegisx.document.entity.Document;
 import com.aegisx.document.entity.DocumentExtraction;
 import com.aegisx.document.repository.DocumentExtractionRepository;
@@ -20,6 +21,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.HashMap;
@@ -48,7 +50,7 @@ import java.util.UUID;
  * - Never expose raw prompts or internal details
  * - Return advisory findings only
  * - Include full audit trail (model, version, hash, confidence, duration)
- * - Transaction remains AI_ANALYSIS until Phase 10 Policy Engine acts
+ * - AI failures are recorded as AI_ANALYSIS_FAILED; policy evaluation remains independently available
  */
 @Slf4j
 @RestController
@@ -73,14 +75,14 @@ public class AIAnalysisController {
      * @return Analysis response with findings or error details
      */
     @PostMapping("/{id}/ai-analysis")
-    @PreAuthorize("isAuthenticated()")
-    public ResponseEntity<?> triggerAnalysis(@PathVariable("id") UUID transactionId) {
+    @PreAuthorize("hasAnyRole('MERCHANT', 'COMPLIANCE_OFFICER', 'ADMIN')")
+    public ResponseEntity<?> triggerAnalysis(@PathVariable("id") UUID transactionId, Authentication authentication) {
+        boolean analysisAttempted = false;
         try {
             log.info("Triggering AI analysis for transaction: {}", transactionId);
             
-            // Retrieve transaction
-            Transaction transaction = transactionRepository.findById(transactionId)
-                .orElseThrow(() -> new IllegalArgumentException("Transaction not found: " + transactionId));
+            // Retrieve transaction and verify caller authorization
+            Transaction transaction = transactionService.getAuthorizedTransaction(transactionId, authentication);
             
             // Retrieve latest OCR extraction
             DocumentExtraction extraction = documentExtractionRepository.findLatestByTransactionId(transactionId)
@@ -103,6 +105,7 @@ public class AIAnalysisController {
                 .build();
             
             // Trigger analysis
+            analysisAttempted = true;
             AIAnalysis analysis = aiProcessingCoordinator.triggerAnalysis(input);
             if (transaction.getStatus() == TransactionStatus.AI_ANALYSIS) {
                 transactionService.transitionStatus(transactionId, TransactionStatus.POLICY_EVALUATION,
@@ -121,6 +124,8 @@ public class AIAnalysisController {
             log.info("AI analysis triggered successfully for transaction: {}", transactionId);
             return ResponseEntity.ok(response);
             
+        } catch (TransactionNotFoundException e) {
+            throw e;
         } catch (IllegalArgumentException e) {
             log.warn("Invalid request for AI analysis: {}", e.getMessage());
             return ResponseEntity.badRequest().body(Map.of(
@@ -128,19 +133,30 @@ public class AIAnalysisController {
                 "message", e.getMessage()
             ));
         } catch (AIAnalysisException e) {
-            log.error("AI analysis failed for transaction {}: {}", transactionId, e.getMessage(), e);
+            markAiAnalysisFailed(transactionId);
+            log.warn("AI advisory analysis failed for transaction {} ({})", transactionId, e.getClass().getSimpleName());
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
                 "error", "AI Analysis Failed",
-                "message", e.getMessage(),
+                "message", "AI advisory analysis is unavailable; deterministic policy evaluation remains available.",
                 "transactionId", transactionId
             ));
         } catch (Exception e) {
-            log.error("Unexpected error during AI analysis for transaction {}: {}", transactionId, e.getMessage(), e);
+            if (analysisAttempted) {
+                markAiAnalysisFailed(transactionId);
+            }
+            log.error("Unexpected AI advisory error for transaction {} ({})", transactionId, e.getClass().getSimpleName());
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
                 "error", "Internal Server Error",
                 "message", "An unexpected error occurred during AI analysis"
             ));
         }
+    }
+
+    private void markAiAnalysisFailed(UUID transactionId) {
+        transactionRepository.findById(transactionId)
+            .filter(transaction -> transaction.getStatus() == TransactionStatus.AI_ANALYSIS)
+            .ifPresent(transaction -> transactionService.transitionStatus(transactionId,
+                TransactionStatus.AI_ANALYSIS_FAILED, "AI_SERVICE", "AI advisory analysis failed"));
     }
     
     /**
@@ -152,14 +168,13 @@ public class AIAnalysisController {
      * @return Latest AI analysis with findings and audit trail
      */
     @GetMapping("/{id}/ai-analysis")
-    @PreAuthorize("isAuthenticated()")
-    public ResponseEntity<?> getLatestAnalysis(@PathVariable("id") UUID transactionId) {
+    @PreAuthorize("hasAnyRole('MERCHANT', 'COMPLIANCE_OFFICER', 'ADMIN')")
+    public ResponseEntity<?> getLatestAnalysis(@PathVariable("id") UUID transactionId, Authentication authentication) {
         try {
             log.info("Retrieving latest AI analysis for transaction: {}", transactionId);
             
-            // Verify transaction exists
-            transactionRepository.findById(transactionId)
-                .orElseThrow(() -> new IllegalArgumentException("Transaction not found: " + transactionId));
+            // Verify transaction exists and caller is authorized
+            transactionService.getAuthorizedTransaction(transactionId, authentication);
             
             // Retrieve latest analysis
             var analysis = aiProcessingCoordinator.getLatestAnalysis(transactionId);

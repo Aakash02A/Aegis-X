@@ -2,6 +2,11 @@ package com.aegisx.policy.service;
 
 import com.aegisx.ai.entity.AIAnalysis;
 import com.aegisx.ai.repository.AIAnalysisRepository;
+import com.aegisx.audit.entity.ActorType;
+import com.aegisx.audit.entity.AuditEvent;
+import com.aegisx.audit.entity.AuditEventType;
+import com.aegisx.audit.entity.AuditModule;
+import com.aegisx.audit.repository.AuditEventRepository;
 import com.aegisx.auth.entity.Role;
 import com.aegisx.auth.entity.User;
 import com.aegisx.auth.repository.UserRepository;
@@ -31,6 +36,7 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.UUID;
 
@@ -51,6 +57,7 @@ class PolicyEvaluationServiceTest {
     @Autowired private DocumentExtractionRepository extractionRepository;
     @Autowired private RequiredDocumentRepository requiredDocumentRepository;
     @Autowired private AIAnalysisRepository aiAnalysisRepository;
+    @Autowired private AuditEventRepository auditEventRepository;
     @Autowired private UserRepository userRepository;
     @Autowired private ObjectMapper objectMapper;
 
@@ -86,7 +93,7 @@ class PolicyEvaluationServiceTest {
     }
 
     @Test
-    @DisplayName("fails closed when the transaction has no OCR extraction or AI assessment")
+    @DisplayName("fails closed when the transaction has no OCR extraction")
     void testMissingEvidenceFailsClosed() {
         assertThatThrownBy(() -> service.evaluateTransaction(transaction.getId()))
                 .isInstanceOf(MissingEvidenceException.class)
@@ -100,17 +107,19 @@ class PolicyEvaluationServiceTest {
         transaction.applyStatus(TransactionStatus.POLICY_EVALUATION);
         transactionRepository.saveAndFlush(transaction);
 
+        Instant decisionStartedAt = Instant.now();
         PolicyEvaluation result = service.evaluateTransaction(transaction.getId());
 
         assertThat(result.getId()).isNotNull();
         assertThat(result.getFinalDecision()).isEqualTo("APPROVED");
-        assertThat(result.getTotalRulesCount()).isEqualTo(7);
+        assertThat(result.getTotalRulesCount()).isEqualTo(5);
         assertThat(result.getFailedRulesCount()).isZero();
         assertThat(result.getEvaluatedAt()).isNotNull();
         assertThat(evaluationRepository.findLatestByTransactionId(transaction.getId())).get()
                 .extracting(PolicyEvaluation::getFinalDecision).isEqualTo("APPROVED");
         assertThat(transactionRepository.findById(transaction.getId()).orElseThrow().getStatus())
                 .isEqualTo(TransactionStatus.APPROVED);
+        assertPolicyDecisionAudit(transaction, "APPROVED", TransactionStatus.POLICY_EVALUATION, decisionStartedAt);
     }
 
     @Test
@@ -118,17 +127,118 @@ class PolicyEvaluationServiceTest {
     void testEvaluateAndTransitionToComplianceHold() {
         populateEvaluationEvidence(false, false);
 
+        Instant decisionStartedAt = Instant.now();
         PolicyEvaluation result = service.evaluateTransaction(transaction.getId());
 
         assertThat(result.getFinalDecision()).isEqualTo("COMPLIANCE_HOLD");
         assertThat(result.getFailedRulesCount()).isPositive();
         assertThat(result.getEvaluationJson().get("rules").isArray()).isTrue();
         assertThat(violationRepository.findByPolicyEvaluationId(result.getId())).isNotEmpty();
+        assertPolicyDecisionAudit(transaction, "COMPLIANCE_HOLD", TransactionStatus.COMPLIANCE_HOLD,
+                decisionStartedAt);
+    }
+
+    private void assertPolicyDecisionAudit(Transaction target, String decision, TransactionStatus previousStatus,
+                                          Instant decisionStartedAt) {
+        AuditEvent event = auditEventRepository.findByTransactionIdOrderByCreatedAtAsc(target.getId()).stream()
+                .filter(candidate -> candidate.getEventType() == (decision.equals("APPROVED")
+                        ? AuditEventType.POLICY_APPROVED : AuditEventType.POLICY_HOLD))
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("Missing policy decision audit for " + decision));
+
+        assertThat(event.getNewState()).isEqualTo(decision.equals("APPROVED")
+                ? TransactionStatus.APPROVED.name() : TransactionStatus.COMPLIANCE_HOLD.name());
+        assertThat(event.getModule()).isEqualTo(AuditModule.POLICY_ENGINE);
+        assertThat(event.getActorType()).isEqualTo(ActorType.POLICY_ENGINE);
+        assertThat(event.getActorId()).isNull();
+        assertThat(event.getPreviousState()).isEqualTo(previousStatus.name());
+        assertThat(event.getEventData().path("decision").asText()).isEqualTo(decision);
+        assertThat(event.getEventData().path("justification").asText()).isNotBlank();
+        assertThat(event.getEventData().path("rulesEvaluated")).hasSize(5);
+        assertThat(event.getCreatedAt()).isNotNull().isAfterOrEqualTo(decisionStartedAt)
+                .isBeforeOrEqualTo(Instant.now());
+    }
+
+    @Test
+    @DisplayName("AI availability and confidence do not change a decision from the same verified fields")
+    void policyDecisionIsIndependentOfAiState() {
+        record Scenario(String label, TransactionStatus startingStatus, BigDecimal aiConfidence) { }
+        var scenarios = java.util.List.of(
+                new Scenario("high AI confidence", TransactionStatus.POLICY_EVALUATION, new BigDecimal("99.00")),
+                new Scenario("low AI confidence", TransactionStatus.POLICY_EVALUATION, new BigDecimal("1.00")),
+                new Scenario("AI disabled", TransactionStatus.AI_ANALYSIS, null),
+                new Scenario("AI failed", TransactionStatus.AI_ANALYSIS_FAILED, null),
+                new Scenario("AI timed out", TransactionStatus.AI_ANALYSIS_FAILED, null),
+                new Scenario("AI output rejected as garbage", TransactionStatus.AI_ANALYSIS_FAILED, null));
+
+        for (Scenario scenario : scenarios) {
+            Transaction candidate = equivalentTransaction(scenario.startingStatus());
+            populateEvaluationEvidence(candidate, true, true, scenario.aiConfidence());
+
+            PolicyEvaluation result = service.evaluateTransaction(candidate.getId());
+
+            assertThat(result.getFinalDecision()).as(scenario.label()).isEqualTo("APPROVED");
+            assertThat(result.getTotalRulesCount()).as(scenario.label()).isEqualTo(5);
+            assertThat(result.getOverallScore()).as(scenario.label() + " must not surface AI confidence as a policy score").isNull();
+            assertThat(transactionRepository.findById(candidate.getId()).orElseThrow().getStatus())
+                    .as(scenario.label() + " still completes the policy transition")
+                    .isEqualTo(TransactionStatus.APPROVED);
+            if (scenario.aiConfidence() == null) {
+                assertThat(result.getAiAnalysis()).as(scenario.label() + " must not invent an AI result").isNull();
+            }
+        }
+    }
+
+    @Test
+    @DisplayName("malformed legacy AI content cannot set a policy decision")
+    void malformedAiRecordCannotSetPolicyDecision() {
+        Transaction candidate = equivalentTransaction(TransactionStatus.POLICY_EVALUATION);
+        populateEvaluationEvidence(candidate, true, true, null);
+        DocumentExtraction extraction = extractionRepository.findLatestByTransactionId(candidate.getId()).orElseThrow();
+        aiAnalysisRepository.saveAndFlush(AIAnalysis.builder()
+                .transactionId(candidate.getId())
+                .extractionId(extraction.getId())
+                .modelName("legacy-malformed-fixture")
+                .promptVersion("legacy-fixture")
+                .inputHash(UUID.randomUUID().toString().replace("-", "").repeat(2))
+                .analysisJson(objectMapper.createObjectNode()
+                        .put("decision", "REJECTED")
+                        .put("overallConfidence", "garbage"))
+                .confidenceScore(BigDecimal.ZERO)
+                .processingDurationMs(0L)
+                .createdAt(LocalDateTime.now())
+                .build());
+
+        PolicyEvaluation result = service.evaluateTransaction(candidate.getId());
+
+        assertThat(result.getFinalDecision()).isEqualTo("APPROVED");
+        assertThat(result.getTotalRulesCount()).isEqualTo(5);
+        assertThat(result.getOverallScore()).isNull();
+        assertThat(result.getAiAnalysis()).isNotNull();
     }
 
     private void populateEvaluationEvidence(boolean allDocumentsFulfilled, boolean dataMatches) {
+        populateEvaluationEvidence(transaction, allDocumentsFulfilled, dataMatches,
+                dataMatches ? new BigDecimal("95.00") : new BigDecimal("50.00"));
+    }
+
+    private Transaction equivalentTransaction(TransactionStatus startingStatus) {
+        return transactionRepository.saveAndFlush(Transaction.builder()
+                .referenceNumber("TXN-POLICY-" + UUID.randomUUID())
+                .merchant(merchant)
+                .beneficiaryName("XYZ Imports")
+                .amount(new BigDecimal("2500.00"))
+                .currency("USD")
+                .purposeCode("P0101")
+                .status(startingStatus)
+                .version(0L)
+                .build());
+    }
+
+    private void populateEvaluationEvidence(Transaction target, boolean allDocumentsFulfilled,
+                                             boolean dataMatches, BigDecimal aiConfidence) {
         Document document = documentRepository.saveAndFlush(Document.builder()
-                .transaction(transaction)
+                .transaction(target)
                 .documentType(DocumentType.INVOICE)
                 .documentStatus(DocumentStatus.OCR_COMPLETED)
                 .originalFilename("invoice.pdf")
@@ -142,7 +252,7 @@ class PolicyEvaluationServiceTest {
         for (DocumentType type : new DocumentType[]{
                 DocumentType.INVOICE, DocumentType.SHIPPING_PROOF, DocumentType.EXPORT_DECLARATION}) {
             requiredDocumentRepository.saveAndFlush(RequiredDocument.builder()
-                    .transaction(transaction)
+                    .transaction(target)
                     .documentType(type)
                     .fulfilled(allDocumentsFulfilled)
                     .document(type == DocumentType.INVOICE ? document : null)
@@ -153,7 +263,7 @@ class PolicyEvaluationServiceTest {
                 .put("beneficiary", dataMatches ? "XYZ Imports" : "Different Imports")
                 .put("amount", dataMatches ? 2500.00 : 250.00)
                 .put("currency", "USD");
-        extractionRepository.saveAndFlush(DocumentExtraction.builder()
+        DocumentExtraction extraction = extractionRepository.saveAndFlush(DocumentExtraction.builder()
                 .document(document)
                 .extractedText("Invoice INV-123")
                 .extractedData(data)
@@ -162,18 +272,18 @@ class PolicyEvaluationServiceTest {
                 .processingDurationMs(5L)
                 .ocrLanguage("eng")
                 .build());
-        DocumentExtraction extraction = extractionRepository.findLatestByTransactionId(transaction.getId())
-                .orElseThrow();
-        aiAnalysisRepository.saveAndFlush(AIAnalysis.builder()
-                .transactionId(transaction.getId())
-                .extractionId(extraction.getId())
-                .modelName("deterministic-test-input")
-                .promptVersion("integration-test")
-                .inputHash("a".repeat(64))
-                .analysisJson(objectMapper.createObjectNode().put("source", "test fixture"))
-                .confidenceScore(dataMatches ? new BigDecimal("95.00") : new BigDecimal("50.00"))
-                .processingDurationMs(0L)
-                .createdAt(LocalDateTime.now())
-                .build());
+        if (aiConfidence != null) {
+            aiAnalysisRepository.saveAndFlush(AIAnalysis.builder()
+                    .transactionId(target.getId())
+                    .extractionId(extraction.getId())
+                    .modelName("deterministic-test-input")
+                    .promptVersion("integration-test")
+                    .inputHash(UUID.randomUUID().toString().replace("-", "").repeat(2))
+                    .analysisJson(objectMapper.createObjectNode().put("source", "test fixture"))
+                    .confidenceScore(aiConfidence)
+                    .processingDurationMs(0L)
+                    .createdAt(LocalDateTime.now())
+                    .build());
+        }
     }
 }

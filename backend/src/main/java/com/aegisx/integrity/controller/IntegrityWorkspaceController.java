@@ -5,6 +5,7 @@ import com.aegisx.integrity.config.IntegrityProperties;
 import com.aegisx.integrity.domain.ProviderMode;
 import com.aegisx.integrity.entity.Workspace;
 import com.aegisx.integrity.exception.IntegrityConflictException;
+import com.aegisx.integrity.service.WorkspaceMembershipService;
 import com.aegisx.integrity.service.WorkspaceService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
@@ -16,6 +17,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -42,6 +44,7 @@ import java.util.UUID;
 public class IntegrityWorkspaceController {
 
     private final WorkspaceService workspaceService;
+    private final WorkspaceMembershipService membershipService;
     private final IntegrityProperties properties;
 
     public record CreateWorkspaceRequest(
@@ -52,30 +55,29 @@ public class IntegrityWorkspaceController {
             @NotNull @Min(30) @Max(86400) Long stalenessThresholdSeconds) { }
 
     @GetMapping
-    @PreAuthorize("isAuthenticated()")
-    public ResponseEntity<ApiResponse<List<Workspace>>> list() {
-        if (workspaceService.list().isEmpty()) {
-            workspaceService.ensureDefaultWorkspace();
-        }
-        return ResponseEntity.ok(ApiResponse.success(workspaceService.list(), "Workspaces retrieved"));
+    @PreAuthorize("hasAnyRole('ADMIN','COMPLIANCE_OFFICER','SETTLEMENT_OPERATOR')")
+    public ResponseEntity<ApiResponse<List<Workspace>>> list(Authentication authentication) {
+        return ResponseEntity.ok(ApiResponse.success(
+                membershipService.listFor(authentication), "Workspaces retrieved"));
     }
 
     @PostMapping
     @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<ApiResponse<Workspace>> create(@Valid @RequestBody CreateWorkspaceRequest request) {
-        Workspace workspace = workspaceService.create(request.name(), request.providerMode());
+    public ResponseEntity<ApiResponse<Workspace>> create(@Valid @RequestBody CreateWorkspaceRequest request,
+                                                          Authentication authentication) {
+        Workspace workspace = membershipService.createForUser(request.name(), request.providerMode(), authentication);
         return ResponseEntity.ok(ApiResponse.success(workspace, "Workspace created in TEST environment"));
     }
 
     @GetMapping("/default")
-    @PreAuthorize("isAuthenticated()")
-    public ResponseEntity<ApiResponse<Workspace>> defaultWorkspace() {
-        return ResponseEntity.ok(ApiResponse.success(workspaceService.ensureDefaultWorkspace(),
+    @PreAuthorize("hasAnyRole('ADMIN','COMPLIANCE_OFFICER','SETTLEMENT_OPERATOR')")
+    public ResponseEntity<ApiResponse<Workspace>> defaultWorkspace(Authentication authentication) {
+        return ResponseEntity.ok(ApiResponse.success(membershipService.defaultFor(authentication),
                 "Default workspace ready"));
     }
 
     @GetMapping("/{workspaceId}")
-    @PreAuthorize("isAuthenticated()")
+    @PreAuthorize("hasAnyRole('ADMIN','COMPLIANCE_OFFICER','SETTLEMENT_OPERATOR')")
     public ResponseEntity<ApiResponse<Workspace>> get(@PathVariable UUID workspaceId) {
         return ResponseEntity.ok(ApiResponse.success(workspaceService.get(workspaceId), "Workspace retrieved"));
     }
@@ -84,7 +86,7 @@ public class IntegrityWorkspaceController {
      * Provider configuration status. Reports presence and reachability, never a credential value.
      */
     @GetMapping("/{workspaceId}/configuration")
-    @PreAuthorize("isAuthenticated()")
+    @PreAuthorize("hasAnyRole('ADMIN','COMPLIANCE_OFFICER','SETTLEMENT_OPERATOR')")
     public ResponseEntity<ApiResponse<Map<String, Object>>> configuration(@PathVariable UUID workspaceId) {
         Workspace workspace = workspaceService.refreshCapabilities(workspaceId);
         Map<String, Object> body = new LinkedHashMap<>();

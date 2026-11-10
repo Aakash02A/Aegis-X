@@ -42,9 +42,10 @@ public class SecurityConfig {
      * deliberately.</p>
      */
     static final String CONTENT_SECURITY_POLICY =
-            "default-src 'self'; script-src 'self' 'unsafe-inline'; " +
+            "default-src 'self'; script-src 'self' 'unsafe-inline' https://checkout.razorpay.com; " +
             "style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self'; " +
             "connect-src 'self' https://api.openai.com https://api.razorpay.com https://graph.facebook.com; " +
+            "frame-src https://checkout.razorpay.com https://api.razorpay.com; " +
             "frame-ancestors 'none'";
 
     private final JwtAuthenticationFilter jwtAuthFilter;

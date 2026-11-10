@@ -1,7 +1,6 @@
 package com.aegisx.ai.service;
 
 import com.aegisx.common.exception.InvalidAIResponseException;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
@@ -12,11 +11,10 @@ import java.math.RoundingMode;
  * 
  * Purpose:
  * - Validate all confidence values from AI response
- * - Clamp out-of-range values to valid bounds
+ * - Reject out-of-range values instead of silently making malformed output look valid
  * - Ensure consistent decimal precision (2 decimal places)
  * - Provide clear error messages for invalid inputs
  */
-@Slf4j
 @Component
 public class ConfidenceNormalizer {
     
@@ -27,9 +25,9 @@ public class ConfidenceNormalizer {
     /**
      * Normalize a single confidence value.
      * 
-     * @param confidence Raw confidence value (may be null, invalid range, or wrong precision)
+     * @param confidence Raw confidence value
      * @return Normalized BigDecimal in range [0, 100] with 2 decimal places
-     * @throws InvalidAIResponseException if confidence is null or unparseable
+     * @throws InvalidAIResponseException if confidence is null, unparseable or outside [0, 100]
      */
     public BigDecimal normalize(Double confidence) {
         if (confidence == null) {
@@ -58,19 +56,12 @@ public class ConfidenceNormalizer {
      * Internal normalization logic.
      */
     private BigDecimal normalizeDecimal(BigDecimal confidence) {
-        // Clamp to valid range
-        BigDecimal clamped = confidence;
-        if (clamped.compareTo(MIN_CONFIDENCE) < 0) {
-            log.warn("Confidence score {} is below minimum, clamping to 0", confidence);
-            clamped = MIN_CONFIDENCE;
-        }
-        if (clamped.compareTo(MAX_CONFIDENCE) > 0) {
-            log.warn("Confidence score {} is above maximum, clamping to 100", confidence);
-            clamped = MAX_CONFIDENCE;
+        if (confidence.compareTo(MIN_CONFIDENCE) < 0 || confidence.compareTo(MAX_CONFIDENCE) > 0) {
+            throw new InvalidAIResponseException("Confidence score is outside the allowed range [0, 100]");
         }
         
         // Round to 2 decimal places
-        return clamped.setScale(SCALE, RoundingMode.HALF_UP);
+        return confidence.setScale(SCALE, RoundingMode.HALF_UP);
     }
     
     /**

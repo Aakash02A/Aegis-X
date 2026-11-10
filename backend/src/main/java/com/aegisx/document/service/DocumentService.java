@@ -8,6 +8,7 @@ import com.aegisx.auth.entity.User;
 import com.aegisx.auth.entity.Role;
 import com.aegisx.auth.repository.UserRepository;
 import com.aegisx.common.exception.InvalidDocumentException;
+import com.aegisx.common.exception.TransactionNotFoundException;
 import com.aegisx.common.filter.CorrelationIdFilter;
 import com.aegisx.document.dto.DocumentResponse;
 import com.aegisx.document.dto.EvidenceStatusResponse;
@@ -88,12 +89,8 @@ public class DocumentService {
 
     @Transactional
     public DocumentResponse uploadDocument(UUID transactionId, MultipartFile file, DocumentType documentType, String userEmail) {
-        Transaction transaction = transactionRepository.findById(transactionId)
-                .orElseThrow(() -> new IllegalArgumentException("Transaction not found: " + transactionId));
-
-        User uploader = userRepository.findByEmail(userEmail)
-                .orElseThrow(() -> new UsernameNotFoundException("User not found with email: " + userEmail));
-
+        User uploader = findUser(userEmail);
+        Transaction transaction = findAuthorizedTransaction(transactionId, uploader);
         validateDocument(file, documentType, transaction);
 
         String storagePath;
@@ -151,11 +148,7 @@ public class DocumentService {
 
     @Transactional(readOnly = true)
     public EvidenceStatusResponse getEvidenceStatus(UUID transactionId, String userEmail) {
-        Transaction transaction = transactionRepository.findById(transactionId)
-                .orElseThrow(() -> new IllegalArgumentException("Transaction not found: " + transactionId));
-
-        // Security: Verify user has access to this transaction
-        verifyTransactionAccess(transaction, userEmail);
+        Transaction transaction = findAuthorizedTransaction(transactionId, findUser(userEmail));
 
         List<RequiredDocument> allRequired = requiredDocumentRepository.findByTransactionId(transactionId);
         if (allRequired.isEmpty()) {
@@ -211,14 +204,6 @@ public class DocumentService {
         return storageService.load(document.getStoragePath());
     }
 
-    private void verifyTransactionAccess(Transaction transaction, String userEmail) {
-        User user = findUser(userEmail);
-        if (user.getRole() == Role.MERCHANT && !transaction.getMerchantId().equals(user.getId())) {
-            throw new IllegalArgumentException("Access denied: transaction not owned by user");
-        }
-        // COMPLIANCE_OFFICER and ADMIN have access to all transactions
-    }
-
     private User findUser(String userEmail) {
         return userRepository.findByEmail(userEmail)
                 .orElseThrow(() -> new UsernameNotFoundException("User not found with email: " + userEmail));
@@ -227,10 +212,10 @@ public class DocumentService {
     private Transaction findAuthorizedTransaction(UUID transactionId, User user) {
         if (user.getRole() == Role.MERCHANT) {
             return transactionRepository.findByIdAndMerchantId(transactionId, user.getId())
-                    .orElseThrow(() -> new IllegalArgumentException("Transaction not found: " + transactionId));
+                    .orElseThrow(() -> new TransactionNotFoundException(transactionId));
         }
         return transactionRepository.findById(transactionId)
-                .orElseThrow(() -> new IllegalArgumentException("Transaction not found: " + transactionId));
+                .orElseThrow(() -> new TransactionNotFoundException(transactionId));
     }
 
     private void validateDocument(MultipartFile file, DocumentType documentType, Transaction transaction) {

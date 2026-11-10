@@ -63,7 +63,7 @@ public class IntegrityOrderController {
                                       List<StateTransitionRecord> transitions) { }
 
     @PostMapping("/orders")
-    @PreAuthorize("hasAnyRole('ADMIN','MERCHANT','COMPLIANCE_OFFICER')")
+    @PreAuthorize("hasAnyRole('ADMIN','COMPLIANCE_OFFICER','SETTLEMENT_OPERATOR')")
     public ResponseEntity<ApiResponse<CreateOrderResponse>> createOrder(
             @PathVariable UUID workspaceId,
             @Valid @RequestBody CreateOrderRequest request,
@@ -82,13 +82,13 @@ public class IntegrityOrderController {
     }
 
     @GetMapping("/orders")
-    @PreAuthorize("isAuthenticated()")
+    @PreAuthorize("hasAnyRole('ADMIN','COMPLIANCE_OFFICER','SETTLEMENT_OPERATOR')")
     public ResponseEntity<ApiResponse<List<PaymentOrder>>> listOrders(@PathVariable UUID workspaceId) {
         return ResponseEntity.ok(ApiResponse.success(orderService.list(workspaceId), "Orders retrieved"));
     }
 
     @GetMapping("/orders/{orderId}")
-    @PreAuthorize("isAuthenticated()")
+    @PreAuthorize("hasAnyRole('ADMIN','COMPLIANCE_OFFICER','SETTLEMENT_OPERATOR')")
     public ResponseEntity<ApiResponse<OrderDetailResponse>> orderDetail(@PathVariable UUID workspaceId,
                                                                        @PathVariable UUID orderId) {
         OrderService.OrderDetail detail = orderService.detail(workspaceId, orderId);
@@ -98,19 +98,19 @@ public class IntegrityOrderController {
     }
 
     @GetMapping("/payments")
-    @PreAuthorize("isAuthenticated()")
+    @PreAuthorize("hasAnyRole('ADMIN','COMPLIANCE_OFFICER','SETTLEMENT_OPERATOR')")
     public ResponseEntity<ApiResponse<List<PaymentRecord>>> listPayments(@PathVariable UUID workspaceId) {
         return ResponseEntity.ok(ApiResponse.success(orderService.listPayments(workspaceId), "Payments retrieved"));
     }
 
     @GetMapping("/refunds")
-    @PreAuthorize("isAuthenticated()")
+    @PreAuthorize("hasAnyRole('ADMIN','COMPLIANCE_OFFICER','SETTLEMENT_OPERATOR')")
     public ResponseEntity<ApiResponse<List<RefundRecord>>> listRefunds(@PathVariable UUID workspaceId) {
         return ResponseEntity.ok(ApiResponse.success(orderService.listRefunds(workspaceId), "Refunds retrieved"));
     }
 
     @GetMapping("/transfers")
-    @PreAuthorize("isAuthenticated()")
+    @PreAuthorize("hasAnyRole('ADMIN','COMPLIANCE_OFFICER','SETTLEMENT_OPERATOR')")
     public ResponseEntity<ApiResponse<List<TransferRecord>>> listTransfers(@PathVariable UUID workspaceId) {
         return ResponseEntity.ok(ApiResponse.success(orderService.listTransfers(workspaceId), "Transfers retrieved"));
     }

@@ -30,7 +30,7 @@ public class IntegrityAuditController {
     private final IntegrityAuditEventRepository auditRepository;
 
     @GetMapping
-    @PreAuthorize("isAuthenticated()")
+    @PreAuthorize("hasAnyRole('ADMIN','COMPLIANCE_OFFICER','SETTLEMENT_OPERATOR')")
     public ResponseEntity<ApiResponse<Page<IntegrityAuditEvent>>> history(
             @PathVariable UUID workspaceId,
             @RequestParam(defaultValue = "0") int page,

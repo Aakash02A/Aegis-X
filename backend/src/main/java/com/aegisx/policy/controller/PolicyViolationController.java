@@ -6,6 +6,8 @@ import com.aegisx.policy.dto.ViolationReportRequest;
 import com.aegisx.policy.entity.ViolationSeverity;
 import com.aegisx.policy.service.PolicyViolationService;
 import com.aegisx.common.dto.ApiResponse;
+import com.aegisx.common.exception.TransactionNotFoundException;
+import com.aegisx.transaction.service.TransactionService;
 import com.aegisx.audit.service.AuditService;
 import com.aegisx.audit.entity.AuditModule;
 import com.aegisx.audit.entity.AuditEventType;
@@ -21,6 +23,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
@@ -41,6 +44,7 @@ public class PolicyViolationController {
 
     private final PolicyViolationService policyViolationService;
     private final AuditService auditService;
+    private final TransactionService transactionService;
 
     /**
      * Gets all violations for a specific transaction.
@@ -51,11 +55,13 @@ public class PolicyViolationController {
     @Operation(summary = "Get violations for transaction", 
                description = "Retrieves all policy violations for a specific transaction")
     public ResponseEntity<ApiResponse<List<PolicyViolationResponse>>> getTransactionViolations(
-            @Parameter(description = "Transaction ID") @PathVariable UUID transactionId) {
+            @Parameter(description = "Transaction ID") @PathVariable UUID transactionId,
+            Authentication authentication) {
         
         log.info("Getting violations for transaction: {}", transactionId);
         
         try {
+            transactionService.getAuthorizedTransaction(transactionId, authentication);
             List<PolicyViolationResponse> violations = policyViolationService.getViolationsForTransaction(transactionId);
             
             auditService.logEvent(AuditEventType.POLICY_VIOLATION_VIEW, AuditModule.POLICY_ENGINE,
@@ -64,6 +70,8 @@ public class PolicyViolationController {
             return ResponseEntity.ok(ApiResponse.success(violations, 
                     "Retrieved " + violations.size() + " violations"));
                     
+        } catch (TransactionNotFoundException e) {
+            throw e;
         } catch (Exception e) {
             log.error("Error getting violations for transaction: {}", transactionId, e);
             return ResponseEntity.internalServerError()
@@ -285,11 +293,13 @@ public class PolicyViolationController {
     @Operation(summary = "Check for critical violations", 
                description = "Checks if transaction has critical violations requiring attention")
     public ResponseEntity<ApiResponse<Map<String, Boolean>>> hasCriticalViolations(
-            @Parameter(description = "Transaction ID") @PathVariable UUID transactionId) {
+            @Parameter(description = "Transaction ID") @PathVariable UUID transactionId,
+            Authentication authentication) {
         
         log.debug("Checking critical violations for transaction: {}", transactionId);
         
         try {
+            transactionService.getAuthorizedTransaction(transactionId, authentication);
             boolean hasCritical = policyViolationService.hasCriticalViolations(transactionId);
             
             Map<String, Boolean> result = Map.of(
@@ -300,6 +310,8 @@ public class PolicyViolationController {
             return ResponseEntity.ok(ApiResponse.success(result, 
                     hasCritical ? "Critical violations detected" : "No critical violations"));
                     
+        } catch (TransactionNotFoundException e) {
+            throw e;
         } catch (Exception e) {
             log.error("Error checking critical violations for transaction: {}", transactionId, e);
             return ResponseEntity.internalServerError()

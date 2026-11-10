@@ -1,15 +1,12 @@
 package com.aegisx.policy.service;
 
-import com.aegisx.ai.entity.AIAnalysis;
 import com.aegisx.document.entity.DocumentExtraction;
 import com.aegisx.document.entity.DocumentType;
 import com.aegisx.document.entity.RequiredDocument;
-import com.aegisx.policy.rules.AiConfidenceRule;
 import com.aegisx.policy.rules.AmountConsistencyRule;
 import com.aegisx.policy.rules.BeneficiaryMatchRule;
 import com.aegisx.policy.rules.CurrencyConsistencyRule;
 import com.aegisx.policy.rules.DocumentCompletenessRule;
-import com.aegisx.policy.rules.OcrConfidenceRule;
 import com.aegisx.policy.rules.PurposeCodeRule;
 import com.aegisx.policy.rules.RuleContext;
 import com.aegisx.transaction.entity.Transaction;
@@ -21,6 +18,8 @@ import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -35,9 +34,7 @@ class RuleEngineTest {
             new BeneficiaryMatchRule(),
             new AmountConsistencyRule(),
             new CurrencyConsistencyRule(),
-            new PurposeCodeRule(),
-            new OcrConfidenceRule(),
-            new AiConfidenceRule());
+            new PurposeCodeRule());
 
     private RuleContext passingContext;
 
@@ -67,7 +64,6 @@ class RuleEngineTest {
                         requiredDocument(DocumentType.SHIPPING_PROOF, true),
                         requiredDocument(DocumentType.EXPORT_DECLARATION, true)))
                 .documentExtraction(extraction)
-                .aiAnalysis(AIAnalysis.builder().confidenceScore(new BigDecimal("88.0")).build())
                 .build();
     }
 
@@ -77,8 +73,126 @@ class RuleEngineTest {
         PolicyEngineResult result = ruleEngine.evaluate(passingContext);
 
         assertEquals("APPROVED", result.getFinalDecision());
-        assertEquals(7, result.getRuleResults().size());
+        assertEquals(5, result.getRuleResults().size());
         assertTrue(result.getRuleResults().stream().allMatch(rule -> rule.getPassed()));
+    }
+
+    @Test
+    @DisplayName("low heuristic OCR confidence does not gate matching structured values")
+    void heuristicOcrConfidenceDoesNotGatePolicy() {
+        var extractionWithoutScore = DocumentExtraction.builder()
+                .extractedData(passingContext.getDocumentExtraction().getExtractedData())
+                .confidenceScore(0.0)
+                .build();
+        RuleContext context = RuleContext.builder()
+                .transaction(passingContext.getTransaction())
+                .requiredDocuments(passingContext.getRequiredDocuments())
+                .documentExtraction(extractionWithoutScore)
+                .build();
+
+        PolicyEngineResult result = ruleEngine.evaluate(context);
+
+        assertEquals("APPROVED", result.getFinalDecision());
+        assertEquals(5, result.getRuleResults().size());
+        assertTrue(result.getRuleResults().stream().noneMatch(rule ->
+                rule.getRuleName().equals("OCR_CONFIDENCE") || rule.getRuleName().equals("AI_CONFIDENCE")));
+    }
+
+    @Test
+    @DisplayName("decimal scale alone does not create an amount mismatch")
+    void exactAmountIgnoresDecimalScale() {
+        var extracted = new ObjectMapper().createObjectNode()
+                .put("beneficiary", "XYZ Imports")
+                .put("amount", "50000.000")
+                .put("currency", "USD");
+        RuleContext context = RuleContext.builder()
+                .transaction(passingContext.getTransaction())
+                .requiredDocuments(passingContext.getRequiredDocuments())
+                .documentExtraction(DocumentExtraction.builder().extractedData(extracted).build())
+                .build();
+
+        PolicyEngineResult result = ruleEngine.evaluate(context);
+
+        assertEquals("APPROVED", result.getFinalDecision());
+        assertTrue(result.getRuleResults().stream()
+                .filter(rule -> rule.getRuleName().equals("AMOUNT_CONSISTENCY"))
+                .allMatch(rule -> rule.getPassed()));
+    }
+
+    @Test
+    @DisplayName("a one-cent amount difference fails the exact amount rule")
+    void oneCentAmountDifferenceFails() {
+        var extracted = new ObjectMapper().createObjectNode()
+                .put("beneficiary", "XYZ Imports")
+                .put("amount", "50000.01")
+                .put("currency", "USD");
+        RuleContext context = RuleContext.builder()
+                .transaction(passingContext.getTransaction())
+                .requiredDocuments(passingContext.getRequiredDocuments())
+                .documentExtraction(DocumentExtraction.builder().extractedData(extracted).build())
+                .build();
+
+        PolicyEngineResult result = ruleEngine.evaluate(context);
+
+        assertEquals("COMPLIANCE_HOLD", result.getFinalDecision());
+        assertTrue(result.getRuleResults().stream()
+                .filter(rule -> rule.getRuleName().equals("AMOUNT_CONSISTENCY"))
+                .noneMatch(rule -> rule.getPassed()));
+    }
+
+    @Test
+    @DisplayName("a duplicate checklist entry cannot replace a missing required document type")
+    void duplicateDocumentTypeDoesNotSatisfyAnotherRequirement() {
+        RuleContext context = RuleContext.builder()
+                .transaction(passingContext.getTransaction())
+                .requiredDocuments(List.of(
+                        requiredDocument(DocumentType.INVOICE, true),
+                        requiredDocument(DocumentType.INVOICE, true),
+                        requiredDocument(DocumentType.SHIPPING_PROOF, true)))
+                .documentExtraction(passingContext.getDocumentExtraction())
+                .build();
+
+        PolicyEngineResult result = ruleEngine.evaluate(context);
+        var completeness = result.getRuleResults().stream()
+                .filter(rule -> rule.getRuleName().equals("DOCUMENT_COMPLETENESS"))
+                .findFirst().orElseThrow();
+
+        assertEquals("COMPLIANCE_HOLD", result.getFinalDecision());
+        assertFalse(completeness.getPassed());
+        assertTrue(completeness.getEvidence().contains("EXPORT_DECLARATION"));
+    }
+
+    @Test
+    @DisplayName("conflicting structured evidence fails only the corresponding comparison rules")
+    void conflictingStructuredEvidenceIsHeld() {
+        var extracted = new ObjectMapper().createObjectNode()
+                .put("beneficiary", "Different Imports")
+                .put("amount", "50000.01")
+                .put("currency", "EUR");
+        RuleContext context = RuleContext.builder()
+                .transaction(passingContext.getTransaction())
+                .requiredDocuments(passingContext.getRequiredDocuments())
+                .documentExtraction(DocumentExtraction.builder().extractedData(extracted).build())
+                .build();
+
+        PolicyEngineResult result = ruleEngine.evaluate(context);
+        Set<String> failedRules = result.getRuleResults().stream()
+                .filter(rule -> !rule.getPassed())
+                .map(rule -> rule.getRuleName())
+                .collect(Collectors.toSet());
+
+        assertEquals("COMPLIANCE_HOLD", result.getFinalDecision());
+        assertEquals(Set.of("BENEFICIARY_MATCH", "AMOUNT_CONSISTENCY", "CURRENCY_CONSISTENCY"), failedRules);
+    }
+
+    @Test
+    @DisplayName("repeated evaluations of identical rule inputs return identical rule results")
+    void repeatedEvaluationsAreDeterministic() {
+        var expected = ruleEngine.evaluate(passingContext).getRuleResults();
+
+        for (int attempt = 0; attempt < 20; attempt++) {
+            assertEquals(expected, ruleEngine.evaluate(passingContext).getRuleResults());
+        }
     }
 
     @Test
@@ -91,7 +205,6 @@ class RuleEngineTest {
                         requiredDocument(DocumentType.SHIPPING_PROOF, false),
                         requiredDocument(DocumentType.EXPORT_DECLARATION, true)))
                 .documentExtraction(passingContext.getDocumentExtraction())
-                .aiAnalysis(passingContext.getAiAnalysis())
                 .build();
 
         PolicyEngineResult result = ruleEngine.evaluate(incomplete);

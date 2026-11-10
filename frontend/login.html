@@ -6,10 +6,10 @@
   <title>Sign In — Aegis-X Platform</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23C85A32'><path d='M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5'/></svg>" type="image/svg+xml" />
 
-  <link rel="stylesheet" href="css/tailwind.css" />
-  <link rel="stylesheet" href="css/animations.css" />
-  <link rel="stylesheet" href="css/components.css" />
-  <link rel="stylesheet" href="css/icons.css" />
+  <link rel="stylesheet" href="styles/tailwind.css" />
+  <link rel="stylesheet" href="styles/animations.css" />
+  <link rel="stylesheet" href="styles/components.css" />
+  <link rel="stylesheet" href="styles/icons.css" />
 </head>
 <body class="bg-paper text-ink min-h-screen flex items-center justify-center p-6">
 
@@ -82,30 +82,6 @@
     </div>
   </div>
 
-  <script type="module">
-    import { Auth } from './js/auth.js';
-    import { Toast } from './js/notifications.js';
-    import { Utils } from './js/utils.js';
-
-
-    const params = new URLSearchParams(window.location.search);
-    if (params.get('registered') === 'true') {
-      Toast.success('Account created! Please sign in with your credentials.');
-    }
-
-    document.getElementById('login-form').addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const email = document.getElementById('login-email').value.trim();
-      const password = document.getElementById('login-password').value;
-
-      const btn = document.getElementById('login-submit-btn');
-      btn.disabled = true;
-      btn.innerHTML = '<span>Authenticating...</span>';
-
-      await Auth.login(email, password);
-      btn.disabled = false;
-      btn.innerHTML = '<span>Sign In to Console</span><i class="fa-solid fa-arrow-right w-4 h-4"></i>';
-    });
-  </script>
+  <script type="module" src="pages/login.js"></script>
 </body>
 </html>

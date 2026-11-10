@@ -1,0 +1,33 @@
+{
+  "description": "Aegis-X design tokens before frontend layout work",
+  "source": "frontend/css/*.css",
+  "cssCustomProperties": {
+    "--color-paper": "#F8F6F0",
+    "--color-paper-dim": "#EFECE3",
+    "--color-paper-card": "#FFFFFF",
+    "--color-ink": "#141210",
+    "--color-ink-deep": "#0D0C0A",
+    "--color-ink-card": "#1C1917",
+    "--color-ink-soft": "#736E65",
+    "--color-ink-muted": "#9E988D",
+    "--color-rust": "#C85A32",
+    "--color-rust-hover": "#B54E29",
+    "--color-brass": "#C8A86B",
+    "--color-brass-dim": "rgba(200, 168, 107, 0.15)",
+    "--color-olive-deep": "#5A5E43",
+    "--color-line": "rgba(20, 18, 16, 0.10)",
+    "--color-line-dark": "rgba(248, 246, 240, 0.12)",
+    "--bg-obsidian": "#141210",
+    "--brand-cyan": "#C85A32",
+    "--font-serif": "'Fraunces', 'Playfair Display', Georgia, serif",
+    "--font-display": "'Urbanist', 'Work Sans', sans-serif",
+    "--font-sans": "'Work Sans', 'Inter', -apple-system, sans-serif",
+    "--font-mono": "'JetBrains Mono', monospace"
+  },
+  "fontFamilyDeclarations": [
+    "var(--font-display)",
+    "var(--font-mono)",
+    "var(--font-sans)",
+    "var(--font-serif)"
+  ]
+}

@@ -4,6 +4,7 @@ import com.aegisx.document.entity.DocumentType;
 import com.aegisx.document.entity.RequiredDocument;
 import org.springframework.stereotype.Component;
 
+import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -23,7 +24,7 @@ import java.util.stream.Collectors;
 public class DocumentCompletenessRule implements PolicyRule {
     
     private static final String RULE_NAME = "DOCUMENT_COMPLETENESS";
-    private static final Set<DocumentType> REQUIRED_TYPES = Set.of(
+    private static final List<DocumentType> REQUIRED_TYPES = List.of(
         DocumentType.INVOICE,
         DocumentType.SHIPPING_PROOF,
         DocumentType.EXPORT_DECLARATION
@@ -45,9 +46,9 @@ public class DocumentCompletenessRule implements PolicyRule {
             .map(RequiredDocument::getDocumentType)
             .collect(Collectors.toSet());
         
-        Set<DocumentType> missingTypes = REQUIRED_TYPES.stream()
+        List<DocumentType> missingTypes = REQUIRED_TYPES.stream()
             .filter(type -> !fulfilledTypes.contains(type))
-            .collect(Collectors.toSet());
+            .toList();
         
         if (missingTypes.isEmpty()) {
             return RuleEvaluationResult.builder()

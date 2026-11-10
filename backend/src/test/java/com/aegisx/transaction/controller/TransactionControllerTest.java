@@ -117,14 +117,41 @@ class TransactionControllerTest {
     }
 
     @Test
+    void merchantCannotReadAnotherMerchantsTransaction() throws Exception {
+        String otherEmail = "other-merchant-" + UUID.randomUUID() + "@example.com";
+        userService.register(RegisterRequest.builder()
+                .fullName("Other Test Merchant")
+                .email(otherEmail)
+                .password("Password@123")
+                .build());
+        String otherToken = userService.login(LoginRequest.builder()
+                .email(otherEmail)
+                .password("Password@123")
+                .build()).getToken();
+        String otherTransactionId = createTransaction(otherToken);
+
+        mockMvc.perform(get("/api/transactions/{id}", otherTransactionId)
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isNotFound());
+        mockMvc.perform(get("/api/transactions/{id}", otherTransactionId)
+                        .header("Authorization", "Bearer " + otherToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(otherTransactionId));
+    }
+
+    @Test
     void unauthenticatedAccessReturnsUnauthorized() throws Exception {
         mockMvc.perform(get("/api/transactions"))
                 .andExpect(status().isUnauthorized());
     }
 
     private String createTransaction() throws Exception {
+        return createTransaction(token);
+    }
+
+    private String createTransaction(String accessToken) throws Exception {
         String response = mockMvc.perform(post("/api/transactions")
-                        .header("Authorization", "Bearer " + token)
+                        .header("Authorization", "Bearer " + accessToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(createRequest("2000.00", "USD"))))
                 .andExpect(status().isCreated())

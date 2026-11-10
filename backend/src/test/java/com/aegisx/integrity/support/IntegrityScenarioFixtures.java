@@ -193,12 +193,12 @@ public class IntegrityScenarioFixtures {
     @Transactional
     public Map<String, Object> reset(UUID workspaceId) {
         requireSimulatedWorkspace(workspaceId);
-        simulatedAdapter.reset();
+        simulatedAdapter.resetControls();
         Map<String, Object> detail = new LinkedHashMap<>();
         detail.put("workspaceId", workspaceId.toString());
-        detail.put("simulatedProviderReset", true);
-        detail.put("note", "Only the simulated provider was reset. Persisted orders, payments and exceptions are kept "
-                + "so the audit history stays intact.");
+        detail.put("simulatedProviderControlsReset", true);
+        detail.put("note", "Provider availability controls were restored; provider records remain available to match "
+                + "persisted orders and payments.");
         return detail;
     }
 

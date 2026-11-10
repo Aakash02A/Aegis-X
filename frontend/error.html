@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Request unavailable — Aegis-X</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23C85A32'><path d='M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5'/></svg>" type="image/svg+xml" />
+  <link rel="stylesheet" href="styles/tailwind.css" />
+  <link rel="stylesheet" href="styles/animations.css" />
+  <link rel="stylesheet" href="styles/components.css" />
+  <link rel="stylesheet" href="styles/icons.css" />
+</head>
+<body class="bg-paper text-ink min-h-screen flex items-center justify-center p-6" data-route-outcome="error">
+  <main class="w-full max-w-xl editorial-card p-8 space-y-6">
+    <div class="editorial-eyebrow">Request unavailable</div>
+    <h1 class="font-serif text-3xl font-medium text-ink">Aegis-X could not complete that request.</h1>
+    <p id="route-description" class="text-sm text-ink-soft">Return to your workspace and try again. No technical details are shown here.</p>
+    <p id="route-identity" class="text-xs text-ink-soft"></p>
+    <div class="flex flex-wrap gap-3">
+      <a id="route-primary" href="index.html" class="aegis-btn-ink py-2 px-4 text-xs font-medium">Return to workspace</a>
+      <a id="route-login" href="login.html" class="text-xs text-ink-soft underline hidden">Sign in</a>
+    </div>
+  </main>
+  <script type="module" src="pages/route-outcome.js"></script>
+</body>
+</html>

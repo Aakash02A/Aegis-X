@@ -79,7 +79,7 @@ public class DocumentExtraction extends BaseEntity {
     /**
      * Confidence score (0–100) for the extraction.
      * Heuristically computed based on field matches and pattern recognition.
-     * Higher = more reliable for compliance decisions.
+     * Higher = more pattern matches; this heuristic is not calibrated and is not used by policy rules.
      */
     @Column(name = "confidence_score")
     private Double confidenceScore;

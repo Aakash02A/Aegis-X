@@ -49,7 +49,7 @@ public class IntegrityExceptionController {
     public record DismissRequest(@NotBlank @Size(max = 1000) String reason) { }
 
     @GetMapping
-    @PreAuthorize("isAuthenticated()")
+    @PreAuthorize("hasAnyRole('ADMIN','COMPLIANCE_OFFICER','SETTLEMENT_OPERATOR')")
     public ResponseEntity<ApiResponse<Page<ExceptionCase>>> queue(
             @PathVariable UUID workspaceId,
             @RequestParam(required = false) String[] status,
@@ -64,14 +64,14 @@ public class IntegrityExceptionController {
     }
 
     @GetMapping("/all")
-    @PreAuthorize("isAuthenticated()")
+    @PreAuthorize("hasAnyRole('ADMIN','COMPLIANCE_OFFICER','SETTLEMENT_OPERATOR')")
     public ResponseEntity<ApiResponse<List<ExceptionCase>>> all(@PathVariable UUID workspaceId) {
         return ResponseEntity.ok(ApiResponse.success(exceptionService.list(workspaceId),
                 "All exception cases retrieved"));
     }
 
     @GetMapping("/{exceptionId}")
-    @PreAuthorize("isAuthenticated()")
+    @PreAuthorize("hasAnyRole('ADMIN','COMPLIANCE_OFFICER','SETTLEMENT_OPERATOR')")
     public ResponseEntity<ApiResponse<ExceptionService.ExceptionDetail>> detail(@PathVariable UUID workspaceId,
                                                                                @PathVariable UUID exceptionId) {
         return ResponseEntity.ok(ApiResponse.success(exceptionService.detail(workspaceId, exceptionId),

@@ -5,6 +5,7 @@ import com.aegisx.settlement.dto.SettlementResponse;
 import com.aegisx.settlement.entity.PaymentProcessor;
 import com.aegisx.settlement.entity.SettlementStatus;
 import com.aegisx.settlement.service.SettlementService;
+import com.aegisx.settlement.service.SettlementProcessorService;
 import com.aegisx.common.dto.ApiResponse;
 import com.aegisx.audit.service.AuditService;
 import com.aegisx.audit.entity.AuditModule;
@@ -42,6 +43,7 @@ import java.util.UUID;
 public class SettlementController {
 
     private final SettlementService settlementService;
+    private final SettlementProcessorService settlementProcessorService;
     private final AuditService auditService;
 
     /**
@@ -110,16 +112,17 @@ public class SettlementController {
      * Gets settlement details by ID.
      */
     @GetMapping("/{settlementId}")
-    @PreAuthorize("hasAnyRole('COMPLIANCE_OFFICER', 'SETTLEMENT_OPERATOR', 'MERCHANT')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'COMPLIANCE_OFFICER', 'SETTLEMENT_OPERATOR', 'MERCHANT')")
     @Operation(summary = "Get settlement", 
                description = "Retrieves settlement details by ID")
     public ResponseEntity<ApiResponse<SettlementResponse>> getSettlement(
-            @Parameter(description = "Settlement ID") @PathVariable UUID settlementId) {
+            @Parameter(description = "Settlement ID") @PathVariable UUID settlementId,
+            Authentication authentication) {
         
         log.debug("Getting settlement: {}", settlementId);
         
         try {
-            SettlementResponse response = settlementService.getSettlement(settlementId);
+            SettlementResponse response = settlementService.getSettlement(settlementId, authentication);
             
             auditService.logEvent(AuditEventType.SETTLEMENT_VIEW, AuditModule.SETTLEMENT,
                     "Viewed settlement: " + settlementId);
@@ -139,16 +142,18 @@ public class SettlementController {
      * Gets settlement by reference number.
      */
     @GetMapping("/reference/{reference}")
-    @PreAuthorize("hasAnyRole('COMPLIANCE_OFFICER', 'SETTLEMENT_OPERATOR', 'MERCHANT')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'COMPLIANCE_OFFICER', 'SETTLEMENT_OPERATOR', 'MERCHANT')")
     @Operation(summary = "Get settlement by reference", 
                description = "Retrieves settlement details by reference number")
     public ResponseEntity<ApiResponse<SettlementResponse>> getSettlementByReference(
-            @Parameter(description = "Settlement reference") @PathVariable String reference) {
+            @Parameter(description = "Settlement reference") @PathVariable String reference,
+            Authentication authentication) {
         
         log.debug("Getting settlement by reference: {}", reference);
         
         try {
-            SettlementResponse response = settlementService.getSettlementByReference(reference);
+            SettlementResponse response = settlementService.getSettlementByReference(
+                    reference, authentication);
             
             auditService.logEvent(AuditEventType.SETTLEMENT_VIEW, AuditModule.SETTLEMENT,
                     "Viewed settlement by reference: " + reference);
@@ -168,16 +173,18 @@ public class SettlementController {
      * Gets all settlements for a transaction.
      */
     @GetMapping("/transaction/{transactionId}")
-    @PreAuthorize("hasAnyRole('COMPLIANCE_OFFICER', 'SETTLEMENT_OPERATOR', 'MERCHANT')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'COMPLIANCE_OFFICER', 'SETTLEMENT_OPERATOR', 'MERCHANT')")
     @Operation(summary = "Get transaction settlements", 
                description = "Retrieves all settlements for a specific transaction")
     public ResponseEntity<ApiResponse<List<SettlementResponse>>> getTransactionSettlements(
-            @Parameter(description = "Transaction ID") @PathVariable UUID transactionId) {
+            @Parameter(description = "Transaction ID") @PathVariable UUID transactionId,
+            Authentication authentication) {
         
         log.debug("Getting settlements for transaction: {}", transactionId);
         
         try {
-            List<SettlementResponse> settlements = settlementService.getTransactionSettlements(transactionId);
+            List<SettlementResponse> settlements = settlementService.getTransactionSettlements(
+                    transactionId, authentication);
             
             auditService.logEvent(AuditEventType.SETTLEMENT_VIEW, AuditModule.SETTLEMENT,
                     "Viewed settlements for transaction: " + transactionId);
@@ -185,6 +192,8 @@ public class SettlementController {
             return ResponseEntity.ok(ApiResponse.success(settlements, 
                     "Retrieved " + settlements.size() + " settlements"));
             
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.notFound().build();
         } catch (Exception e) {
             log.error("Failed to get settlements for transaction: {}", transactionId, e);
             return ResponseEntity.internalServerError()
@@ -417,11 +426,10 @@ public class SettlementController {
         try {
             settlementService.processReconciliation();
             
-            auditService.logEvent(AuditEventType.SETTLEMENT_RECONCILED, AuditModule.SETTLEMENT,
-                    "Settlement reconciliation processed");
-            
-            return ResponseEntity.ok(ApiResponse.success("Reconciliation completed", 
-                    "Settlement reconciliation processed successfully"));
+            auditService.logEvent(AuditEventType.SETTLEMENT_STATUS_UPDATED, AuditModule.SETTLEMENT,
+                    "Settlement reconciliation checks processed");
+            return ResponseEntity.ok(ApiResponse.success("Reconciliation checks completed",
+                    "Settlement reconciliation checks processed"));
             
         } catch (Exception e) {
             log.error("Failed to process reconciliation", e);
@@ -442,7 +450,7 @@ public class SettlementController {
         log.debug("Getting available payment processors");
         
         try {
-            PaymentProcessor[] processors = PaymentProcessor.values();
+            PaymentProcessor[] processors = settlementProcessorService.getConfiguredProcessors();
             
             return ResponseEntity.ok(ApiResponse.success(processors, 
                     "Retrieved " + processors.length + " payment processors"));

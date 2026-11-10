@@ -122,12 +122,12 @@ public enum SettlementStatus {
     public SettlementStatus[] getNextPossibleStatuses() {
         return switch (this) {
             case INITIATED -> new SettlementStatus[]{PROCESSING, CANCELLED, MANUAL_REVIEW};
-            case PROCESSING -> new SettlementStatus[]{SUBMITTED, FAILED, MANUAL_REVIEW};
-            case SUBMITTED -> new SettlementStatus[]{PENDING, FAILED, REJECTED};
-            case PENDING -> new SettlementStatus[]{COMPLETED, FAILED, REJECTED};
+            case PROCESSING -> new SettlementStatus[]{SUBMITTED, PENDING, COMPLETED, FAILED, REJECTED, MANUAL_REVIEW};
+            case SUBMITTED -> new SettlementStatus[]{PENDING, COMPLETED, FAILED, REJECTED, MANUAL_REVIEW};
+            case PENDING -> new SettlementStatus[]{COMPLETED, FAILED, REJECTED, CANCELLED, MANUAL_REVIEW};
             case COMPLETED -> new SettlementStatus[]{RECONCILING};
             case RECONCILING -> new SettlementStatus[]{RECONCILED, RECONCILIATION_FAILED};
-            case MANUAL_REVIEW -> new SettlementStatus[]{PROCESSING, CANCELLED};
+            case MANUAL_REVIEW -> new SettlementStatus[]{PROCESSING, PENDING, COMPLETED, FAILED, REJECTED, CANCELLED};
             case FAILED, REJECTED -> new SettlementStatus[]{PROCESSING, CANCELLED}; // Retry
             case RECONCILIATION_FAILED -> new SettlementStatus[]{RECONCILING, MANUAL_REVIEW};
             default -> new SettlementStatus[]{}; // Final states

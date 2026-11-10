@@ -15,6 +15,7 @@ public enum AuditEventType {
     TRANSACTION_CREATED,
     TRANSACTION_STATE_CHANGED,
     PAYMENT_RECEIVED,
+    PAYMENT_ORDER_CREATED,
     PAYMENT_RECONCILED,
     TRANSACTION_COMPLETED,
     TRANSACTION_FAILED,
@@ -70,6 +71,7 @@ public enum AuditEventType {
 
     // Manual Review
     MANUAL_REVIEW_NOTE_ADDED,
+    MANUAL_REVIEW_DECISION,
 
     // System & Audit
     AUDIT_ERROR,

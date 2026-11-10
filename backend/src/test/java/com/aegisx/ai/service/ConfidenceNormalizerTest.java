@@ -41,17 +41,15 @@ class ConfidenceNormalizerTest {
     }
     
     @Test
-    @DisplayName("Should clamp value above 100 to 100")
-    void testClampAbove100() {
-        BigDecimal result = normalizer.normalize(105.5);
-        assertEquals(new BigDecimal("100.00"), result);
+    @DisplayName("Should reject value above 100")
+    void testRejectAbove100() {
+        assertThrows(InvalidAIResponseException.class, () -> normalizer.normalize(105.5));
     }
     
     @Test
-    @DisplayName("Should clamp negative value to 0")
-    void testClampNegative() {
-        BigDecimal result = normalizer.normalize(-10.0);
-        assertEquals(BigDecimal.ZERO.setScale(2), result);
+    @DisplayName("Should reject negative value")
+    void testRejectNegative() {
+        assertThrows(InvalidAIResponseException.class, () -> normalizer.normalize(-10.0));
     }
     
     @Test

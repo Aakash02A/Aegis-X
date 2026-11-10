@@ -19,12 +19,17 @@ import org.apache.tika.Tika;
 import org.springframework.core.io.Resource;
 import org.springframework.dao.ConcurrencyFailureException;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.io.ByteArrayInputStream;
+import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.file.Files;
 import java.security.MessageDigest;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
@@ -76,7 +81,7 @@ public class EvidenceDocumentService {
 
     @Transactional
     public Receipt receive(UUID workspaceId, UUID orderId, DocumentType requestedType,
-                           MultipartFile file, String filename, String mimeType, byte[] content,
+                           MultipartFile file, String filename, byte[] content,
                            String actorLabel, UUID actorId, boolean simulated) {
         PaymentOrder order = requireOrder(workspaceId, orderId);
         if (requestedType == null) {
@@ -86,7 +91,9 @@ public class EvidenceDocumentService {
         // uploading the same logical document under a legacy alias.
         DocumentType type = requestedType.getCanonicalType();
 
-        validate(file, content, mimeType);
+        validate(file, content);
+        String mimeType = detectMimeType(content);
+        validateMimeType(mimeType);
         String hash = sha256(content);
 
         Optional<EvidenceDocument> identical = documentRepository
@@ -105,8 +112,9 @@ public class EvidenceDocumentService {
         Optional<EvidenceDocument> previousOfType = documentRepository
                 .findByOrderIdAndDocumentTypeAndSupersededAtIsNull(orderId, type);
 
-        String storagePath = store(file, content, orderId, type, filename);
-        String storedFilename = storagePath.substring(storagePath.lastIndexOf('/') + 1);
+        String storagePath = store(content, orderId, type, filename, mimeType);
+        String portableStoragePath = storagePath.replace('\\', '/');
+        String storedFilename = portableStoragePath.substring(portableStoragePath.lastIndexOf('/') + 1);
 
         // The order of the three writes below is load-bearing, and it is deliberately NOT the order
         // Hibernate would pick on its own (it flushes inserts before updates).
@@ -242,7 +250,7 @@ public class EvidenceDocumentService {
 
     // ------------------------------------------------------------------ helpers
 
-    private void validate(MultipartFile file, byte[] content, String mimeType) {
+    private void validate(MultipartFile file, byte[] content) {
         if (file == null || file.isEmpty() || content == null || content.length == 0) {
             throw new IntegrityConflictException("The uploaded document is empty");
         }
@@ -251,6 +259,9 @@ public class EvidenceDocumentService {
                     "The document is " + content.length + " bytes, which exceeds the configured limit of "
                             + properties.getEvidence().getMaxDocumentBytes() + " bytes");
         }
+    }
+
+    private void validateMimeType(String mimeType) {
         List<String> allowed = properties.getEvidence().getAllowedMimeTypes();
         if (mimeType == null || allowed.stream().noneMatch(value -> value.equalsIgnoreCase(mimeType))) {
             throw new IntegrityConflictException(
@@ -270,11 +281,60 @@ public class EvidenceDocumentService {
         }
     }
 
-    private String store(MultipartFile file, byte[] content, UUID orderId, DocumentType type, String filename) {
+    private String store(byte[] content, UUID orderId, DocumentType type, String filename, String mimeType) {
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            throw new IllegalStateException("Evidence file storage requires an active transaction");
+        }
+
+        String path;
         try {
-            return storageService.store(file, orderId, type);
+            // Store the exact byte array that was validated, hashed and MIME-detected. Reading the
+            // original MultipartFile again could make those checks describe different bytes.
+            path = storageService.store(new StoredContentMultipartFile(filename, mimeType, content), orderId, type);
         } catch (IOException e) {
             throw new IntegrityConflictException("The document could not be stored: " + e.getMessage());
+        }
+
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCompletion(int status) {
+                if (status != STATUS_COMMITTED) {
+                    try {
+                        storageService.delete(path);
+                    } catch (RuntimeException cleanupFailure) {
+                        log.error("Could not remove evidence file after transaction rollback "
+                                        + "(order {}, type {}): {}",
+                                orderId, type, cleanupFailure.getClass().getSimpleName());
+                    }
+                }
+            }
+        });
+        return path;
+    }
+
+    /** Multipart adapter over the already-read bytes, so storage cannot re-read a different source. */
+    private static final class StoredContentMultipartFile implements MultipartFile {
+        private final String filename;
+        private final String mimeType;
+        private final byte[] content;
+
+        private StoredContentMultipartFile(String filename, String mimeType, byte[] content) {
+            this.filename = filename;
+            this.mimeType = mimeType;
+            this.content = content.clone();
+        }
+
+        @Override public String getName() { return "file"; }
+        @Override public String getOriginalFilename() { return filename; }
+        @Override public String getContentType() { return mimeType; }
+        @Override public boolean isEmpty() { return content.length == 0; }
+        @Override public long getSize() { return content.length; }
+        @Override public byte[] getBytes() { return content.clone(); }
+        @Override public InputStream getInputStream() { return new ByteArrayInputStream(content); }
+
+        @Override
+        public void transferTo(File destination) throws IOException {
+            Files.write(destination.toPath(), content);
         }
     }
 

@@ -59,8 +59,8 @@ Instead of treating compliance as a single manual approval step, Aegis-X creates
 > [!IMPORTANT]
 > **The foundational design constraint of Aegis-X is the strict separation between AI analysis and compliance decision-making.**
 >
-> - **AI** is an evidence-analysis component. It reads, extracts, interprets, and scores documents. It produces structured advisory output. It **never** makes compliance decisions, mutates transaction state, or triggers financial actions.
-> - **Java** is the final decision-maker. The deterministic policy engine, written in Java, consumes AI output as one of several inputs, evaluates hard-coded compliance rules, and produces the authoritative APPROVED or HOLD verdict. Only Java code may transition a transaction's state or instruct a payment gateway to settle funds.
+> - **AI** is an optional evidence-analysis component. It reads OCR-derived text and structured fields and produces advisory findings. AI output is not an input to the policy rules and cannot set a decision or transaction state.
+> - **Java** is the decision-maker. The deterministic policy engine evaluates transaction fields, the required-document checklist, and structured OCR fields. It produces `APPROVED` or `COMPLIANCE_HOLD`; AI availability, confidence, errors, and response contents do not change that verdict.
 >
 > This separation is not an implementation preference — it is a compliance requirement. No amount of AI confidence can bypass a failing deterministic rule.
 
@@ -140,7 +140,7 @@ COMPLIANCE_HOLD  →  Human Review
 
 Instead of asking *"Should this payment be approved?"*, Aegis-X asks *"What evidence is missing, and what does the available evidence prove?"*
 
-The AI interprets evidence. The deterministic Java engine controls financial actions. Every state transition is immutably logged in PostgreSQL.
+The AI interprets evidence. The deterministic Java engine controls financial actions. Every state transition is immutably logged in MySQL.
 
 ---
 
@@ -265,13 +265,13 @@ Keeping these features out of scope allows the MVP to remain achievable during t
 2. AI output SHALL NOT directly trigger any financial action.
 3. Every state transition SHALL produce an immutable audit record.
 4. The system SHALL operate entirely within sandbox/test environments.
-5. PostgreSQL is the single source of truth for all transaction state.
+5. MySQL is the single source of truth for all transaction state.
 
 ---
 
 ## 6. Transaction State Machine
 
-Aegis-X uses a state-machine approach instead of scattered status flags. Every state transition is stored in PostgreSQL and recorded in the audit log.
+Aegis-X uses a state-machine approach instead of scattered status flags. Every state transition is stored in MySQL and recorded in the audit log.
 
 ### 6.1 State Diagram
 
@@ -289,8 +289,9 @@ stateDiagram-v2
     OCR_PROCESSING --> AI_ANALYSIS : OCR extraction completes successfully
     OCR_PROCESSING --> OCR_FAILED : OCR extraction fails
 
-    AI_ANALYSIS --> POLICY_EVALUATION : AI returns structured analysis JSON
+    AI_ANALYSIS --> POLICY_EVALUATION : Policy evaluation runs independently of AI
     AI_ANALYSIS --> AI_ANALYSIS_FAILED : AI analysis times out or errors
+    AI_ANALYSIS_FAILED --> POLICY_EVALUATION : AI is advisory; policy proceeds
 
     POLICY_EVALUATION --> APPROVED : All deterministic rules pass
     POLICY_EVALUATION --> COMPLIANCE_HOLD : One or more rules fail
@@ -298,11 +299,16 @@ stateDiagram-v2
     COMPLIANCE_HOLD --> APPROVED : Compliance officer approves
     COMPLIANCE_HOLD --> REJECTED : Compliance officer rejects
 
+    APPROVED --> SETTLEMENT_PENDING : Settlement requested
+    SETTLEMENT_PENDING --> SETTLED : Settlement confirmed
+    SETTLEMENT_PENDING --> SETTLEMENT_FAILED : Settlement failed
+    SETTLEMENT_FAILED --> SETTLEMENT_PENDING : Settlement retried
+
     OCR_FAILED --> EVIDENCE_PENDING : Merchant re-uploads document
     AI_ANALYSIS_FAILED --> EVIDENCE_PENDING : System retries or requests re-upload
 
     PAYMENT_FAILED --> [*]
-    APPROVED --> [*]
+    SETTLED --> [*]
     REJECTED --> [*]
 ```
 
@@ -315,13 +321,16 @@ stateDiagram-v2
 | `EVIDENCE_PENDING` | One or more required compliance documents are missing | System / Merchant |
 | `OCR_PROCESSING` | An uploaded document is being processed by the OCR engine | System |
 | `AI_ANALYSIS` | OCR output has been submitted to the AI model for structured analysis | System |
-| `POLICY_EVALUATION` | AI analysis is complete; the deterministic policy engine is evaluating rules | System |
-| `APPROVED` | All compliance checks passed; settlement proceeds | System (Terminal) |
+| `POLICY_EVALUATION` | The deterministic policy engine is evaluating rules; AI is optional | System |
+| `APPROVED` | The five deterministic policy rules passed; settlement may proceed | System |
 | `COMPLIANCE_HOLD` | One or more deterministic rules failed; awaiting human review | Compliance Officer |
 | `REJECTED` | A compliance officer has rejected the transaction after review | Compliance Officer (Terminal) |
 | `PAYMENT_FAILED` | Razorpay payment was declined or failed | System (Terminal) |
 | `OCR_FAILED` | OCR extraction failed; document may need re-upload | System |
 | `AI_ANALYSIS_FAILED` | AI analysis timed out or returned an error | System |
+| `SETTLEMENT_PENDING` | Approved transaction is awaiting settlement processing | System |
+| `SETTLEMENT_FAILED` | Settlement attempt failed and may be retried | System |
+| `SETTLED` | Settlement completed | System (Terminal) |
 
 ### 6.3 Transition Rules
 
@@ -333,22 +342,27 @@ stateDiagram-v2
 | T4 | `EVIDENCE_PENDING` | `OCR_PROCESSING` | Document upload event | File received and validated |
 | T5 | `OCR_PROCESSING` | `AI_ANALYSIS` | OCR pipeline completion | Extracted text is non-empty |
 | T6 | `OCR_PROCESSING` | `OCR_FAILED` | OCR pipeline error | Extraction returned empty or error |
-| T7 | `AI_ANALYSIS` | `POLICY_EVALUATION` | AI service returns structured JSON | Response schema is valid |
+| T7 | `AI_ANALYSIS` | `POLICY_EVALUATION` | Policy evaluation requested | AI output is optional and is not a policy input |
 | T8 | `AI_ANALYSIS` | `AI_ANALYSIS_FAILED` | AI service timeout or error | No valid response within timeout |
 | T9 | `POLICY_EVALUATION` | `APPROVED` | Policy Engine returns `APPROVED` | All deterministic rules satisfied |
 | T10 | `POLICY_EVALUATION` | `COMPLIANCE_HOLD` | Policy Engine returns `HOLD` | One or more rules failed |
 | T11 | `COMPLIANCE_HOLD` | `APPROVED` | Compliance officer approves | Officer provides documented justification |
 | T12 | `COMPLIANCE_HOLD` | `REJECTED` | Compliance officer rejects | Officer provides documented rationale |
 | T13 | `OCR_FAILED` | `EVIDENCE_PENDING` | System or merchant re-initiates | Ready for re-upload |
-| T14 | `AI_ANALYSIS_FAILED` | `EVIDENCE_PENDING` | System retry or manual re-trigger | Ready for re-processing |
+| T14 | `AI_ANALYSIS_FAILED` | `POLICY_EVALUATION` | Policy evaluation requested | AI failure does not block deterministic evaluation |
+| T15 | `AI_ANALYSIS_FAILED` | `EVIDENCE_PENDING` | AI retry or re-upload requested | Recovery path selected |
+| T16 | `APPROVED` | `SETTLEMENT_PENDING` | Settlement request | Policy status is approved |
+| T17 | `SETTLEMENT_PENDING` | `SETTLED` | Settlement succeeds | Provider confirms settlement |
+| T18 | `SETTLEMENT_PENDING` | `SETTLEMENT_FAILED` | Settlement fails | Failure is recorded |
+| T19 | `SETTLEMENT_FAILED` | `SETTLEMENT_PENDING` | Settlement retry | Retry requested |
 
 ### 6.4 State Machine Invariants
 
 1. **No state SHALL be skipped.** Every transaction must pass through each stage sequentially; no shortcut transitions are permitted.
-2. **Terminal states are irreversible.** Once a transaction reaches `APPROVED`, `REJECTED`, or `PAYMENT_FAILED`, no further transitions are allowed.
+2. **Terminal states are irreversible.** `SETTLED`, `REJECTED`, and `PAYMENT_FAILED` have no legal outgoing transitions. `APPROVED` may proceed to `SETTLEMENT_PENDING`.
 3. **Every transition SHALL produce an audit record** containing: transaction ID, previous state, new state, timestamp, actor (system or user ID), and trigger reason.
 4. **AI_ANALYSIS → APPROVED is forbidden.** The AI analysis state SHALL NOT transition directly to approval. The policy engine evaluation (`POLICY_EVALUATION`) is mandatory.
-5. **PostgreSQL is the source of truth.** Transaction state is persisted to PostgreSQL before any downstream action is triggered.
+5. **MySQL is the source of truth.** Transaction state is persisted to MySQL before any downstream action is triggered.
 
 ---
 
@@ -356,238 +370,79 @@ stateDiagram-v2
 
 ### 7.1 Design Philosophy
 
-> [!CAUTION]
-> **The AI component is an advisor, not an authority.** It analyzes evidence and produces structured observations. It has no ability to approve transactions, trigger settlement, mutate transaction state, or override policy rules. Its output is consumed as one input among several by the deterministic policy engine.
+AI is optional advisory analysis. OCR text and structured document fields are untrusted input and may contain instructions or claims aimed at the model. The prompt explicitly treats them as data. A model response is parsed into the fixed schema below; unknown fields such as `decision` are discarded before persistence. AI output, confidence, availability, and errors are not policy-rule inputs.
 
-### 7.2 AI Capabilities
+### 7.2 Current AI Capability
 
-| ID | Capability | Description | Output |
-|----|-----------|-------------|--------|
-| AI-01 | **Invoice Field Extraction** | Extract structured fields (invoice number, date, line items, totals, tax amounts) from OCR text | JSON field map |
-| AI-02 | **Beneficiary Name Matching** | Compare the beneficiary name on the invoice against the registered beneficiary on the transaction | Boolean match + confidence score |
-| AI-03 | **Amount Reconciliation** | Compare the invoice total against the payment amount, accounting for currency and rounding | Boolean match + variance value |
-| AI-04 | **Purpose Classification** | Classify the nature of the transaction based on invoice content (goods, services, royalties, etc.) | Suggested purpose code + confidence |
-| AI-05 | **Inconsistency Detection** | Flag anomalies such as date mismatches, unusual formatting, missing fields, or conflicting information | List of flagged issues with explanations |
-| AI-06 | **Structured Report Generation** | Package all findings into a single, schema-conformant JSON response | Complete analysis JSON |
+The current prompt asks the model to summarize transaction and OCR evidence, report findings, list missing evidence, and suggest verification checks. It does not ask the model to approve or reject a payment, and its output schema has no decision field. A live external model call is not asserted by this specification unless separately verified.
 
-### 7.3 AI Output Schema
+### 7.3 Parsed AI Output Schema
 
-The AI SHALL produce output conforming to the following structure:
+The parser requires a JSON object with a numeric `overallConfidence` in [0, 100], a non-empty string `summary`, and a `findings` array. Each finding requires non-empty string fields `type`, `severity`, and `evidence`, a numeric `confidence` in [0, 100], and may contain a string `message`. Optional `missingEvidence` and `recommendedChecks` fields must be arrays of strings.
 
-```json
-{
-  "transactionId": "TXN-20260920-001",
-  "analysisTimestamp": "2026-09-20T12:00:00Z",
-  "modelVersion": "spring-ai-gpt-4o-2026-09",
-
-  "invoiceExtraction": {
-    "invoiceNumber": "INV-2048",
-    "invoiceDate": "2026-09-15",
-    "sellerName": "ABC Exports Pvt. Ltd.",
-    "buyerName": "XYZ Imports LLC",
-    "lineItems": [
-      {
-        "description": "Cotton textile — Grade A",
-        "quantity": 200,
-        "unitPrice": 10.00,
-        "total": 2000.00
-      }
-    ],
-    "subtotal": 2000.00,
-    "tax": 0.00,
-    "grandTotal": 2000.00,
-    "currency": "USD"
-  },
-
-  "complianceAnalysis": {
-    "beneficiaryMatch": {
-      "result": true,
-      "confidence": 0.97,
-      "invoiceValue": "XYZ Imports LLC",
-      "transactionValue": "XYZ Imports LLC",
-      "explanation": "Exact match on registered beneficiary name."
-    },
-    "amountMatch": {
-      "result": true,
-      "confidence": 0.99,
-      "invoiceValue": 2000.00,
-      "transactionValue": 2000.00,
-      "variance": 0.00,
-      "explanation": "Invoice grand total matches payment amount exactly."
-    },
-    "purposeClassification": {
-      "suggestedCode": "P0103",
-      "description": "Payment for exported goods — textiles",
-      "confidence": 0.94
-    }
-  },
-
-  "anomalies": [],
-
-  "overallConfidence": 0.96,
-
-  "disclaimer": "This analysis is advisory only. Compliance decisions are made by the deterministic policy engine."
-}
-```
+The parser rejects wrong types, missing required values, non-finite values, out-of-range confidence, and malformed JSON. It converts accepted output to the `AIAnalysisResponse` DTO before persistence. Model-supplied fields outside that DTO, including any decision field, are not persisted or consumed by policy.
 
 ### 7.4 AI Restrictions
 
-> [!WARNING]
-> The following actions are **strictly forbidden** for the AI component. Violation of any restriction represents a critical architectural breach.
-
-| ID | Restriction | Rationale |
-|----|------------|-----------|
-| AIR-01 | **SHALL NOT approve or reject payments** | Financial decisions require deterministic authorization |
-| AIR-02 | **SHALL NOT mutate transaction state** | State transitions are controlled exclusively by the Java orchestration layer |
-| AIR-03 | **SHALL NOT override compliance rules** | AI confidence scores do not supersede hard-coded policy logic |
-| AIR-04 | **SHALL NOT mark documents as "sufficient"** | Evidence completeness is evaluated by the policy engine, not the AI |
-| AIR-05 | **SHALL NOT access the payment gateway** | The AI has no network path to Razorpay or any financial system |
-| AIR-06 | **SHALL NOT persist decisions to the database** | The AI produces ephemeral analysis output; the Java layer decides what to persist |
-| AIR-07 | **SHALL NOT suppress or filter anomalies** | All detected anomalies must be reported; the policy engine decides which are material |
+| Restriction | Implemented boundary |
+|-------------|----------------------|
+| AI SHALL NOT approve or reject a transaction | The fixed response schema has no decision field; policy rules do not read AI output |
+| AI SHALL NOT transition transaction state | State transitions are handled by Java services |
+| AI SHALL NOT override a policy rule | AI data and confidence are absent from `RuleContext` |
+| Document text SHALL be treated as untrusted | Prompt labels OCR JSON and extracted text as untrusted data and says not to follow document instructions |
+| Invalid AI output SHALL NOT become a decision | The parser rejects malformed output and persists only a validated DTO |
 
 ### 7.5 Failure Handling
 
-| Failure Mode | System Response |
-|-------------|-----------------|
-| AI service is unreachable | Transaction remains in `AI_ANALYSIS`; retry with exponential backoff (max 3 attempts); escalate to `AI_ANALYSIS_FAILED` |
-| AI response does not conform to the expected schema | Response is rejected; transaction moves to `AI_ANALYSIS_FAILED`; malformed response is logged for debugging |
-| AI response latency exceeds timeout (configurable, default 30 seconds) | Request is cancelled; transaction moves to `AI_ANALYSIS_FAILED` |
-| AI confidence is below minimum threshold | Analysis is included in policy input as-is; the policy engine evaluates whether low confidence warrants a HOLD |
-
----
-
+AI failures and invalid responses transition an `AI_ANALYSIS` transaction to `AI_ANALYSIS_FAILED`. That state is listed by the compliance review queue's `AI_FAILED` filter, but review decisions are accepted only from `COMPLIANCE_HOLD`; an AI failure cannot directly approve or reject a transaction. Policy evaluation can proceed from `AI_ANALYSIS` or `AI_ANALYSIS_FAILED` without an AI record. The final policy verdict is determined solely by the five deterministic rules in §8. Low AI confidence is shown as advisory data and does not trigger a threshold-based queue or change policy state or verdict. Missing, failed, timed-out, or malformed AI output cannot approve, reject, or change that verdict.
 ## 8. Deterministic Policy Engine — Java Decision Authority
 
-### 8.1 Design Philosophy
+### 8.1 Decision Model
 
-> [!IMPORTANT]
-> **The policy engine is the sole authority for compliance outcomes.** It is implemented in Java, executed deterministically, and produces binary APPROVED / HOLD verdicts. Every rule is explicit, auditable, and explainable. No probabilistic, ML-based, or AI-driven logic exists within the policy engine.
+The policy engine runs five deterministic Java rules in a fixed order. Every rule passes or fails. If all five pass, the result is `APPROVED`; if any rule fails, the result is `COMPLIANCE_HOLD`. No AI output, OCR confidence score, probabilistic threshold, or external reference lookup participates in this result.
 
 ### 8.2 Input Sources
 
-The policy engine consumes the following inputs for each transaction evaluation:
+| Input | Source | Used by |
+|-------|--------|---------|
+| Transaction amount, beneficiary, currency, and purpose | Transaction row | Beneficiary, amount, currency, and purpose rules |
+| Required-document rows and fulfilled flags | Evidence checklist rows | Document completeness rule |
+| `beneficiary` or fallback `vendor_name` | Structured OCR extraction JSON | Beneficiary rule |
+| `total_amount` or fallback `amount` | Structured OCR extraction JSON | Amount rule |
+| `currency` | Structured OCR extraction JSON | Currency rule |
+| AI analysis and AI confidence | Not supplied to `RuleContext` | None |
+| OCR confidence score | Metadata on the extraction entity; no rule reads it | None |
 
-| Input | Source | Description |
-|-------|--------|-------------|
-| Transaction Record | PostgreSQL | Payment amount, beneficiary details, purpose code, timestamps |
-| Evidence Checklist | Evidence Service | List of required and submitted documents |
-| AI Analysis JSON | AI Component | Structured analysis output (field matches, confidence scores, anomalies) |
-| Reference Data | Configuration | Valid purpose codes, confidence thresholds, mandatory evidence list |
+OCR structured values are inputs to comparison rules, but the OCR confidence value is not. These rules do not use configurable confidence thresholds.
 
-### 8.3 Policy Rules
+### 8.3 Implemented Rules
 
-| Rule ID | Rule Name | Condition | Verdict on Failure | Severity |
-|---------|-----------|-----------|---------------------|----------|
-| PR-01 | **Invoice Presence** | A commercial invoice has been uploaded and OCR-processed | `HOLD` | Critical |
-| PR-02 | **Beneficiary Match** | AI-reported `beneficiaryMatch.result == true` | `HOLD` | Critical |
-| PR-03 | **Amount Match** | AI-reported `amountMatch.result == true` AND `amountMatch.variance == 0` | `HOLD` | Critical |
-| PR-04 | **Purpose Code Validity** | Transaction purpose code exists in the approved reference list | `HOLD` | Critical |
-| PR-05 | **OCR Confidence** | OCR extraction confidence ≥ configurable threshold (default: 0.80) | `HOLD` | High |
-| PR-06 | **AI Overall Confidence** | AI `overallConfidence` ≥ configurable threshold (default: 0.85) | `HOLD` | High |
-| PR-07 | **Evidence Completeness** | All mandatory documents in the evidence checklist are present | `HOLD` | Critical |
-| PR-08 | **No Critical Anomalies** | AI `anomalies` list contains no items flagged as critical | `HOLD` | High |
+| Rule ID | Rule | Input and condition | OCR input? | AI input? | Result on failure |
+|---------|------|---------------------|------------|-----------|-------------------|
+| PR-01 | `DOCUMENT_COMPLETENESS` | A non-empty checklist must show `INVOICE`, `SHIPPING_PROOF`, and `EXPORT_DECLARATION` as fulfilled | No | No | `COMPLIANCE_HOLD` |
+| PR-02 | `BENEFICIARY_MATCH` | Transaction beneficiary must equal or contain/be contained by OCR `beneficiary`, falling back to `vendor_name`, after trimming and case normalization | Yes | No | `COMPLIANCE_HOLD` |
+| PR-03 | `AMOUNT_CONSISTENCY` | Transaction amount must exactly equal OCR `total_amount`, falling back to `amount`; numeric strings and JSON numbers are parsed as decimal values, with no tolerance | Yes | No | `COMPLIANCE_HOLD` |
+| PR-04 | `CURRENCY_CONSISTENCY` | Transaction currency must equal OCR `currency` after trimming and uppercasing | Yes | No | `COMPLIANCE_HOLD` |
+| PR-05 | `PURPOSE_CODE` | Transaction purpose must be one of `P0101`, `P0102`, `P0105`, `P0103`, `P0104`, `P0201`, `P0202`, `P0301`, or `P0401` | No | No | `COMPLIANCE_HOLD` |
+
+Boundary behavior is explicit: amount equality uses decimal numeric equality with zero tolerance (scale alone does not differ; any nonzero amount difference fails); currency and purpose comparisons trim and normalize case using a locale-independent rule; and duplicate checklist rows for one document type do not satisfy a different required type. The separate evidence checks flag duplicate current document content and mismatched structured evidence. The policy data model has no document/evidence expiry field and no approved validity cutoff, so an expired-data boundary is **NOT SUPPORTED**. The provider-payment staleness check is separate from these five policy rules: it uses `INTEGRITY_STALENESS_THRESHOLD` (default 15 minutes) and reports a pending payment as stale only when its age is strictly greater than the configured threshold; age exactly at the threshold is not stale.
 
 ### 8.4 Evaluation Logic
 
-```java
-public PolicyVerdict evaluate(TransactionContext context) {
-    List<PolicyViolation> violations = new ArrayList<>();
-
-    // PR-01: Invoice Presence
-    if (!context.hasInvoice()) {
-        violations.add(new PolicyViolation("PR-01", "Commercial invoice is missing"));
-    }
-
-    // PR-02: Beneficiary Match
-    if (!context.getAiAnalysis().getBeneficiaryMatch().isResult()) {
-        violations.add(new PolicyViolation("PR-02", "Beneficiary name does not match"));
-    }
-
-    // PR-03: Amount Match
-    AmountMatch amountMatch = context.getAiAnalysis().getAmountMatch();
-    if (!amountMatch.isResult() || amountMatch.getVariance() != 0) {
-        violations.add(new PolicyViolation("PR-03", "Invoice amount does not match payment amount"));
-    }
-
-    // PR-04: Purpose Code Validity
-    if (!referenceData.isValidPurposeCode(context.getPurposeCode())) {
-        violations.add(new PolicyViolation("PR-04", "Purpose code is not in approved list"));
-    }
-
-    // PR-05: OCR Confidence
-    if (context.getOcrConfidence() < config.getMinOcrConfidence()) {
-        violations.add(new PolicyViolation("PR-05", "OCR confidence below threshold"));
-    }
-
-    // PR-06: AI Overall Confidence
-    if (context.getAiAnalysis().getOverallConfidence() < config.getMinAiConfidence()) {
-        violations.add(new PolicyViolation("PR-06", "AI analysis confidence below threshold"));
-    }
-
-    // PR-07: Evidence Completeness
-    if (!context.isEvidenceComplete()) {
-        violations.add(new PolicyViolation("PR-07", "Required documents are incomplete"));
-    }
-
-    // PR-08: No Critical Anomalies
-    if (context.getAiAnalysis().hasCriticalAnomalies()) {
-        violations.add(new PolicyViolation("PR-08", "Critical anomalies detected in analysis"));
-    }
-
-    // Verdict: APPROVED only if zero violations
-    if (violations.isEmpty()) {
-        return PolicyVerdict.approved(context.getTransactionId());
-    } else {
-        return PolicyVerdict.hold(context.getTransactionId(), violations);
-    }
-}
-```
+The implementation evaluates the five rules in the order above. Each result contains a rule name, pass flag, reason, and evidence. The engine aggregates the result list without reading AI or confidence metadata: all pass means `APPROVED`; any failure means `COMPLIANCE_HOLD`.
 
 ### 8.5 Decision Matrix
 
-| Invoice Present | Beneficiary Match | Amount Match | Purpose Code Valid | OCR Confidence OK | AI Confidence OK | Evidence Complete | No Critical Anomalies | Verdict |
-|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
-| ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | **APPROVED** |
-| ✗ | — | — | — | — | — | — | — | **HOLD** |
-| ✓ | ✗ | — | — | — | — | — | — | **HOLD** |
-| ✓ | ✓ | ✗ | — | — | — | — | — | **HOLD** |
-| ✓ | ✓ | ✓ | ✗ | — | — | — | — | **HOLD** |
-| ✓ | ✓ | ✓ | ✓ | ✗ | — | — | — | **HOLD** |
-| ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | — | — | **HOLD** |
-| ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | — | **HOLD** |
-| ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | **HOLD** |
+| All three required document types fulfilled | Beneficiary matches | Amount matches exactly | Currency matches | Purpose code is whitelisted | Verdict |
+|:--:|:--:|:--:|:--:|:--:|--------|
+| Yes | Yes | Yes | Yes | Yes | `APPROVED` |
+| Any condition fails | — | — | — | — | `COMPLIANCE_HOLD` |
 
-> **Rule:** The verdict is `APPROVED` if and only if every rule passes. A single failure in any rule results in `HOLD`. There is no partial pass, weighted scoring, or probabilistic threshold.
+AI state and OCR confidence do not add conditions to this matrix.
 
-The AI provides evidence. **Java makes the decision.**
+### 8.6 Persisted Evaluation
 
-### 8.6 Audit Record per Evaluation
-
-Every policy evaluation SHALL produce an immutable audit record:
-
-```json
-{
-  "transactionId": "TXN-20260920-001",
-  "evaluationTimestamp": "2026-09-20T12:00:05Z",
-  "verdict": "HOLD",
-  "rulesEvaluated": 8,
-  "rulesPassed": 7,
-  "rulesFailed": 1,
-  "violations": [
-    {
-      "ruleId": "PR-06",
-      "ruleName": "AI Overall Confidence",
-      "description": "AI analysis confidence (0.72) is below threshold (0.85)",
-      "severity": "High"
-    }
-  ],
-  "aiAnalysisId": "AIA-20260920-001",
-  "policyEngineVersion": "1.0.0"
-}
-```
-
----
-
+The service persists the decision, the five rule results, and a violation row for each failed rule. An AI analysis may be linked as advisory context when one exists, but neither that link nor its confidence determines the verdict or a policy score.
 ## 9. Functional Requirements
 
 ### 9.1 Authentication and Authorization
@@ -632,21 +487,21 @@ Every policy evaluation SHALL produce an immutable audit record:
 
 | ID | Requirement | Priority |
 |----|------------|----------|
-| FR-19 | The system SHALL submit OCR-extracted text to the AI analysis component (Spring AI) | Must |
-| FR-20 | The AI component SHALL return structured JSON conforming to the defined schema (§7.3) | Must |
-| FR-21 | The system SHALL validate the AI response against the expected schema before proceeding | Must |
-| FR-22 | The system SHALL transition to `AI_ANALYSIS_FAILED` if the AI response is invalid or times out | Must |
-| FR-23 | The AI component SHALL include a disclaimer in every response indicating its advisory nature | Should |
+| FR-19 | When configured and invoked, the AI analysis component SHALL receive transaction details and OCR evidence as advisory context | Optional |
+| FR-20 | The parser SHALL validate AI output against the fixed schema in §7.3 and persist only that canonical schema | Must |
+| FR-21 | Malformed, mistyped, non-finite, or out-of-range AI output SHALL be rejected rather than coerced into a decision | Must |
+| FR-22 | Policy evaluation SHALL be able to proceed when AI is absent, failed, timed out, or rejected | Must |
+| FR-23 | AI output, including its confidence and unknown fields, SHALL NOT be supplied to policy rules | Must |
 
 ### 9.6 Policy Evaluation
 
 | ID | Requirement | Priority |
 |----|------------|----------|
 | FR-24 | The deterministic policy engine SHALL evaluate all rules defined in §8.3 | Must |
-| FR-25 | The policy engine SHALL produce a binary APPROVED or HOLD verdict | Must |
+| FR-25 | The policy engine SHALL produce `APPROVED` when all five rules pass and `COMPLIANCE_HOLD` when any rule fails | Must |
 | FR-26 | On APPROVED, the system SHALL mark the transaction as approved and proceed toward settlement | Must |
 | FR-27 | On HOLD, the system SHALL transition the transaction to `COMPLIANCE_HOLD` | Must |
-| FR-28 | The policy engine SHALL produce an audit record for every evaluation (§8.6) | Must |
+| FR-28 | The service SHALL persist each evaluation with its decision, five rule results, and one violation row per failed rule (§8.6) | Must |
 
 ### 9.7 Human Review
 
@@ -673,6 +528,34 @@ Every policy evaluation SHALL produce an immutable audit record:
 |----|------------|----------|
 | FR-38 | The dashboard SHALL display real-time transaction status for all user roles | Must |
 | FR-39 | The dashboard SHALL provide role-appropriate views (merchant, compliance, admin) | Must |
+
+### 9.10 Payment and Settlement Boundaries
+
+Aegis-X collects evidence, provides optional AI advice, records Java-decided policy outcomes,
+reconciles provider data, and writes audit events. It has no customer payment capture or refund path.
+A `payment.captured` webhook records an outcome already produced by the external provider. Actual
+customer payment capture and live funds movement are outside the supported product scope. A separate
+RazorpayX payout adapter can submit Test Mode payouts only; it is disabled by default and rejects
+non-`rzp_test_` key IDs. Its request path is `SettlementController` → `SettlementService` →
+`SettlementProcessorService` → `RazorpayXClient`; processing requires `SETTLEMENT_OPERATOR` or
+`SYSTEM`, and settlement initiation requires `COMPLIANCE_OFFICER` or `SETTLEMENT_OPERATOR`.
+
+| ID | Requirement | Priority |
+|----|-------------|----------|
+| FR-40 | The settlement service SHALL re-read and lock the transaction decision before payout submission; only `APPROVED` may execute | Must |
+| FR-41 | The settlement processor SHALL independently reject any transaction that is not `APPROVED` | Must |
+| FR-42 | `REJECTED` and `COMPLIANCE_HOLD` transactions SHALL not reach the payout processor, including through direct settlement API calls | Must |
+| FR-43 | Concurrent or repeated processing of one settlement SHALL submit at most one payout; retries SHALL reuse its provider idempotency key, and the retry endpoint SHALL refuse another submission once a provider payout ID has been assigned | Must |
+| FR-44 | RazorpayX payout configuration SHALL reject key IDs without the `rzp_test_` prefix; the integration SHALL remain disabled by default | Must |
+| FR-45 | The `SIMULATED` settlement processor SHALL record `moneyMoved=false` and SHALL NOT make a provider request | Must |
+
+`APPROVED` is the transaction model's persisted equivalent of policy `ALLOWED`; `COMPLIANCE_HOLD`
+represents `ESCALATED`, and `REJECTED` represents `BLOCKED`. The separate Test Mode payout path
+accepts only the approved state and is enabled only by `RAZORPAYX_ENABLED` plus complete Test Mode
+credentials. `INTEGRITY_ALLOW_FINANCIAL_EXECUTION` controls read-only integrity recovery and does not
+enable payout submission. Provider-side customer capture is observed through verified webhook
+ingestion; no policy decision triggers a capture. When a RazorpayX payout ID exists, automatic retry
+through the settlement retry endpoint is unsupported and requires manual resolution.
 
 ---
 
@@ -702,7 +585,7 @@ Every policy evaluation SHALL produce an immutable audit record:
 
 | ID | Requirement |
 |----|------------|
-| NFR-11 | Every state transition SHALL be persisted to PostgreSQL before acknowledgment |
+| NFR-11 | Every state transition SHALL be persisted to MySQL before acknowledgment |
 | NFR-12 | AI service failures SHALL NOT block the transaction pipeline; the system SHALL degrade gracefully to `AI_ANALYSIS_FAILED` |
 | NFR-13 | The system SHALL retry failed AI requests up to 3 times with exponential backoff |
 
@@ -743,7 +626,7 @@ The MVP is a single, complete compliance pipeline demonstrating evidence-driven 
 ```text
 Step 1:  Razorpay Sandbox payment triggers a webhook
             ↓
-Step 2:  Transaction is created in PostgreSQL (CREATED → PAYMENT_RECEIVED)
+Step 2:  Transaction is created in MySQL (CREATED → PAYMENT_RECEIVED)
             ↓
 Step 3:  System detects missing invoice (→ EVIDENCE_PENDING)
             ↓
@@ -779,7 +662,7 @@ Step 10: Dashboard reflects the final status in real time
 This workflow defines the **minimum successful hackathon demo**. The demo is considered successful when:
 
 1. A Razorpay Sandbox payment triggers a webhook that Aegis-X receives.
-2. A transaction record appears in PostgreSQL with the correct initial state.
+2. A transaction record appears in MySQL with the correct initial state.
 3. The system identifies the missing invoice and transitions to `EVIDENCE_PENDING`.
 4. A merchant uploads a PDF invoice through the dashboard.
 5. OCR extracts readable text from the uploaded document.
@@ -798,7 +681,7 @@ This workflow defines the **minimum successful hackathon demo**. The demo is con
 | Metric | Target | Measurement Method |
 |--------|--------|-------------------|
 | Payment webhook received | 100% of valid Razorpay Sandbox events | Automated integration tests |
-| Transaction created | Every webhook produces a PostgreSQL transaction record | Unit tests on webhook handler |
+| Transaction created | Every webhook produces a MySQL transaction record | Unit tests on webhook handler |
 | Missing-document auto-detection | 100% of transactions with incomplete evidence correctly flagged | Unit tests on evidence checklist service |
 | OCR extraction success rate | ≥ 95% for clear, standard-format invoices | Test suite with reference documents |
 | AI analysis schema conformance | 100% of AI responses pass schema validation | JSON schema validation in integration tests |
@@ -837,13 +720,13 @@ The following table maps business capabilities to implementation modules. These 
 | **Authentication** | User login, JWT issuance, token validation, session management | Spring Security, JWT, BCrypt |
 | **Users** | User registration, role assignment, account management | Spring Data JPA, Bean Validation |
 | **Payment / Webhook Handler** | Receiving Razorpay webhook events, validating signatures, creating initial transaction records | Spring Web, Razorpay Java SDK |
-| **Transaction Management** | State machine enforcement, state transitions, transaction queries | Spring Data JPA, PostgreSQL |
+| **Transaction Management** | State machine enforcement, state transitions, transaction queries | Spring Data JPA, MySQL |
 | **Evidence Management** | Document upload, file storage, evidence checklist tracking | Spring Web (Multipart), File I/O |
 | **OCR Service** | Text extraction from PDFs and images | Apache Tika, Tesseract OCR |
 | **AI Regulatory Reasoner** | Submitting OCR text to LLM, parsing structured JSON responses, schema validation | Spring AI, LLM API |
 | **Policy Engine** | Deterministic compliance rule evaluation, APPROVED/HOLD verdict generation | Pure Java (no external dependencies) |
 | **Compliance Review** | Human review queue, approve/reject workflow, justification capture | Spring Web, Spring Data JPA |
-| **Audit Service** | Immutable event logging for every state transition, policy evaluation, and user action | Spring Data JPA, PostgreSQL |
+| **Audit Service** | Immutable event logging for every state transition, policy evaluation, and user action | Spring Data JPA, MySQL |
 | **Notification Service** | WhatsApp message dispatch for missing-document alerts and status updates | WhatsApp Business API |
 | **Dashboard** | Web UI for merchants, compliance officers, and administrators | Thymeleaf, Bootstrap 5, JavaScript |
 
@@ -881,13 +764,13 @@ The following risks are scoped to the hackathon MVP. Each risk includes a practi
 
 | Risk ID | Risk | Likelihood | Impact | Mitigation |
 |---------|------|-----------|--------|------------|
-| R-01 | **OCR inaccuracies** — Tesseract produces garbled or incomplete text from low-quality document scans | Medium | High | Human review via `COMPLIANCE_HOLD`; OCR confidence threshold in policy engine (PR-05) triggers automatic escalation |
-| R-02 | **Low AI confidence** — LLM returns analysis with confidence scores below acceptable thresholds | Medium | Medium | Policy engine rule PR-06 automatically issues `HOLD`; compliance officer reviews with full AI output visible |
+| R-01 | **OCR inaccuracies** — Tesseract produces garbled or incomplete text from low-quality document scans | Medium | High | Human review via `COMPLIANCE_HOLD`; OCR confidence is labeled heuristic and does not gate; failed deterministic evidence checks place the case in COMPLIANCE_HOLD |
+| R-02 | **Low AI confidence** — LLM returns analysis with confidence scores below acceptable thresholds | Medium | Medium | AI confidence is not a policy input; the same deterministic policy verdict is used regardless of AI confidence |
 | R-03 | **Razorpay webhook failures** — Webhook delivery fails due to network issues or signature validation errors | Low | High | Implement webhook retry mechanism; log all incoming requests; validate Razorpay signatures before processing |
 | R-04 | **Invalid or malicious documents** — Uploaded files are corrupted, password-protected, or contain unexpected formats | Medium | Medium | File-type validation on upload (FR-14); OCR failure transitions to `OCR_FAILED` with re-upload path |
-| R-05 | **AI service unavailability** — LLM provider experiences downtime during demo | Low | Critical | Exponential backoff retry (max 3 attempts); graceful degradation to `AI_ANALYSIS_FAILED`; consider mock AI responses for demo fallback |
+| R-05 | **AI service unavailability** — LLM provider experiences downtime during demo | Low | Critical | The analysis failure is recorded; deterministic policy evaluation can proceed without an AI result |
 | R-06 | **Deployment environment issues** — Docker or Railway configuration failures prevent demo deployment | Low | High | Docker Compose for local development; Railway for hosted deployment; test deployment pipeline before demo day |
-| R-07 | **Database schema drift** — JPA entity changes create inconsistencies with PostgreSQL schema | Low | Medium | Hibernate `ddl-auto` for development; explicit migration scripts for demo environment; Testcontainers for integration testing |
+| R-07 | **Database schema drift** — JPA entity changes create inconsistencies with MySQL schema | Low | Medium | Hibernate `ddl-auto` for development; explicit migration scripts for demo environment; Testcontainers for integration testing |
 | R-08 | **Scope creep** — Team introduces features beyond the defined MVP during hackathon | Medium | High | MVP boundary (§11.2) is the scope gate; Architecture Guardrails (§16) are frozen; all non-MVP features are deferred |
 
 ---
@@ -908,8 +791,8 @@ The following risks are scoped to the hackathon MVP. Each risk includes a practi
 
 | # | Guardrail |
 |---|-----------|
-| AG-03 | **Every transaction state transition is audited.** No state change occurs without producing an immutable audit record in PostgreSQL. Silent transitions are a critical defect. |
-| AG-04 | **PostgreSQL is the source of truth.** All transaction state, evidence metadata, policy verdicts, and audit records are persisted in PostgreSQL. No in-memory state is authoritative. |
+| AG-03 | **Every transaction state transition is audited.** No state change occurs without producing an immutable audit record in MySQL. Silent transitions are a critical defect. |
+| AG-04 | **MySQL is the source of truth.** All transaction state, evidence metadata, policy verdicts, and audit records are persisted in MySQL. No in-memory state is authoritative. |
 
 ### 16.3 Integration
 
@@ -975,7 +858,7 @@ The following technologies SHALL NOT be introduced during the hackathon MVP:
 
 | Technology | Version | Purpose |
 |------------|---------|---------|
-| PostgreSQL | 15+ | Primary relational database — transactions, audit records, user data, reference data |
+| MySQL | 15+ | Primary relational database — transactions, audit records, user data, reference data |
 
 #### AI and Document Processing
 
@@ -1008,7 +891,7 @@ The following technologies SHALL NOT be introduced during the hackathon MVP:
 |------------|---------|
 | JUnit 5 | Unit and integration test framework |
 | Mockito | Mocking framework for isolated unit testing |
-| Testcontainers | Docker-based integration testing (PostgreSQL) |
+| Testcontainers | Docker-based integration testing (MySQL) |
 | Postman | API endpoint testing and documentation |
 
 #### Deployment
@@ -1016,7 +899,7 @@ The following technologies SHALL NOT be introduced during the hackathon MVP:
 | Technology | Purpose |
 |------------|---------|
 | Docker | Containerized application packaging |
-| Docker Compose | Local multi-container orchestration (app + PostgreSQL) |
+| Docker Compose | Local multi-container orchestration (app + MySQL) |
 | Railway | Hosted deployment platform for hackathon demo |
 
 ### 17.3 Architectural Layering
@@ -1046,7 +929,7 @@ The following technologies SHALL NOT be introduced during the hackathon MVP:
 │                  Data Access Layer                       │
 │              (Spring Data JPA + Hibernate)               │
 ├──────────────────────────────────────────────────────────┤
-│                   PostgreSQL 15+                         │
+│                   MySQL 8.4                         │
 └──────────────────────────────────────────────────────────┘
 
           External Services (outbound only):
@@ -1063,7 +946,7 @@ The following technologies SHALL NOT be introduced during the hackathon MVP:
 
 | Term | Definition |
 |------|-----------|
-| **APPROVED** | Terminal transaction state indicating all deterministic policy rules have passed and settlement may proceed |
+| **APPROVED** | Non-terminal transaction state indicating all deterministic policy rules passed; settlement may proceed |
 | **Compliance Hold** | A transaction state indicating that deterministic policy rules have failed and human review is required |
 | **Deterministic Policy Engine** | A Java component that evaluates compliance rules using boolean logic with no probabilistic or AI-driven elements |
 | **Evidence** | Documents and data required to satisfy compliance checks (invoices, shipping proofs, beneficiary details) |
@@ -1085,7 +968,7 @@ The following technologies SHALL NOT be introduced during the hackathon MVP:
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
 | 1.0 | 2026-09-20 | Aegis-X Team | Initial SRS — complete specification covering all Phase 01 requirements |
-| 2.0 | 2026-09-20 | Aegis-X Team | Upgraded SRS: aligned with finalized Phase 01 (Razorpay, PostgreSQL, updated state names); added MVP Definition (§11), Module Ownership (§13), Requirements Traceability (§14), Risk Register (§15), Architecture Guardrails (§16); expanded technology stack with Docker Compose and Railway |
+| 2.0 | 2026-09-20 | Aegis-X Team | Upgraded SRS: aligned with finalized Phase 01 (Razorpay, MySQL, updated state names); added MVP Definition (§11), Module Ownership (§13), Requirements Traceability (§14), Risk Register (§15), Architecture Guardrails (§16); expanded technology stack with Docker Compose and Railway |
 
 ---
 

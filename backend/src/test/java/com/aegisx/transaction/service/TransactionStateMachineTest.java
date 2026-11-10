@@ -85,6 +85,8 @@ class TransactionStateMachineTest {
         
         // T14: AI_ANALYSIS_FAILED -> EVIDENCE_PENDING
         assertTrue(stateMachine.isLegalTransition(TransactionStatus.AI_ANALYSIS_FAILED, TransactionStatus.EVIDENCE_PENDING));
+        // A failed optional AI advisory can still proceed to deterministic policy evaluation.
+        assertTrue(stateMachine.isLegalTransition(TransactionStatus.AI_ANALYSIS_FAILED, TransactionStatus.POLICY_EVALUATION));
     }
 
     @Test

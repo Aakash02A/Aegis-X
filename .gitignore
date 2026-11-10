@@ -33,11 +33,17 @@ frontend/dist/
 **/.env.*
 !.env.example
 !**/src/**
+# Re-ignore environment files after source-tree exceptions above.
+**/.env
+**/.env.*
+!.env.example
+!**/.env.example
 application-local.properties
 application-local.yml
 **/application-local.yml
 **/application-local.properties
 
+audit-output/
 # Sensitive config files
 **/application-secret.yml
 **/application-secret.properties
@@ -80,3 +86,4 @@ backend/storage/
 backend/storage-test/
 tests/e2e/out/
 verification/
+frontend/.screens/

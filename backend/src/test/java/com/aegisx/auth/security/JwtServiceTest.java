@@ -99,6 +99,26 @@ class JwtServiceTest {
     }
 
     @Test
+    void isTokenValidReturnsFalseForTamperedSignature() {
+        String token = jwtService.generateToken(testUser);
+        String tamperedToken = token.substring(0, token.lastIndexOf('.') + 1) + "invalidsignature";
+        assertFalse(jwtService.isTokenValid(tamperedToken));
+        assertFalse(jwtService.isTokenValid(tamperedToken, userDetails));
+    }
+
+    @Test
+    void isTokenValidReturnsFalseForTokenSignedWithWrongKey() {
+        String token = jwtService.generateToken(testUser);
+        JwtService wrongKeyService = new JwtService(fixedClock);
+        ReflectionTestUtils.setField(wrongKeyService, "secretKey",
+                "another-test-signing-key-long-enough-for-hmac-sha256-validation");
+        ReflectionTestUtils.setField(wrongKeyService, "jwtExpirationMs", 3600000L);
+
+        assertFalse(wrongKeyService.isTokenValid(token));
+        assertFalse(wrongKeyService.isTokenValid(token, userDetails));
+    }
+
+    @Test
     void getExpirationTimeInSecondsCalculatesCorrectly() {
         assertEquals(3600L, jwtService.getExpirationTimeInSeconds());
     }

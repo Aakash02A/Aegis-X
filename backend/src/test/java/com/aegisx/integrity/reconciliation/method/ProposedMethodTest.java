@@ -83,7 +83,7 @@ class ProposedMethodTest {
     }
 
     @Test
-    @DisplayName("observations tied on rank and timestamp produce the same verdict in either list order")
+    @DisplayName("observations tied on rank and timestamp do not imply a lifecycle sequence")
     void equalTimestampTiesAreDeterministic() {
         // Provider webhook observations carry the event's created_at, which has second precision.
         // Two events for one payment can therefore share a timestamp, and the verdict must not depend
@@ -117,8 +117,60 @@ class ProposedMethodTest {
                 .as("findings must be emitted in a stable order, not in hash or row order")
                 .containsExactlyElementsOf(reversed.stream().map(FindingCandidate::type).toList());
         assertThat(detected(forward))
-                .as("the contradiction itself must still be detected")
-                .contains(FindingType.CONFLICTING_OBSERVATIONS);
+                .as("equal timestamps cannot establish which observation came later")
+                .doesNotContain(FindingType.CONFLICTING_OBSERVATIONS);
+    }
+
+    @Test
+    @DisplayName("source timestamps closer than their precision do not imply a lifecycle sequence")
+    void observationsWithinSourcePrecisionDoNotInferSequence() {
+        EvidencePack.ObservationView paidWebhook = new EvidencePack.ObservationView(
+                ORDER, ResourceType.ORDER, "order_test", EvidenceSource.PROVIDER_WEBHOOK,
+                EvidenceSource.PROVIDER_WEBHOOK.rank(), OrderState.PAID.name(), 100_000L, "INR", NOW, false);
+        EvidencePack.ObservationView createdApiRead = new EvidencePack.ObservationView(
+                ORDER, ResourceType.ORDER, "order_test", EvidenceSource.PROVIDER_API_CONFIRMED,
+                EvidenceSource.PROVIDER_API_CONFIRMED.rank(), OrderState.CREATED.name(), 100_000L, "INR",
+                NOW.plusMillis(250), false);
+
+        List<FindingCandidate> findings = method.evaluate(pack(
+                List.of(order(OrderState.PAID)),
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(paidWebhook, createdApiRead),
+                List.of(),
+                true,
+                true));
+
+        assertThat(detected(findings))
+                .as("a second-precision webhook and nearby API read cannot establish ordering")
+                .doesNotContain(FindingType.CONFLICTING_OBSERVATIONS);
+    }
+
+    @Test
+    @DisplayName("provider observations 200 nanoseconds apart do not imply a lifecycle sequence")
+    void observationsSeparatedBy200NanosecondsDoNotInferSequence() {
+        EvidencePack.ObservationView paidApiRead = new EvidencePack.ObservationView(
+                PAYMENT, ResourceType.PAYMENT, "pay_test", EvidenceSource.PROVIDER_API_CONFIRMED,
+                EvidenceSource.PROVIDER_API_CONFIRMED.rank(), PaymentState.CAPTURED.name(), 100_000L, "INR", NOW, false);
+        EvidencePack.ObservationView failedApiRead = new EvidencePack.ObservationView(
+                PAYMENT, ResourceType.PAYMENT, "pay_test", EvidenceSource.PROVIDER_API_CONFIRMED,
+                EvidenceSource.PROVIDER_API_CONFIRMED.rank(), PaymentState.FAILED.name(), 100_000L, "INR",
+                NOW.plusNanos(200), false);
+
+        List<FindingCandidate> findings = method.evaluate(pack(
+                List.of(),
+                List.of(payment(PaymentState.CAPTURED, PaymentState.CAPTURED)),
+                List.of(),
+                List.of(),
+                List.of(paidApiRead, failedApiRead),
+                List.of(),
+                true,
+                true));
+
+        assertThat(detected(findings))
+                .as("sub-millisecond provider timestamps cannot establish which lifecycle state came later")
+                .doesNotContain(FindingType.CONFLICTING_OBSERVATIONS);
     }
 
     @Test
@@ -189,6 +241,26 @@ class ProposedMethodTest {
                 true));
 
         assertThat(detected(findings)).doesNotContain(FindingType.AMOUNT_MISMATCH);
+    }
+
+    @Test
+    @DisplayName("pending-payment staleness is false under and at the threshold and true just over it")
+    void stalePaymentThresholdBoundaryIsStrictlyGreaterThan() {
+        Instant exactBoundary = NOW.minus(THRESHOLD);
+
+        List<FindingCandidate> justUnder = method.evaluate(pack(
+                List.of(), List.of(pendingPayment(exactBoundary.plusNanos(1))), List.of(), List.of(),
+                List.of(), List.of(), true, true));
+        List<FindingCandidate> exactlyAt = method.evaluate(pack(
+                List.of(), List.of(pendingPayment(exactBoundary)), List.of(), List.of(),
+                List.of(), List.of(), true, true));
+        List<FindingCandidate> justOver = method.evaluate(pack(
+                List.of(), List.of(pendingPayment(exactBoundary.minusNanos(1))), List.of(), List.of(),
+                List.of(), List.of(), true, true));
+
+        assertThat(detected(justUnder)).doesNotContain(FindingType.STALE_PAYMENT);
+        assertThat(detected(exactlyAt)).doesNotContain(FindingType.STALE_PAYMENT);
+        assertThat(detected(justOver)).contains(FindingType.STALE_PAYMENT);
     }
 
     @Test
@@ -274,6 +346,12 @@ class ProposedMethodTest {
         return new EvidencePack.PaymentView(PAYMENT, ORDER, "pay_test", amount, "INR",
                 internal, provider, EvidenceSource.INTERNAL_RECORD.rank(),
                 NOW.minusSeconds(600), NOW.minusSeconds(120), false);
+    }
+
+    private static EvidencePack.PaymentView pendingPayment(Instant lastObservedAt) {
+        return new EvidencePack.PaymentView(PAYMENT, ORDER, "pay_test", 100_000, "INR",
+                PaymentState.AUTHORIZED, PaymentState.AUTHORIZED, EvidenceSource.INTERNAL_RECORD.rank(),
+                lastObservedAt, lastObservedAt, false);
     }
 
     @Test

@@ -16,7 +16,7 @@ frontend/
 ├── dashboard.html               # Merchant console (remittances, KPIs, creation modal)
 ├── transaction.html             # Transaction workspace (lifecycle stepper, OCR, audit log)
 ├── compliance.html              # Compliance officer investigation queue
-├── settlement.html              # Settlement desk (payout rails, retry, reconciliation)
+├── settlement.html              # Test Mode payout records, retry, and reconciliation
 ├── operations.html              # System observability (live Actuator health & metrics)
 ├── integrity*.html              # Payment Integrity console (9 specialized audit views)
 ├── css/
@@ -77,7 +77,7 @@ Every protected page executes an immediate authorization check against the backe
 | `settlement.html` | `SETTLEMENT_OPERATOR`, `COMPLIANCE_OFFICER`, `ADMIN` | `login.html` |
 | `operations.html` | `ADMIN` | `login.html` |
 | `transaction.html` | All Authenticated Users | `login.html` |
-| `integrity*.html` | All Authenticated Users (scoped by workspace) | `login.html` |
+| `integrity*.html` | `ADMIN`, `COMPLIANCE_OFFICER`, `SETTLEMENT_OPERATOR` | `login.html` |
 
 ---
 
@@ -110,4 +110,3 @@ npm run preview
 2. **Session-Scoped Tokens:** JWT tokens are stored exclusively in `sessionStorage` (cleared when the browser tab is closed).
 3. **Correlation Tracking:** Every API request automatically generates and attaches an `X-Correlation-ID` header.
 4. **Enveloped Error Handling:** Any backend error envelope (`success: false`) is trapped and displayed with user-friendly actionable feedback.
-

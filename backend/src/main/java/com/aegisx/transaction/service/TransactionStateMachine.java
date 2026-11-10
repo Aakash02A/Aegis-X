@@ -68,7 +68,7 @@ public class TransactionStateMachine {
 
         // T14: From AI_ANALYSIS_FAILED (Recovery path)
         transitions.put(TransactionStatus.AI_ANALYSIS_FAILED,
-                EnumSet.of(TransactionStatus.EVIDENCE_PENDING));
+                EnumSet.of(TransactionStatus.EVIDENCE_PENDING, TransactionStatus.POLICY_EVALUATION));
 
         // Terminal states - no further transitions allowed
         transitions.put(TransactionStatus.REJECTED, Collections.emptySet());

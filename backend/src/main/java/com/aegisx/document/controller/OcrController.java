@@ -48,7 +48,7 @@ public class OcrController {
         log.info("OCR process request for document: {}", documentId);
 
         // Load document and verify ownership
-        Document document = documentRepository.findById(documentId)
+        Document document = documentRepository.findByIdWithUploader(documentId)
             .orElse(null);
 
         if (document == null) {
@@ -105,7 +105,7 @@ public class OcrController {
         log.info("Extraction query for document: {}", documentId);
 
         // Load document and verify ownership
-        Document document = documentRepository.findById(documentId)
+        Document document = documentRepository.findByIdWithUploader(documentId)
             .orElse(null);
 
         if (document == null) {

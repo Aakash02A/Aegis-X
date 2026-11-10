@@ -1,6 +1,7 @@
 package com.aegisx.integrity;
 
 import com.aegisx.integrity.domain.ExceptionStatus;
+import com.aegisx.integrity.domain.EvidenceSource;
 import com.aegisx.integrity.domain.FindingType;
 import com.aegisx.integrity.domain.PaymentState;
 import com.aegisx.integrity.domain.RecommendationCategory;
@@ -235,6 +236,21 @@ class IntegrityReconciliationWorkflowTest extends IntegrityTestSupport {
         Workspace workspace = newWorkspace();
         PaymentOrder order = newOrderWithProviderOrder(workspace, 20_000);
         simulationService.simulateCapturedPayment(workspace.getId(), order.getId(), false);
+        PaymentRecord internalPayment = paymentRepository.findByOrderId(order.getId()).stream()
+                .filter(payment -> payment.getProviderPaymentId() != null)
+                .findFirst()
+                .orElseThrow();
+        com.aegisx.integrity.entity.ProviderObservation initialOrderObservation = observationRepository
+                .findAllByWorkspaceIdOrderByObservedAtDesc(workspace.getId()).stream()
+                .filter(observation -> order.getId().equals(observation.getOrderId()))
+                .filter(observation -> observation.getSource() == EvidenceSource.PROVIDER_API_CONFIRMED)
+                .filter(observation -> observation.getObservedState().equals("CREATED"))
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("Missing initial provider API order observation"));
+        assertThat(internalPayment.getState()).isEqualTo(PaymentState.CAPTURED);
+        assertThat(simulatedProvider.fetchPayment(internalPayment.getProviderPaymentId()).value().state())
+                .as("the comparison starts with independent provider-side truth")
+                .isEqualTo(PaymentState.CAPTURED);
 
         simulatedProvider.setReachable(false);
         try {
@@ -260,14 +276,56 @@ class IntegrityReconciliationWorkflowTest extends IntegrityTestSupport {
         // state is confirmed rather than merely asserted.
         ReconciliationService.RunResult recovered = reconcile(workspace);
         assertThat(recovered.providerReachable()).isTrue();
+        List<com.aegisx.integrity.entity.ProviderObservation> refreshedProviderEvidence =
+                observationRepository.findAllByWorkspaceIdOrderByObservedAtDesc(workspace.getId()).stream()
+                        .filter(observation -> observation.getPaymentId() != null
+                                && observation.getPaymentId().equals(internalPayment.getId()))
+                        .filter(observation -> observation.getSource() == EvidenceSource.PROVIDER_API_CONFIRMED)
+                        .filter(observation -> observation.getObservedState().equals(PaymentState.CAPTURED.name()))
+                        .toList();
+        assertThat(refreshedProviderEvidence)
+                .as("recovery must be based on a fresh provider API read, not an internal state flip")
+                .isNotEmpty()
+                .allSatisfy(observation -> assertThat(observation.isSimulated()).isTrue());
+        com.aegisx.integrity.entity.ProviderObservation refreshedOrderEvidence = observationRepository
+                .findAllByWorkspaceIdOrderByObservedAtDesc(workspace.getId()).stream()
+                .filter(observation -> order.getId().equals(observation.getOrderId()))
+                .filter(observation -> observation.getSource() == EvidenceSource.PROVIDER_API_CONFIRMED)
+                .filter(observation -> observation.getObservedState().equals("PAID"))
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("Missing fresh provider API order observation"));
+        assertThat(refreshedOrderEvidence.getObservedAt())
+                .as("freshness uses the time of the provider read, not the provider resource's update time")
+                .isAfter(initialOrderObservation.getObservedAt());
         List<ReconciliationFinding> recoveredFindings =
                 findingRepository.findByRunIdOrderByCreatedAtAsc(recovered.runId());
         assertThat(recovered.findingsCount())
-                .as("a disagreement that was only unconfirmed must clear once provider state is re-read; reported=%s",
+                .as("a disagreement that was only unconfirmed must clear once provider state is re-read; "
+                                + "reported=%s observations=%s",
                         recoveredFindings.stream()
                                 .map(finding -> finding.getFindingType() + ": " + finding.getSummary())
+                                .toList(),
+                        observationRepository.findAllByWorkspaceIdOrderByObservedAtDesc(workspace.getId()).stream()
+                                .filter(observation -> observation.getSource().isProviderAuthoritative())
+                                .map(observation -> observation.getSource() + "/rank=" + observation.getEvidenceRank()
+                                        + " " + observation.getObservedState() + " @" + observation.getObservedAt()
+                                        + (observation.isSimulated() ? " (simulated)" : ""))
                                 .toList())
                 .isZero();
+    }
+
+    @Test
+    @DisplayName("resetting simulated provider controls preserves provider truth for persisted rows")
+    void resetPreservesProviderTruthForPersistedOrders() {
+        Workspace workspace = newWorkspace();
+        PaymentOrder order = newOrderWithProviderOrder(workspace, 20_000);
+        simulationService.simulateCapturedPayment(workspace.getId(), order.getId(), false);
+
+        simulationService.reset(workspace.getId());
+
+        assertThat(simulatedProvider.fetchOrder(order.getProviderOrderId()).value().state())
+                .isEqualTo(com.aegisx.integrity.domain.OrderState.PAID);
+        assertThat(orderRepository.findById(order.getId())).isPresent();
     }
 
     @Test
@@ -281,11 +339,21 @@ class IntegrityReconciliationWorkflowTest extends IntegrityTestSupport {
         assertThat(auditEventRepository.countByWorkspaceId(workspace.getId()))
                 .as("order creation, webhook handling, reconciliation and review must all be auditable")
                 .isPositive();
-        assertThat(auditEventRepository.findByWorkspaceIdOrderByOccurredAtDesc(workspace.getId(),
+        List<com.aegisx.integrity.entity.IntegrityAuditEvent> events = auditEventRepository
+                .findByWorkspaceIdOrderByOccurredAtDesc(workspace.getId(),
                         org.springframework.data.domain.PageRequest.of(0, 200))
-                .getContent())
-                .extracting(event -> event.getEventType())
-                .contains("RECONCILIATION_RUN_COMPLETED");
+                .getContent();
+        assertThat(events).extracting(event -> event.getEventType()).contains("RECONCILIATION_RUN_COMPLETED");
+        com.aegisx.integrity.entity.IntegrityAuditEvent resolution = events.stream()
+                .filter(event -> event.getEventType().equals("EXCEPTION_RESOLVED"))
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("Missing audit event for the human resolution decision"));
+        assertThat(resolution.getActorLabel()).isEqualTo(ANALYST.label());
+        assertThat(resolution.getActorId()).isEqualTo(ANALYST.userId());
+        assertThat(resolution.getCategory()).isEqualTo("EXCEPTION");
+        assertThat(resolution.getExceptionId()).isNotNull();
+        assertThat(resolution.getDetailJson()).contains("RESOLVED");
+        assertThat(resolution.getOccurredAt()).isNotNull();
     }
 
     private void simulateDiscrepancyAndResolve(Workspace workspace, PaymentOrder order) {

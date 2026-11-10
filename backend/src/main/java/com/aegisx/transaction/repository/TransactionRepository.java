@@ -8,6 +8,8 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
+import jakarta.persistence.LockModeType;
+import org.springframework.data.jpa.repository.Lock;
 
 import java.util.List;
 import java.util.Collection;
@@ -31,6 +33,12 @@ public interface TransactionRepository extends JpaRepository<Transaction, UUID> 
 
     @Query("SELECT t FROM Transaction t WHERE t.id = :id AND t.merchant.id = :merchantId")
     Optional<Transaction> findByIdAndMerchantId(@Param("id") UUID id, @Param("merchantId") UUID merchantId);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT t FROM Transaction t WHERE t.id = :id AND t.merchant.id = :merchantId")
+    Optional<Transaction> findByIdAndMerchantIdForUpdate(@Param("id") UUID id, @Param("merchantId") UUID merchantId);
+
+    Optional<Transaction> findByRazorpayOrderId(String razorpayOrderId);
 
     Optional<Transaction> findByReferenceNumber(String referenceNumber);
 
@@ -56,16 +64,23 @@ public interface TransactionRepository extends JpaRepository<Transaction, UUID> 
      */
     Page<Transaction> findByStatusOrderByCreatedAtDesc(TransactionStatus status, Pageable pageable);
 
-    /**
-     * Lists transactions in a status that have no compliance review yet.
-     *
-     * <p>The "unreviewed" condition runs in the database so that the reviewer queue does not have to
-     * load and enrich every held transaction before discarding the reviewed ones in memory.</p>
-     */
-    @Query("SELECT t FROM Transaction t WHERE t.status = :status AND NOT EXISTS " +
-            "(SELECT cr.id FROM ComplianceReview cr WHERE cr.transaction = t) " +
-            "ORDER BY t.createdAt DESC")
-    List<Transaction> findUnreviewedByStatus(@Param("status") TransactionStatus status);
+    /** Searches pending transactions with database pagination and optional reviewer-facing text search. */
+    @Query(value = "SELECT t FROM Transaction t WHERE t.status = :status AND NOT EXISTS " +
+            "(SELECT cr.id FROM ComplianceReview cr WHERE cr.transaction = t) AND " +
+            "(:query = '' OR LOWER(t.referenceNumber) LIKE LOWER(CONCAT('%', :query, '%')) OR " +
+            "LOWER(t.beneficiaryName) LIKE LOWER(CONCAT('%', :query, '%')) OR " +
+            "LOWER(t.merchant.fullName) LIKE LOWER(CONCAT('%', :query, '%')) OR " +
+            "LOWER(t.merchant.email) LIKE LOWER(CONCAT('%', :query, '%'))) " +
+            "ORDER BY t.createdAt DESC",
+            countQuery = "SELECT COUNT(t) FROM Transaction t WHERE t.status = :status AND NOT EXISTS " +
+                    "(SELECT cr.id FROM ComplianceReview cr WHERE cr.transaction = t) AND " +
+                    "(:query = '' OR LOWER(t.referenceNumber) LIKE LOWER(CONCAT('%', :query, '%')) OR " +
+                    "LOWER(t.beneficiaryName) LIKE LOWER(CONCAT('%', :query, '%')) OR " +
+                    "LOWER(t.merchant.fullName) LIKE LOWER(CONCAT('%', :query, '%')) OR " +
+                    "LOWER(t.merchant.email) LIKE LOWER(CONCAT('%', :query, '%')))")
+    Page<Transaction> searchUnreviewedByStatus(@Param("status") TransactionStatus status,
+                                               @Param("query") String query,
+                                               Pageable pageable);
 
     /**
      * Returns the oldest {@code updatedAt} for a status, used by the queue summary.

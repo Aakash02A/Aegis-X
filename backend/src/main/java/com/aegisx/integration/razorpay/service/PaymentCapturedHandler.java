@@ -8,6 +8,7 @@ import com.aegisx.document.service.DocumentService;
 import com.aegisx.integration.razorpay.dto.RazorpayWebhookPayload;
 import com.aegisx.integration.razorpay.entity.WebhookEvent;
 import com.aegisx.integration.razorpay.entity.WebhookProcessingStatus;
+import com.aegisx.integration.razorpay.repository.WebhookEventRepository;
 import com.aegisx.transaction.entity.Transaction;
 import com.aegisx.transaction.entity.TransactionStatus;
 import com.aegisx.transaction.entity.TransitionActor;
@@ -19,6 +20,9 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
+import java.math.BigDecimal;
+import java.util.Currency;
+import java.util.Locale;
 import java.util.Optional;
 
 @Slf4j
@@ -29,6 +33,7 @@ public class PaymentCapturedHandler implements RazorpayEventHandler {
     public static final String EVENT_TYPE = "payment.captured";
 
     private final TransactionRepository transactionRepository;
+    private final WebhookEventRepository webhookEventRepository;
     private final TransactionStateMachine transactionStateMachine;
     private final AuditService auditService;
     private final DocumentService documentService;
@@ -43,31 +48,21 @@ public class PaymentCapturedHandler implements RazorpayEventHandler {
         String paymentId = payload.getPaymentId();
         event.setPaymentId(paymentId);
 
-        // Phase 06 MVP Multi-Tiered Transaction Lookup:
-        // 1. Direct reference number matching
-        // 2. Razorpay order_id (preferred long-term mapping)
-        // 3. notes.transaction_reference (fallback for MVP)
-        // TODO Phase 06 MVP: Using notes.transaction_reference. Replace with persisted Razorpay Order mapping in future.
-        String referenceHint = payload.getTransactionReferenceFromNotes();
-        if (referenceHint == null) {
-            referenceHint = payload.getOrderId();
-        }
+        String providerOrderId = payload.getOrderId();
+        log.info("[{}] Processing '{}' for paymentId: '{}', orderId: '{}'",
+                correlationId, EVENT_TYPE, paymentId, providerOrderId);
 
-        log.info("[{}] Processing '{}' for paymentId: '{}', referenceHint: '{}'",
-                correlationId, EVENT_TYPE, paymentId, referenceHint);
-
-        if (referenceHint == null || referenceHint.isBlank()) {
-            log.warn("[{}] No reference number or orderId found in payment.captured payload for paymentId: '{}'",
+        if (providerOrderId == null || providerOrderId.isBlank()) {
+            log.warn("[{}] No Razorpay order ID found in payment.captured payload for paymentId: '{}'",
                     correlationId, paymentId);
             event.setProcessingStatus(WebhookProcessingStatus.FAILED);
             return;
         }
 
-        Optional<Transaction> transactionOpt = transactionRepository.findByReferenceNumber(referenceHint);
+        Optional<Transaction> transactionOpt = transactionRepository.findByRazorpayOrderId(providerOrderId);
         if (transactionOpt.isEmpty()) {
-            log.warn("[{}] Unknown transaction reference '{}' received for paymentId '{}'",
-                    correlationId, referenceHint, paymentId);
-            event.setTransactionReference(referenceHint);
+            log.warn("[{}] Unknown Razorpay order ID '{}' received for paymentId '{}'",
+                    correlationId, providerOrderId, paymentId);
             event.setProcessingStatus(WebhookProcessingStatus.FAILED);
             return;
         }
@@ -75,72 +70,116 @@ public class PaymentCapturedHandler implements RazorpayEventHandler {
         Transaction transaction = transactionOpt.get();
         event.setTransactionReference(transaction.getReferenceNumber());
 
-        // Out-of-Order Webhook Resilience:
-        // Razorpay webhook delivery order is not strictly guaranteed (e.g. payment.captured arriving
-        // after other processing or redundant retries). If the transaction is not in CREATED status,
-        // we safely ignore redundant transitions rather than throwing an exception.
-        if (transaction.getStatus() == TransactionStatus.CREATED) {
-            log.info("[{}] Advancing transaction {} ({}) status: CREATED -> PAYMENT_RECEIVED -> EVIDENCE_PENDING",
-                    correlationId, transaction.getId(), transaction.getReferenceNumber());
+        if (!transaction.getRazorpayOrderId().equals(providerOrderId)) {
+            recordConflict(event, correlationId, paymentId, transaction, "order_id mismatch",
+                    "Provider order id " + providerOrderId + " does not match stored transaction order id "
+                            + transaction.getRazorpayOrderId());
+            return;
+        }
 
-            // 1. CREATED -> PAYMENT_RECEIVED (Triggered by Razorpay webhook)
-            transactionStateMachine.transition(
-                    transaction,
-                    TransactionStatus.PAYMENT_RECEIVED,
-                    TransitionActor.RAZORPAY_GATEWAY,
-                    "Razorpay payment captured: " + paymentId
-            );
+        if (!matchesExpectedAmountAndCurrency(transaction, payload)) {
+            recordConflict(event, correlationId, paymentId, transaction, "amount or currency mismatch",
+                    "Captured payment amount/currency " + payload.getAmount() + "/" + payload.getCurrency()
+                            + " does not match transaction " + transaction.getAmount() + "/" + transaction.getCurrency());
+            return;
+        }
 
-            // Record webhook event audit
-            ObjectNode webhookData = JsonNodeFactory.instance.objectNode();
-            webhookData.put("paymentId", paymentId);
-            webhookData.put("amount", payload.getAmount());
-            webhookData.put("currency", payload.getCurrency());
+        if (webhookEventRepository.findByPaymentId(paymentId).filter(existing -> !existing.getEventId().equals(event.getEventId()))
+                .isPresent()) {
+            recordConflict(event, correlationId, paymentId, transaction, "duplicate payment.captured delivery",
+                    "A prior webhook already recorded paymentId " + paymentId + " for transaction "
+                            + transaction.getReferenceNumber());
+            return;
+        }
 
-            auditService.recordWebhookEvent(
+        if (transaction.getStatus() != TransactionStatus.CREATED) {
+            recordConflict(event, correlationId, paymentId, transaction, "late capture after non-CREATED state",
+                    "Captured payment arrived after transaction already advanced to " + transaction.getStatus());
+            return;
+        }
+
+        log.info("[{}] Advancing transaction {} ({}) status: CREATED -> PAYMENT_RECEIVED -> EVIDENCE_PENDING",
+                correlationId, transaction.getId(), transaction.getReferenceNumber());
+
+        // 1. CREATED -> PAYMENT_RECEIVED (Triggered by Razorpay webhook)
+        transactionStateMachine.transition(
                 transaction,
-                AuditEventType.WEBHOOK_RECEIVED,
-                AuditModule.RAZORPAY,
-                correlationId,
-                paymentId,
-                "true",
-                webhookData
-            );
+                TransactionStatus.PAYMENT_RECEIVED,
+                TransitionActor.RAZORPAY_GATEWAY,
+                "Razorpay payment captured: " + paymentId
+        );
 
-            // 2. PAYMENT_RECEIVED -> EVIDENCE_PENDING (Awaiting invoice upload)
-            transactionStateMachine.transition(
-                    transaction,
-                    TransactionStatus.EVIDENCE_PENDING,
-                    TransitionActor.SYSTEM,
-                    "Payment confirmed; awaiting merchant compliance evidence"
-            );
+        // Record webhook event audit
+        ObjectNode webhookData = JsonNodeFactory.instance.objectNode();
+        webhookData.put("paymentId", paymentId);
+        webhookData.put("amount", payload.getAmount());
+        webhookData.put("currency", payload.getCurrency());
 
-            transactionRepository.save(transaction);
-            documentService.initializeChecklist(transaction.getId());
+        auditService.recordWebhookEvent(
+            transaction,
+            AuditEventType.WEBHOOK_RECEIVED,
+            AuditModule.RAZORPAY,
+            correlationId,
+            paymentId,
+            "true",
+            webhookData
+        );
 
-            // Record payment received event audit
-            ObjectNode paymentData = JsonNodeFactory.instance.objectNode();
-            paymentData.put("paymentId", paymentId);
-            paymentData.put("status", "captured");
-
-            auditService.recordStateTransition(
+        // 2. PAYMENT_RECEIVED -> EVIDENCE_PENDING (Awaiting invoice upload)
+        transactionStateMachine.transition(
                 transaction,
-                AuditEventType.PAYMENT_RECEIVED,
-                AuditModule.RAZORPAY,
-                null,
-                ActorType.WEBHOOK,
-                correlationId,
-                TransactionStatus.CREATED.name(),
-                TransactionStatus.PAYMENT_RECEIVED.name(),
-                paymentData
-            );
+                TransactionStatus.EVIDENCE_PENDING,
+                TransitionActor.SYSTEM,
+                "Payment confirmed; awaiting merchant compliance evidence"
+        );
 
-            event.setProcessingStatus(WebhookProcessingStatus.PROCESSED);
-        } else {
-            log.info("[{}] Out-of-order / replay event: Transaction {} ({}) is already at status '{}'; skipping transition",
-                    correlationId, transaction.getId(), transaction.getReferenceNumber(), transaction.getStatus());
-            event.setProcessingStatus(WebhookProcessingStatus.PROCESSED);
+        transactionRepository.save(transaction);
+        documentService.initializeChecklist(transaction.getId());
+
+        // Record payment received event audit
+        ObjectNode paymentData = JsonNodeFactory.instance.objectNode();
+        paymentData.put("paymentId", paymentId);
+        paymentData.put("status", "captured");
+
+        auditService.recordStateTransition(
+            transaction,
+            AuditEventType.PAYMENT_RECEIVED,
+            AuditModule.RAZORPAY,
+            null,
+            ActorType.WEBHOOK,
+            correlationId,
+            TransactionStatus.CREATED.name(),
+            TransactionStatus.PAYMENT_RECEIVED.name(),
+            paymentData
+        );
+
+        event.setProcessingStatus(WebhookProcessingStatus.PROCESSED);
+    }
+
+    private void recordConflict(WebhookEvent event, String correlationId, String paymentId,
+                               Transaction transaction, String conflictType, String details) {
+        log.warn("[{}] Flagging payment.captured for review: {} for paymentId '{}' on transaction '{}' ({})",
+                correlationId, conflictType, paymentId, transaction.getReferenceNumber(), details);
+        event.setProcessingStatus(WebhookProcessingStatus.FAILED);
+    }
+
+    private boolean matchesExpectedAmountAndCurrency(Transaction transaction, RazorpayWebhookPayload payload) {
+        BigDecimal providerAmountMinor = payload.getAmount();
+        String providerCurrency = payload.getCurrency();
+        String transactionCurrency = transaction.getCurrency();
+        if (providerAmountMinor == null || providerCurrency == null || transactionCurrency == null
+                || !transactionCurrency.equalsIgnoreCase(providerCurrency)) {
+            return false;
+        }
+
+        try {
+            int fractionDigits = Currency.getInstance(transactionCurrency.toUpperCase(Locale.ROOT))
+                    .getDefaultFractionDigits();
+            return fractionDigits >= 0
+                    && transaction.getAmount() != null
+                    && transaction.getAmount().compareTo(providerAmountMinor.movePointLeft(fractionDigits)) == 0;
+        } catch (IllegalArgumentException e) {
+            return false;
         }
     }
 }
-

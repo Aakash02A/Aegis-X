@@ -6,15 +6,8 @@ import org.springframework.stereotype.Component;
 /**
  * BeneficiaryMatchRule compares beneficiary names across sources.
  * 
- * Sources:
- * - Transaction: beneficiary_name (what merchant declared)
- * - OCR extracted_data: beneficiary field (what invoice shows)
- * - AI analysis: checks for beneficiary mismatch finding
- * 
- * Logic:
- * - If transaction and OCR beneficiaries match (case-insensitive): PASS
- * - If AI detected mismatch (confidence high): FAIL
- * - If either missing: FAIL
+ * Sources are the transaction beneficiary and the {@code beneficiary} or {@code vendor_name}
+ * structured OCR field. AI output and confidence scores are not consulted.
  * 
  * Result:
  * - PASS: Beneficiaries are consistent
@@ -31,7 +24,7 @@ public class BeneficiaryMatchRule implements PolicyRule {
         if (context.getTransaction() == null || context.getTransaction().getBeneficiaryName() == null) {
             return fail("Transaction beneficiary missing");
         }
-        String txnBeneficiary = context.getTransaction().getBeneficiaryName().trim().toLowerCase();
+        String txnBeneficiary = context.getTransaction().getBeneficiaryName().trim().toLowerCase(java.util.Locale.ROOT);
         
         // Get OCR beneficiary
         String ocrBeneficiary = null;
@@ -42,7 +35,7 @@ public class BeneficiaryMatchRule implements PolicyRule {
                     ? ocrData.get("beneficiary") 
                     : ocrData.get("vendor_name");
                 if (beneficiaryNode != null && beneficiaryNode.isTextual()) {
-                    ocrBeneficiary = beneficiaryNode.asText().trim().toLowerCase();
+                    ocrBeneficiary = beneficiaryNode.asText().trim().toLowerCase(java.util.Locale.ROOT);
                 }
             }
         }

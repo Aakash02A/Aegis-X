@@ -129,10 +129,16 @@ public class SettlementResponse {
         com.fasterxml.jackson.databind.node.ObjectNode filtered = metadata.deepCopy();
         
         // Remove sensitive fields that shouldn't be exposed in API
-        filtered.remove("apiKey");
-        filtered.remove("credentials");
-        filtered.remove("internalReference");
-        filtered.remove("bankAccountDetails");
+        filtered.remove(java.util.List.of(
+                "apiKey",
+                "credentials",
+                "internalReference",
+                "bankAccountDetails",
+                "account_number",
+                "contactId",
+                "fundAccountId",
+                "contact_id",
+                "fund_account_id"));
         
         return filtered;
     }
@@ -256,14 +262,9 @@ public class SettlementResponse {
      */
     public String getProcessorIcon() {
         return switch (paymentProcessor) {
-            case SWIFT -> "swift";
-            case RIPPLE -> "ripple";
-            case VISA_DIRECT -> "visa";
-            case MASTERCARD_SEND -> "mastercard";
-            case ACH -> "ach";
-            case SEPA -> "sepa";
-            case FASTER_PAYMENTS -> "fps";
-            case MOCK -> "test";
+            case RAZORPAYX -> "razorpay";
+            case SIMULATED, MOCK -> "simulated";
+            default -> "unsupported";
         };
     }
 

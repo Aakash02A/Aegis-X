@@ -5,6 +5,7 @@ import com.aegisx.integrity.domain.ReconciliationStrategy;
 import com.aegisx.integrity.domain.ReconciliationTrigger;
 import com.aegisx.integrity.entity.ReconciliationFinding;
 import com.aegisx.integrity.entity.ReconciliationRun;
+import com.aegisx.integrity.exception.IntegrityNotFoundException;
 import com.aegisx.integrity.reconciliation.ReconciliationMethodRegistry;
 import com.aegisx.integrity.reconciliation.ReconciliationService;
 import com.aegisx.integrity.repository.ReconciliationFindingRepository;
@@ -62,7 +63,7 @@ public class IntegrityReconciliationController {
     }
 
     @GetMapping("/methods")
-    @PreAuthorize("isAuthenticated()")
+    @PreAuthorize("hasAnyRole('ADMIN','COMPLIANCE_OFFICER','SETTLEMENT_OPERATOR')")
     public ResponseEntity<ApiResponse<List<Map<String, String>>>> methods() {
         List<Map<String, String>> methods = methodRegistry.all().stream().map(method -> {
             Map<String, String> entry = new LinkedHashMap<>();
@@ -74,22 +75,25 @@ public class IntegrityReconciliationController {
     }
 
     @GetMapping("/runs")
-    @PreAuthorize("isAuthenticated()")
+    @PreAuthorize("hasAnyRole('ADMIN','COMPLIANCE_OFFICER','SETTLEMENT_OPERATOR')")
     public ResponseEntity<ApiResponse<List<ReconciliationRun>>> runs(@PathVariable UUID workspaceId) {
         return ResponseEntity.ok(ApiResponse.success(
                 runRepository.findAllByWorkspaceIdOrderByStartedAtDesc(workspaceId), "Reconciliation runs retrieved"));
     }
 
     @GetMapping("/runs/{runId}/findings")
-    @PreAuthorize("isAuthenticated()")
+    @PreAuthorize("hasAnyRole('ADMIN','COMPLIANCE_OFFICER','SETTLEMENT_OPERATOR')")
     public ResponseEntity<ApiResponse<List<ReconciliationFinding>>> findings(@PathVariable UUID workspaceId,
                                                                             @PathVariable UUID runId) {
-        return ResponseEntity.ok(ApiResponse.success(findingRepository.findByRunIdOrderByCreatedAtAsc(runId),
+        runRepository.findByIdAndWorkspaceId(runId, workspaceId)
+                .orElseThrow(() -> new IntegrityNotFoundException("Reconciliation run not found"));
+        return ResponseEntity.ok(ApiResponse.success(
+                findingRepository.findByRunIdAndWorkspaceIdOrderByCreatedAtAsc(runId, workspaceId),
                 "Findings for run " + runId + " retrieved"));
     }
 
     @GetMapping("/findings")
-    @PreAuthorize("isAuthenticated()")
+    @PreAuthorize("hasAnyRole('ADMIN','COMPLIANCE_OFFICER','SETTLEMENT_OPERATOR')")
     public ResponseEntity<ApiResponse<List<ReconciliationFinding>>> recentFindings(
             @PathVariable UUID workspaceId,
             @RequestParam(defaultValue = "50") int limit) {

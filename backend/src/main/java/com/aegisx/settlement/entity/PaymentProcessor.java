@@ -1,58 +1,33 @@
 package com.aegisx.settlement.entity;
 
 /**
- * Enumeration of supported payment processors.
- * Each processor has specific integration requirements and capabilities.
+ * Processor identifiers retained for stored settlement compatibility.
+ * Only RazorpayX and the explicitly simulated path accept new settlements.
  */
 public enum PaymentProcessor {
     
-    /**
-     * SWIFT network for international wire transfers.
-     */
-    SWIFT("SWIFT", "Society for Worldwide Interbank Financial Telecommunication", 
-          true, true, "MT103", 24),
-    
-    /**
-     * Ripple network for cross-border payments.
-     */
-    RIPPLE("Ripple", "Ripple Network", 
-           true, false, "ILP", 1),
-    
-    /**
-     * Visa Direct for card-based transfers.
-     */
-    VISA_DIRECT("Visa Direct", "Visa Direct Push-to-Card", 
-                false, false, "OCT", 1),
-    
-    /**
-     * Mastercard Send for card-based transfers.
-     */
-    MASTERCARD_SEND("Mastercard Send", "Mastercard Send Person-to-Person", 
-                     false, false, "MoneySend", 1),
-    
-    /**
-     * ACH network for domestic US transfers.
-     */
-    ACH("ACH", "Automated Clearing House", 
-        false, true, "CCD+", 72),
-    
-    /**
-     * SEPA network for European transfers.
-     */
-    SEPA("SEPA", "Single Euro Payments Area", 
-         false, true, "SCT", 24),
-    
-    /**
-     * Faster Payments for UK domestic transfers.
-     */
-    FASTER_PAYMENTS("Faster Payments", "UK Faster Payments Service", 
-                    false, false, "FPS", 1),
-    
-    /**
-     * Mock processor for testing and development.
-     */
-    MOCK("Mock", "Mock Payment Processor for Testing", 
-         true, false, "MOCK", 0);
+    SWIFT("SWIFT", "Unsupported legacy processor (no provider integration)",
+          false, false, "UNSUPPORTED", 0),
+    RIPPLE("Ripple", "Unsupported legacy processor (no provider integration)",
+           false, false, "UNSUPPORTED", 0),
+    VISA_DIRECT("Visa Direct", "Unsupported legacy processor (no provider integration)",
+                false, false, "UNSUPPORTED", 0),
+    MASTERCARD_SEND("Mastercard Send", "Unsupported legacy processor (no provider integration)",
+                    false, false, "UNSUPPORTED", 0),
+    ACH("ACH", "Unsupported legacy processor (no provider integration)",
+        false, false, "UNSUPPORTED", 0),
+    SEPA("SEPA", "Unsupported legacy processor (no provider integration)",
+         false, false, "UNSUPPORTED", 0),
+    FASTER_PAYMENTS("Faster Payments", "Unsupported legacy processor (no provider integration)",
+                    false, false, "UNSUPPORTED", 0),
+
+    RAZORPAYX("RazorpayX", "RazorpayX India Payouts",
+              false, false, "PAYOUT", 24),
+
+    MOCK("Mock", "SIMULATED (legacy; no money moved)",
+         false, false, "UNSUPPORTED", 0),
+    SIMULATED("SIMULATED", "SIMULATED (no money moved)",
+              false, false, "SIMULATED", 0);
 
     private final String code;
     private final String displayName;
@@ -94,6 +69,10 @@ public enum PaymentProcessor {
 
     public int getTypicalSettlementHours() {
         return typicalSettlementHours;
+    }
+
+    public boolean supportsNewSettlements() {
+        return this == RAZORPAYX || this == SIMULATED;
     }
 
     /**

@@ -28,7 +28,6 @@ public class SettlementRequest {
     private PaymentProcessor paymentProcessor;
 
     @NotNull(message = "Settlement amount is required")
-    @DecimalMin(value = "0.01", message = "Settlement amount must be positive")
     @Digits(integer = 13, fraction = 2, message = "Invalid amount format")
     private BigDecimal settlementAmount;
 
@@ -94,29 +93,25 @@ public class SettlementRequest {
      */
     private void validateProcessorSpecificRequirements() {
         switch (paymentProcessor) {
-            case SWIFT -> {
-                if (beneficiaryBankCode == null || beneficiaryBankCode.isEmpty()) {
-                    throw new IllegalArgumentException("Beneficiary bank code is required for SWIFT");
+            case RAZORPAYX -> {
+                if (!"INR".equals(settlementCurrency)) {
+                    throw new IllegalArgumentException("RazorpayX payouts require INR settlement currency");
                 }
-                if (beneficiaryAccountNumber == null || beneficiaryAccountNumber.isEmpty()) {
-                    throw new IllegalArgumentException("Beneficiary account number is required for SWIFT");
+                if (beneficiaryName == null || !beneficiaryName.trim().matches("^[A-Za-z0-9 ._()/'-]{3,50}$")) {
+                    throw new IllegalArgumentException("Valid beneficiary name is required for RazorpayX");
                 }
-            }
-            case ACH -> {
-                if (beneficiaryAccountNumber == null || beneficiaryAccountNumber.length() < 4) {
-                    throw new IllegalArgumentException("Valid beneficiary account number is required for ACH");
+                if (beneficiaryAccountNumber == null || !beneficiaryAccountNumber.matches("^[A-Za-z0-9]{5,35}$")) {
+                    throw new IllegalArgumentException("Valid beneficiary bank account number is required for RazorpayX");
                 }
-                if (beneficiaryBankCode == null || beneficiaryBankCode.length() != 9) {
-                    throw new IllegalArgumentException("Valid 9-digit routing number is required for ACH");
+                if (beneficiaryBankCode == null || !beneficiaryBankCode.matches("^[A-Z]{4}0[A-Z0-9]{6}$")) {
+                    throw new IllegalArgumentException("A valid 11-character IFSC is required for RazorpayX");
                 }
-            }
-            case VISA_DIRECT, MASTERCARD_SEND -> {
-                if (beneficiaryAccountNumber == null || 
-                    !beneficiaryAccountNumber.matches("^\\d{13,19}$")) {
-                    throw new IllegalArgumentException("Valid card number is required for card networks");
+                if (settlementAmount.compareTo(new BigDecimal("1.00")) < 0) {
+                    throw new IllegalArgumentException("RazorpayX payouts must be at least INR 1.00");
                 }
             }
-            // Add other processor validations as needed
+            default -> {
+            }
         }
     }
 
@@ -161,49 +156,4 @@ public class SettlementRequest {
                 .build();
     }
 
-    /**
-     * Creates a SWIFT settlement request.
-     */
-    public static SettlementRequest createSwiftSettlement(UUID transactionId,
-                                                        BigDecimal amount,
-                                                        String currency,
-                                                        String beneficiaryAccount,
-                                                        String beneficiaryBank,
-                                                        String beneficiaryName) {
-        return SettlementRequest.builder()
-                .transactionId(transactionId)
-                .paymentProcessor(PaymentProcessor.SWIFT)
-                .settlementAmount(amount)
-                .settlementCurrency(currency)
-                .beneficiaryAccountNumber(beneficiaryAccount)
-                .beneficiaryBankCode(beneficiaryBank)
-                .beneficiaryName(beneficiaryName)
-                .requiresReconciliation(true)
-                .build();
-    }
-
-    /**
-     * Creates a card network settlement request.
-     */
-    public static SettlementRequest createCardSettlement(UUID transactionId,
-                                                       PaymentProcessor processor,
-                                                       BigDecimal amount,
-                                                       String currency,
-                                                       String cardNumber,
-                                                       String cardHolderName) {
-        if (processor != PaymentProcessor.VISA_DIRECT && processor != PaymentProcessor.MASTERCARD_SEND) {
-            throw new IllegalArgumentException("Invalid processor for card settlement");
-        }
-        
-        return SettlementRequest.builder()
-                .transactionId(transactionId)
-                .paymentProcessor(processor)
-                .settlementAmount(amount)
-                .settlementCurrency(currency)
-                .beneficiaryAccountNumber(cardNumber)
-                .beneficiaryName(cardHolderName)
-                .prioritySettlement(true)
-                .requiresReconciliation(false)
-                .build();
-    }
 }

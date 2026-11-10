@@ -20,7 +20,9 @@ import java.util.UUID;
  * Implements settlement tracking according to TAS Section 9.2.
  */
 @Entity
-@Table(name = "settlements")
+@Table(name = "settlements", uniqueConstraints = {
+        @UniqueConstraint(name = "uq_settlements_transaction_id", columnNames = "transaction_id")
+})
 @Data
 @Builder
 @NoArgsConstructor
@@ -201,11 +203,17 @@ public class Settlement extends BaseEntity {
      */
     public void updateStatus(SettlementStatus newStatus, String reason) {
         this.status = newStatus;
+        if (newStatus != SettlementStatus.FAILED
+                && newStatus != SettlementStatus.REJECTED
+                && newStatus != SettlementStatus.CANCELLED
+                && newStatus != SettlementStatus.RECONCILIATION_FAILED) {
+            this.failureReason = null;
+        }
         
         switch (newStatus) {
             case SUBMITTED -> this.submittedAt = LocalDateTime.now();
             case COMPLETED -> this.completedAt = LocalDateTime.now();
-            case FAILED, REJECTED, CANCELLED -> {
+            case FAILED, REJECTED, CANCELLED, RECONCILIATION_FAILED -> {
                 this.failureReason = reason;
                 if (newStatus == SettlementStatus.FAILED && canRetry()) {
                     scheduleNextRetry();

@@ -131,7 +131,7 @@ public class AIAnalysisService {
                 .modelName(modelName)
                 .promptVersion(promptVersion)
                 .inputHash(inputHash)
-                .analysisJson(aiResponseParser.parseToJsonNode(aiResponse))
+                .analysisJson(aiResponseParser.toCanonicalJsonNode(analysisResponse))
                 .confidenceScore(analysisResponse.getOverallConfidence())
                 .processingDurationMs(processingDurationMs)
                 .build();
@@ -143,11 +143,12 @@ public class AIAnalysisService {
             return saved;
             
         } catch (InvalidAIResponseException e) {
-            log.error("Invalid AI response for transaction {}: {}", input.getTransactionId(), e.getMessage(), e);
-            throw new AIAnalysisException("AI response validation failed: " + e.getMessage(), e);
+            log.warn("AI response validation failed for transaction {}", input.getTransactionId());
+            throw new AIAnalysisException("AI response validation failed", e);
         } catch (Exception e) {
-            log.error("AI analysis failed for transaction {}: {}", input.getTransactionId(), e.getMessage(), e);
-            throw new AIAnalysisException("AI analysis failed: " + e.getMessage(), e);
+            log.warn("AI advisory analysis failed for transaction {} ({})",
+                input.getTransactionId(), e.getClass().getSimpleName());
+            throw new AIAnalysisException("AI advisory analysis failed", e);
         }
     }
     

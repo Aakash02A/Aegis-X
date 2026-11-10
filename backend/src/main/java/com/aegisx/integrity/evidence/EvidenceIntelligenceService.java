@@ -117,10 +117,9 @@ public class EvidenceIntelligenceService {
         String filename = EvidenceDocumentService.safeFilename(file == null ? null : file.getOriginalFilename(),
                 "evidence-document");
         byte[] content = EvidenceDocumentService.readBytes(file);
-        String mimeType = documentService.detectMimeType(content);
 
         EvidenceDocumentService.Receipt receipt = documentService.receive(workspaceId, orderId, requestedType,
-                file, filename, mimeType, content,
+                file, filename, content,
                 actor == null ? "UNKNOWN" : actor.label(), actor == null ? null : actor.userId(), false);
 
         EvidenceExtractionService.Outcome extraction =

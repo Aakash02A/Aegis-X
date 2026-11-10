@@ -43,7 +43,7 @@ public class IntegrityWebhookHistoryController {
                                  String endpointTemplate) { }
 
     @GetMapping
-    @PreAuthorize("isAuthenticated()")
+    @PreAuthorize("hasAnyRole('ADMIN','COMPLIANCE_OFFICER','SETTLEMENT_OPERATOR')")
     public ResponseEntity<ApiResponse<WebhookHistory>> history(@PathVariable UUID workspaceId) {
         List<IntegrityWebhookEvent> events = eventRepository.findAllByWorkspaceIdOrderByReceivedAtDesc(workspaceId);
         List<WebhookDelivery> deliveries = deliveryRepository.findAllByWorkspaceIdOrderByReceivedAtDesc(workspaceId);

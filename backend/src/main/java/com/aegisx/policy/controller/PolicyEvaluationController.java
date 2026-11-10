@@ -2,14 +2,17 @@ package com.aegisx.policy.controller;
 
 import com.aegisx.common.exception.MissingEvidenceException;
 import com.aegisx.common.exception.PolicyEvaluationException;
+import com.aegisx.common.exception.TransactionNotFoundException;
 import com.aegisx.policy.dto.PolicyEvaluationResponse;
 import com.aegisx.policy.service.PolicyEvaluationService;
 import com.aegisx.transaction.repository.TransactionRepository;
+import com.aegisx.transaction.service.TransactionService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.HashMap;
@@ -48,6 +51,7 @@ public class PolicyEvaluationController {
     
     private final PolicyEvaluationService policyEvaluationService;
     private final TransactionRepository transactionRepository;
+    private final TransactionService transactionService;
     
     /**
      * Trigger policy evaluation for a transaction.
@@ -58,14 +62,13 @@ public class PolicyEvaluationController {
      * @return Final compliance decision (APPROVED or COMPLIANCE_HOLD)
      */
     @PostMapping("/{id}/policy-evaluation")
-    @PreAuthorize("isAuthenticated()")
-    public ResponseEntity<?> triggerEvaluation(@PathVariable("id") UUID transactionId) {
+    @PreAuthorize("hasAnyRole('MERCHANT', 'COMPLIANCE_OFFICER', 'ADMIN')")
+    public ResponseEntity<?> triggerEvaluation(@PathVariable("id") UUID transactionId, Authentication authentication) {
         try {
             log.info("Triggering policy evaluation for transaction: {}", transactionId);
             
-            // Verify transaction exists
-            transactionRepository.findById(transactionId)
-                .orElseThrow(() -> new IllegalArgumentException("Transaction not found: " + transactionId));
+            // Verify transaction exists and caller is authorized
+            transactionService.getAuthorizedTransaction(transactionId, authentication);
             
             // Trigger evaluation
             var evaluation = policyEvaluationService.evaluateTransaction(transactionId);
@@ -83,6 +86,8 @@ public class PolicyEvaluationController {
             
             return ResponseEntity.ok(response);
             
+        } catch (TransactionNotFoundException e) {
+            throw e;
         } catch (IllegalArgumentException e) {
             log.warn("Invalid request for policy evaluation: {}", e.getMessage());
             return ResponseEntity.badRequest().body(Map.of(
@@ -121,14 +126,13 @@ public class PolicyEvaluationController {
      * @return Latest evaluation with decision and rule results
      */
     @GetMapping("/{id}/policy-evaluation")
-    @PreAuthorize("isAuthenticated()")
-    public ResponseEntity<?> getLatestEvaluation(@PathVariable("id") UUID transactionId) {
+    @PreAuthorize("hasAnyRole('MERCHANT', 'COMPLIANCE_OFFICER', 'ADMIN')")
+    public ResponseEntity<?> getLatestEvaluation(@PathVariable("id") UUID transactionId, Authentication authentication) {
         try {
             log.info("Retrieving latest policy evaluation for transaction: {}", transactionId);
             
-            // Verify transaction exists
-            transactionRepository.findById(transactionId)
-                .orElseThrow(() -> new IllegalArgumentException("Transaction not found: " + transactionId));
+            // Verify transaction exists and caller is authorized
+            transactionService.getAuthorizedTransaction(transactionId, authentication);
             
             // Retrieve latest evaluation
             PolicyEvaluationResponse evaluation = policyEvaluationService.getLatestEvaluation(transactionId);
@@ -144,6 +148,8 @@ public class PolicyEvaluationController {
             log.info("Retrieved policy evaluation for transaction: {}", transactionId);
             return ResponseEntity.ok(evaluation);
             
+        } catch (TransactionNotFoundException e) {
+            throw e;
         } catch (IllegalArgumentException e) {
             log.warn("Invalid request for policy evaluation retrieval: {}", e.getMessage());
             return ResponseEntity.badRequest().body(Map.of(

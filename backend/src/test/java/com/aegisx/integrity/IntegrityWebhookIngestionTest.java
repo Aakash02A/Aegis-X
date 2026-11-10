@@ -2,7 +2,9 @@ package com.aegisx.integrity;
 
 import com.aegisx.common.exception.InvalidWebhookSignatureException;
 import com.aegisx.integrity.domain.EvidenceSource;
+import com.aegisx.integrity.domain.FindingType;
 import com.aegisx.integrity.domain.PaymentState;
+import com.aegisx.integrity.domain.ResourceType;
 import com.aegisx.integrity.domain.TransferState;
 import com.aegisx.integrity.domain.WebhookProcessingState;
 import com.aegisx.integrity.entity.PaymentOrder;
@@ -15,6 +17,8 @@ import com.aegisx.integrity.support.IntegrityTestSupport;
 import com.aegisx.integrity.webhook.IntegrityWebhookIngestionService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+
+import java.time.Instant;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -66,6 +70,54 @@ class IntegrityWebhookIngestionTest extends IntegrityTestSupport {
         assertThat(result.applied()).isTrue();
         assertThat(result.state()).isEqualTo(WebhookProcessingState.PROCESSED);
         assertThat(paymentRepository.countByWorkspaceId(workspace.getId())).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("a valid but unknown event is recorded without changing payment state")
+    void unknownEventIsRecordedWithoutBusinessMutation() {
+        Workspace workspace = newWorkspace();
+        PaymentOrder order = newOrderWithProviderOrder(workspace, 52_000);
+        long observationsBefore = observationRepository.countByWorkspaceId(workspace.getId());
+        String body = "{\"event\":\"future.unsupported_event\",\"created_at\":"
+                + Instant.now().getEpochSecond() + ",\"payload\":{}}";
+
+        IntegrityWebhookIngestionService.IngestionResult result = deliver(workspace, body,
+                "evt_unknown_" + java.util.UUID.randomUUID());
+
+        assertThat(result.duplicate()).isFalse();
+        assertThat(result.state()).isEqualTo(WebhookProcessingState.PROCESSED);
+        assertThat(webhookEventRepository.countByWorkspaceId(workspace.getId())).isEqualTo(1);
+        assertThat(deliveryRepository.countByWorkspaceId(workspace.getId())).isEqualTo(1);
+        assertThat(paymentRepository.countByWorkspaceId(workspace.getId())).isZero();
+        assertThat(orderRepository.findById(order.getId()).orElseThrow().getState().name()).isEqualTo("CREATED");
+        assertThat(observationRepository.countByWorkspaceId(workspace.getId())).isEqualTo(observationsBefore);
+    }
+
+    @Test
+    @DisplayName("a separately signed event with a distinct id is processed without a second capture")
+    void distinctResignedEventDoesNotDuplicatePaymentEffect() {
+        Workspace workspace = newWorkspace();
+        PaymentOrder order = newOrderWithProviderOrder(workspace, 61_000);
+        String paymentId = registerProviderPayment(order, 61_000, PaymentState.CAPTURED);
+        String firstBody = paymentEventBody("payment.captured", paymentId, order.getProviderOrderId(),
+                61_000, "INR", "captured");
+        String secondBody = firstBody.replaceFirst("\"created_at\":\\d+",
+                "\"created_at\":" + Instant.now().plusSeconds(1).getEpochSecond());
+
+        IntegrityWebhookIngestionService.IngestionResult first = ingestionService.ingest(workspace.getId(), firstBody,
+                simulatedProvider.sign(firstBody), "evt_resigned_first_" + paymentId);
+        IntegrityWebhookIngestionService.IngestionResult second = ingestionService.ingest(workspace.getId(), secondBody,
+                simulatedProvider.sign(secondBody), "evt_resigned_second_" + paymentId);
+
+        assertThat(first.duplicate()).isFalse();
+        assertThat(second.duplicate()).isFalse();
+        assertThat(webhookEventRepository.countByWorkspaceId(workspace.getId())).isEqualTo(2);
+        assertThat(deliveryRepository.countByWorkspaceId(workspace.getId())).isEqualTo(2);
+        assertThat(deliveryRepository.countByWorkspaceIdAndFirstDeliveryFalse(workspace.getId())).isZero();
+        assertThat(paymentRepository.countByWorkspaceId(workspace.getId())).isEqualTo(1);
+        long captureTransitions = transitionRepository.findAllByWorkspaceIdOrderByOccurredAtDesc(workspace.getId())
+                .stream().filter(transition -> "CAPTURED".equals(transition.getToState())).count();
+        assertThat(captureTransitions).isEqualTo(1);
     }
 
     @Test
@@ -220,6 +272,65 @@ class IntegrityWebhookIngestionTest extends IntegrityTestSupport {
         assertThat(transitionRepository.countByWorkspaceIdAndConflictTrue(workspace.getId()))
                 .as("an in-order pair of deliveries is not a conflict")
                 .isZero();
+    }
+
+    @Test
+    @DisplayName("a payment event whose order id conflicts with its existing payment binding is not applied")
+    void mismatchedOrderIdDoesNotMutateExistingPayment() {
+        Workspace workspace = newWorkspace();
+        PaymentOrder linkedOrder = newOrderWithProviderOrder(workspace, 80_000);
+        PaymentOrder otherOrder = newOrderWithProviderOrder(workspace, 80_000);
+        String paymentId = registerProviderPayment(linkedOrder, 80_000, PaymentState.AUTHORIZED);
+
+        deliver(workspace, paymentEventBody("payment.authorized", paymentId, linkedOrder.getProviderOrderId(),
+                80_000, "INR", "authorized"), "evt_order_binding_seed_" + paymentId);
+        IntegrityWebhookIngestionService.IngestionResult mismatched = deliver(workspace,
+                paymentEventBody("payment.captured", paymentId, otherOrder.getProviderOrderId(),
+                        80_000, "INR", "captured"),
+                "evt_order_binding_mismatch_" + paymentId);
+
+        PaymentRecord payment = paymentRepository.findByWorkspaceIdAndProviderPaymentId(workspace.getId(), paymentId)
+                .orElseThrow();
+        assertThat(mismatched.applied()).isFalse();
+        assertThat(mismatched.state()).isEqualTo(WebhookProcessingState.IGNORED_TERMINAL);
+        assertThat(payment.getState()).isEqualTo(PaymentState.AUTHORIZED);
+        assertThat(payment.getProviderState()).isEqualTo(PaymentState.AUTHORIZED);
+        assertThat(orderRepository.findById(linkedOrder.getId()).orElseThrow().getState().name())
+                .isNotEqualTo("PAID");
+        assertThat(orderRepository.findById(otherOrder.getId()).orElseThrow().getState().name())
+                .isEqualTo("CREATED");
+        assertThat(observationRepository.findAllByWorkspaceIdOrderByObservedAtDesc(workspace.getId()))
+                .anyMatch(observation -> observation.getResourceType() == ResourceType.PAYMENT
+                        && observation.getPaymentId() == null
+                        && paymentId.equals(observation.getProviderResourceId()));
+    }
+
+    @Test
+    @DisplayName("amount and currency mismatches from a matched order remain visible to reconciliation")
+    void matchedOrderAmountAndCurrencyMismatchAreReported() {
+        Workspace workspace = newWorkspace();
+        PaymentOrder shortOrder = newOrderWithProviderOrder(workspace, 63_000);
+        PaymentOrder wrongCurrencyOrder = newOrderWithProviderOrder(workspace, 74_000);
+        String shortPayment = simulatedProvider.registerPayment(shortOrder.getProviderOrderId(), 62_000,
+                "INR", PaymentState.CAPTURED);
+        String wrongCurrencyPayment = simulatedProvider.registerPayment(wrongCurrencyOrder.getProviderOrderId(), 74_000,
+                "USD", PaymentState.CAPTURED);
+
+        deliver(workspace, paymentEventBody("payment.captured", shortPayment, shortOrder.getProviderOrderId(),
+                62_000, "INR", "captured"), "evt_short_capture_" + shortPayment);
+        deliver(workspace, paymentEventBody("payment.captured", wrongCurrencyPayment,
+                wrongCurrencyOrder.getProviderOrderId(), 74_000, "USD", "captured"),
+                "evt_wrong_currency_" + wrongCurrencyPayment);
+
+        assertThat(orderRepository.findById(shortOrder.getId()).orElseThrow().getExpectedAmountMinor())
+                .isEqualTo(63_000);
+        assertThat(orderRepository.findById(wrongCurrencyOrder.getId()).orElseThrow().getCurrency())
+                .isEqualTo("INR");
+
+        var run = reconcile(workspace);
+        var findings = findingRepository.findByRunIdAndWorkspaceIdOrderByCreatedAtAsc(run.runId(), workspace.getId());
+        assertThat(findings).anyMatch(finding -> finding.getFindingType() == FindingType.AMOUNT_MISMATCH);
+        assertThat(findings).anyMatch(finding -> finding.getFindingType() == FindingType.CURRENCY_MISMATCH);
     }
 
     @Test
