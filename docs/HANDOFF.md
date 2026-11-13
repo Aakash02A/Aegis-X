@@ -726,3 +726,14 @@ Recorded in the commit that updates this handoff and BUILD_STATUS.
 ### Open items
 - Rerun API E2E after the local MySQL connection-limit issue is resolved.
 - Complete the baseline screenshot comparison and final randomized backend suite before marking F6 complete.
+
+### Follow-up verification (2026-11-13)
+- Headless Playwright used the installed 1.62.0 driver with system Chrome. The F6 merchant, reviewer, settlement-operator, and admin journeys passed **18/18** against the runner-created disposable `aegisx_e2e` schema. The merchant UI requested Java policy evaluation after evidence uploads and displayed the returned `COMPLIANCE_HOLD` outcome and rule reasons; the reviewer decision appeared in the audit timeline; the operator saw the assigned test workspace and test-mode notice. No live provider or money-moving action was used.
+- In the combined runner, the API flow reached its admin login after the browser journeys and received HTTP **429**; the following workspace lookup was denied and that API flow aborted. A separate API-only retry could not recreate the same authorized disposable schema because the local MySQL endpoint at `127.0.0.1:3306` refused connections. The backend did not start on that retry. The MySQL service state could not be inspected with the available account permissions, and no service restart was attempted.
+- Current `npm.cmd test`: **194 passed, 0 failed**; `npm.cmd run build`: **59 modules**, successful. These results include uncommitted local sidebar-collapse edits present in the shared working tree. The exact CSS token and font assertions passed against `docs/design-baseline.json`.
+- All runner ports used in these attempts (22090/22086/22096, 22190/22186/22196, and 22290/22286/22296) were confirmed free afterward. The journey screenshots are in ignored `frontend/.screens/f6-journeys/`.
+- This is not a final full-matrix screenshot recapture or comparison: `frontend/.screens/after-f5-complete/` remains the last complete 172-image matrix. The final randomized MySQL-backed backend suite also remains unverified because the local MySQL listener was unavailable.
+
+### Remaining F6 blockers
+- Restore local MySQL availability, then rerun the API E2E harness and final randomized backend suite against only the explicitly authorized test schema.
+- Re-capture and compare the full supported page/role/viewport matrix after the final working-tree changes. Keep F6 **IN PROGRESS** until both items pass.
