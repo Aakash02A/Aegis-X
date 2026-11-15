@@ -136,6 +136,10 @@ const responsiveTableJs = fs.readFileSync(path.join(frontendDir, 'components/res
 const pageHeaderJs = fs.readFileSync(path.join(frontendDir, 'components/page-header.js'), 'utf-8');
 assert(appShellJs.includes('data-workspace-menu') && appShellJs.includes('aria-expanded'), 'Shared shell exposes an accessible mobile navigation control');
 assert(appShellJs.includes("event.key === 'Escape'") && appShellJs.includes('aside.inert'), 'Mobile navigation supports Escape and hides closed links from keyboard and assistive technology');
+assert(appShellJs.includes('data-sidebar-toggle') && appShellJs.includes('aegis_sidebar_collapsed'), 'Shared sidebar has a persistent desktop collapse control');
+assert(appShellJs.includes('sidebar-collapsed') && appShellJs.includes('Expand sidebar'), 'Desktop sidebar control updates collapsed state and accessible name');
+const componentsStyles = fs.readFileSync(path.join(frontendDir, 'styles/components.css'), 'utf-8');
+assert(componentsStyles.includes('.sidebar-collapsed') && componentsStyles.includes('flex-basis: 4.5rem') && componentsStyles.includes('width: 4.5rem'), 'Collapsed sidebar uses a fixed icon-rail width and flex basis');
 assert(responsiveTableJs.includes('data-label') && responsiveTableJs.includes('MutationObserver'), 'Responsive tables label both initial and dynamically added rows');
 assert(pageHeaderJs.includes('[data-page-heading]') && pageHeaderJs.includes('header.insertBefore'), 'Shared page heading mounts in the responsive application header');
 const dashboardHtml = fs.readFileSync(path.join(frontendDir, 'dashboard.html'), 'utf-8');

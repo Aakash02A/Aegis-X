@@ -406,6 +406,56 @@ body.modal-open {
   overflow: hidden;
 }
 
+.app-sidebar {
+  flex: 0 0 16rem;
+  transition: width 180ms ease, flex-basis 180ms ease;
+}
+
+.sidebar-collapse {
+  width: 2rem;
+  height: 2rem;
+}
+
+@media (min-width: 768px) {
+  .sidebar-collapsed {
+    flex-basis: 4.5rem;
+    width: 4.5rem;
+  }
+
+  .sidebar-collapsed .sidebar-brand-row {
+    justify-content: center;
+    padding-inline: 0.5rem;
+  }
+
+  .sidebar-collapsed .sidebar-logo,
+  .sidebar-collapsed .sidebar-brand-copy,
+  .sidebar-collapsed .sidebar-link-label,
+  .sidebar-collapsed .sidebar-profile-details,
+  .sidebar-collapsed .sidebar-workspace-details {
+    display: none;
+  }
+
+  .sidebar-collapsed nav {
+    padding-inline: 0.5rem;
+  }
+
+  .sidebar-collapsed .sidebar-link {
+    justify-content: center;
+    padding-inline: 0;
+  }
+
+  .sidebar-collapsed .sidebar-link i {
+    width: auto;
+  }
+
+  .sidebar-collapsed .sidebar-profile {
+    justify-content: center;
+    padding-inline: 0.25rem;
+    flex-direction: column;
+    gap: 0.25rem;
+  }
+}
+
 /* Font Awesome Icons
    Markup sizes icons with Tailwind width/height utilities, but a font glyph is laid out at
    font-size, not at the box size. Coupling the two keeps each icon the size the SVG it replaced
