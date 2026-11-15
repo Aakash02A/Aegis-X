@@ -1,0 +1,39 @@
+# Local XAMPP profile for MariaDB 10.11.
+#
+# The repository migrations target MySQL 8.4 and use collations/functions that MariaDB does not
+# provide. This profile deliberately uses a separate development schema and Hibernate's update
+# mode so the existing MySQL migration path remains untouched.
+spring:
+  datasource:
+    url: ${DB_URL:jdbc:mysql://localhost:3306/aegisx_xampp?createDatabaseIfNotExist=true&connectionTimeZone=UTC&forceConnectionTimeZoneToSession=true&characterEncoding=UTF-8&useSSL=false&allowPublicKeyRetrieval=true}
+    username: ${DB_USERNAME:root}
+    password: ${DB_PASSWORD:}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      connection-init-sql: SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.MariaDBDialect
+        format_sql: true
+        jdbc.time_zone: UTC
+        type.preferred_uuid_jdbc_type: CHAR
+
+  flyway:
+    enabled: false
+
+management:
+  endpoint:
+    health:
+      show-details: always
+      show-components: always
+
+logging:
+  level:
+    root: INFO
+    com.aegisx: INFO
+    org.hibernate.SQL: WARN

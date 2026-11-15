@@ -195,6 +195,25 @@ If the backend dies with `ClassFormatError: Invalid method Code length 0 in clas
 other class-file error), `target/classes` is stale — most often left behind by an interrupted
 build. Run `./mvnw clean` once, then start again.
 
+### XAMPP MariaDB
+
+XAMPP's bundled server is MariaDB, not MySQL 8.4. To run the project against XAMPP without
+touching the existing `aegisx` database, use a separate development schema and the `xampp`
+profile:
+
+```powershell
+$env:DB_URL='jdbc:mysql://localhost:3306/aegisx_xampp?createDatabaseIfNotExist=true&connectionTimeZone=UTC&forceConnectionTimeZoneToSession=true&characterEncoding=UTF-8&useSSL=false&allowPublicKeyRetrieval=true'
+$env:DB_USERNAME='root'
+$env:DB_PASSWORD='your-xampp-password'
+$env:SPRING_PROFILES_ACTIVE='xampp'
+cd backend
+mvn spring-boot:run
+```
+
+The XAMPP profile disables the MySQL-8.4 Flyway migrations and uses Hibernate's development
+schema generation. Use the Docker Compose path or a MySQL 8.4 server when migration fidelity and
+production-like validation are required.
+
 ---
 
 ## 📊 State Machine & Processing Pipeline
