@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # End-to-end verification runner for Aegis-X.
-# Starts the backend against the explicitly disposable aegisx_audit MySQL 8.4 database,
+# Starts the backend against the explicitly disposable aegisx_e2e MySQL 8.4 database,
 # drives the HTTP API with the in-process test provider, then shuts the server down.
 set -u
 
@@ -87,8 +87,8 @@ CP="$(cat "$CP_FILE")"
 if command -v cygpath >/dev/null 2>&1; then CP_SEPARATOR=';'; else CP_SEPARATOR=':'; fi
 APP_CP="$BACKEND_NATIVE/target/classes${CP_SEPARATOR}$BACKEND_NATIVE/target/test-classes${CP_SEPARATOR}$CP"
 
-DBNAME="${E2E_DB:-aegisx_audit}"
-if [ "$DBNAME" != "aegisx_audit" ]; then echo "E2E_DB must be aegisx_audit." >&2; exit 1; fi
+DBNAME="${E2E_DB:-aegisx_e2e}"
+if [ "$DBNAME" != "aegisx_e2e" ]; then echo "E2E_DB must be aegisx_e2e." >&2; exit 1; fi
 PORT="${E2E_PORT:-8080}"
 case "$PORT" in ''|*[!0-9]*) echo "E2E_PORT must be numeric." >&2; exit 1 ;; esac
 if [ "$PORT" -lt 1 ] || [ "$PORT" -gt 65535 ]; then echo "E2E_PORT is out of range." >&2; exit 1; fi
@@ -113,7 +113,7 @@ echo "### Recreating disposable database $DBNAME"
   echo "Could not recreate $DBNAME."
   echo "Point ADMIN_MYSQL_URL at a MySQL server you can create databases on, e.g."
   echo "  ADMIN_MYSQL_URL='jdbc:mysql://localhost:3306?useSSL=false&allowPublicKeyRetrieval=true' \\"
-  echo "  MYSQL_E2E_USER=root MYSQL_E2E_PASSWORD=... ./verification/run-e2e.sh"
+  echo "  MYSQL_E2E_USER=root MYSQL_E2E_PASSWORD=... ./tests/e2e/run-e2e.sh"
   exit 1
 }
 

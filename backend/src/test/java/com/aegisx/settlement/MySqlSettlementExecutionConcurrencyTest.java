@@ -17,6 +17,7 @@ import com.aegisx.transaction.entity.TransactionStatus;
 import com.aegisx.transaction.repository.TransactionRepository;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.mock.mockito.SpyBean;
 
@@ -39,6 +40,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
 /** Confirms the real MySQL row lock allows one payout dispatch for overlapping process calls. */
+@EnabledIfEnvironmentVariable(named = "INTEGRITY_MYSQL_URL", matches = ".+")
 @DisplayName("Settlement execution concurrency on MySQL")
 class MySqlSettlementExecutionConcurrencyTest extends MySqlIntegrityTestSupport {
 

@@ -182,7 +182,7 @@ if (process.env.E2E_SIMULATED_PROVIDER === 'true') {
     const javaBin = process.env.JAVA_BIN || 'java';
     const cp = process.env.CP || '';
     const mysqlTool = `${process.env.HARNESS_DIR || '.'}/MySqlTool.java`;
-    const database = process.env.E2E_DB || 'aegisx_audit';
+    const database = process.env.E2E_DB || 'aegisx_e2e';
     execFileSync(javaBin, [
       '-cp', cp,
       mysqlTool,
