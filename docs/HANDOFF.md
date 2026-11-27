@@ -742,3 +742,20 @@ Recorded in the commit that updates this handoff and BUILD_STATUS.
 ### Remaining F6 blockers
 - Restore local MySQL availability, then run the API E2E harness separately from screenshot capture (to avoid the observed repeated-admin-login HTTP 429), and run the final randomized backend suite against only the explicitly authorized test schema.
 - Re-capture and compare the full supported page/role/viewport matrix after the final working-tree changes. Keep F6 **IN PROGRESS** until both items pass.
+
+## Project verification update (2026-11-20)
+
+### Checks completed
+- `npm.cmd test`: **194 passed, 0 failed**. `npm.cmd run build`: successful, **59 modules transformed**.
+- Backend H2 suite: **489 tests, 0 failures, 0 errors, 34 skipped**. `MySqlSettlementExecutionConcurrencyTest` was excluded because the MySQL verification URL/service was unavailable; the 34 database-gated skips do not verify MySQL.
+- Started the application with an isolated in-memory H2 database; `GET /actuator/health` returned **HTTP 200, UP**. The process was stopped after the check.
+- Re-ran the headless Playwright sidebar check using the installed Python distribution's Node driver and system Chrome: **9/9 passed**, no runtime errors. The check mocked APIs and covered the desktop collapse rail and mobile drawer. Its summary is in ignored `frontend/.screens/f6-sidebar-check/summary.json`.
+- `run-xampp-backend.ps1 -ValidateOnly` successfully parsed `.env` into process memory, confirmed the database settings exist, and printed no values. `tests/e2e/run-e2e.sh` now defaults to and permits only the disposable `aegisx_e2e` schema, matching the owner's current authorization. Bash and Node syntax checks passed.
+
+### Fixes made
+- `run-aegis-x.bat` previously inspected `.env` to select the XAMPP branch but launched Maven without exporting the profile or database settings. It now starts `run-xampp-backend.ps1`, which parses only keys documented in `.env.example`, passes values in process memory, and explicitly activates `xampp`. The README explains this Windows path.
+- The E2E runner previously hard-coded destructive recreation of `aegisx_audit`. Its default and guard now use only the explicitly authorized disposable `aegisx_e2e` schema.
+
+### Still unverified
+- The XAMPP-backed application, MySQL-gated suite, API E2E, and final full page/role/viewport screenshot matrix could not run. The managed MariaDB launch was denied write access to `A:\xampp\mysql\data\ibdata1`. One brief server startup did run InnoDB recovery and report ready, but no Aegis-X process connected, no application migrations or E2E reset ran, and I stopped the server. Test ports were confirmed free afterward.
+- F6 remains **IN PROGRESS** until the database-backed verification and final screenshot comparison pass.

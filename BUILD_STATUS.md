@@ -1,7 +1,7 @@
 # Aegis-X Build Status
 
-**Assessment date:** 2026-11-15
-**Branch:** `mysql-migration`
+**Assessment date:** 2026-11-20
+**Branch:** `main`
 **Production readiness:** Not established. The results below are limited to the local tests and simulated integrations listed here.
 
 ## Frontend redesign tracking (2026-11-09)
@@ -13,7 +13,7 @@
 | F3 layout redesign | COMPLETE | Shared responsive header/sidebar/drawer and labeled mobile table cards. Headless Playwright recaptured 120/120 screens; mobile overflow, labels, drawer, Escape, and focus-wrap checks had 0 findings. API E2E reported 56/56 on `aegisx_e2e`. Frontend suite 155/155; Vite build succeeded (55 modules). 18 sanitized console-error combinations remain open. |
 | F4 roles, navigation, and journeys | COMPLETE | Authenticated role data drives the sidebar/profile; return paths are same-origin and role-checked; 401, wrong-role, expired-session, and registration/login journeys passed. Headless capture: 120/120 screenshots, 0 browser errors, 0 mobile findings, 0 route/role findings, 0 failed API resources. API E2E: 56/56. Frontend tests: 184 passed; build: 59 modules. See `docs/HANDOFF.md`. |
 | F5 quality and accessibility | COMPLETE | Headless Playwright: 172/172 screens at four widths; 0 browser/API/layout/accessibility/retry/role findings. Frontend tests 190/190; build 59 modules. Token/font diff empty (21 properties, 4 declarations). Existing low-contrast pairings and client-side auth-storage risk are documented in `docs/HANDOFF.md`. |
-| F6 final UI verification | IN PROGRESS | Headless UI journeys: 18/18 on disposable `aegisx_e2e`; mocked sidebar behavior: 9/9. Frontend tests: 194/194; Vite build: 59 modules. Randomized backend suite without MySQL: 489 passed, 0 failed, 34 skipped (one MySQL-only class excluded after its missing-URL configuration errored). MySQL is unavailable; the final database-backed screenshot/API pass and MySQL suite remain open. See `docs/HANDOFF.md`. |
+| F6 final UI verification | IN PROGRESS | Headless UI journeys: 18/18 on disposable `aegisx_e2e`; mocked sidebar behavior rechecked 9/9. Frontend tests: 194/194; Vite build: 59 modules. Randomized H2 suite: 489 passed, 0 failed/errors, 34 skipped; one MySQL-only class excluded. Isolated H2 runtime health: UP. XAMPP/MySQL is unavailable to this run; the final database-backed screenshot/API pass and MySQL suite remain open. See `docs/HANDOFF.md`. |
 ## Module status
 
 “Verified” means the listed local automated or E2E checks ran successfully. It does not imply a live external service or production deployment was tested.
@@ -44,6 +44,16 @@
 - Fresh local E2E: `E2E_PORT=18090 ./tests/e2e/run-e2e.sh` — **56/56 passed, 0 failed**. This used only local `aegisx_audit`, a loopback Orders stub, a simulated provider event, and disabled payout/financial execution.
 - Final randomized MySQL-backed backend suite: `mvn -o -Daether.syncContext.named.factory=rwlock-local -B -f backend/pom.xml clean test -Dsurefire.runOrder=random` — **490 tests, 0 failures, 0 errors, 1 skipped; BUILD SUCCESS**. The only skip was `MySqlDdlGenerateTest`; all MySQL-gated integration suites ran, including the MySQL settlement concurrency test.
 - Phase 8 previously completed three consecutive clean randomized MySQL-backed suite runs; see `docs/HANDOFF.md` for those results and the reconciliation root-cause fix.
+
+### Latest checks (2026-11-20)
+
+- `npm.cmd test`: **194 passed, 0 failed**. `npm.cmd run build`: successful, **59 modules transformed**.
+- Backend H2 test run: **489 tests, 0 failures, 0 errors, 34 skipped**. `MySqlSettlementExecutionConcurrencyTest` was excluded because no MySQL test service was available; the skipped database-gated tests do not verify MySQL behavior.
+- The application started on an isolated in-memory H2 database and `GET /actuator/health` returned **HTTP 200, UP**. The process was stopped afterward.
+- Headless Playwright with system Chrome passed **9/9** desktop/mobile sidebar checks with no browser runtime errors. The check uses mocked API responses; it is not the full role/page matrix. Summary: `frontend/.screens/f6-sidebar-check/summary.json`.
+- The XAMPP launcher now parses `.env` as data in process memory and explicitly selects the `xampp` profile. Its validation-only mode confirmed documented database settings are present without displaying values. The E2E runner's destructive schema guard/default now target only the explicitly authorized `aegisx_e2e` schema; script syntax checks passed.
+- XAMPP MariaDB could not be validated end to end: this run environment denied a managed `mysqld` launch write access to `A:\xampp\mysql\data\ibdata1`. No Aegis-X application connection, migrations, or E2E schema reset ran. A brief database-server startup did run InnoDB recovery before reporting ready; no application SQL was sent, and the process was stopped.
+- Full MySQL-backed tests and the final database-backed browser screenshot matrix remain open. Local test ports were free after shutdown, and the working tree changes are documented in `docs/HANDOFF.md`.
 
 ## Owner actions and open decisions
 

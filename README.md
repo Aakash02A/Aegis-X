@@ -214,6 +214,10 @@ The XAMPP profile disables the MySQL-8.4 Flyway migrations and uses Hibernate's 
 schema generation. Use the Docker Compose path or a MySQL 8.4 server when migration fidelity and
 production-like validation are required.
 
+On Windows, keep `SPRING_PROFILES_ACTIVE=xampp` in `.env` and run `run-aegis-x.bat`. Its XAMPP
+launcher reads documented `.env` values into the backend process without echoing them, then starts
+the XAMPP profile.
+
 ---
 
 ## 📊 State Machine & Processing Pipeline
