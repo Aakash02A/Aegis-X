@@ -65,7 +65,7 @@ echo Starting the backend with XAMPP MariaDB using the xampp Spring profile...
 set "DB_DISPLAY=localhost:3306 (XAMPP MariaDB), database aegisx_xampp"
 set "BACKEND_LOG_HINT=check the Aegis-X Backend window"
 set "STOP_HINT=close the Aegis-X Backend and Frontend windows"
-start "Aegis-X Backend" /D "%~dp0" cmd /k "mvn -f backend\pom.xml spring-boot:run"
+start "Aegis-X Backend" /D "%~dp0" powershell.exe -NoExit -NoProfile -ExecutionPolicy Bypass -File "%~dp0run-xampp-backend.ps1"
 
 :frontend
 
