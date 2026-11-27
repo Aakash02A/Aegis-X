@@ -14,6 +14,7 @@ import { API } from '../../core/api.js';
 import { requireUser } from '../../core/guards.js';
 import { Auth } from '../../core/auth.js';
 import { createSidebar, wireMobileNavigation } from '../../components/app-shell.js';
+import { mountPageHeader } from '../../components/page-header.js';
 import { enhanceResponsiveTables } from '../../components/responsive-table.js';
 
 const state = {
@@ -150,19 +151,19 @@ function section(title, eyebrow, body) {
 // --------------------------------------------------------------------- layout
 
 function shell(title, subtitle, eyebrow) {
-  return `<div class="flex-1 flex flex-col min-w-0" data-integrity-content>
-    <header class="min-h-[4.5rem] py-2 bg-paper/90 backdrop-blur border-b border-ink/10 px-4 sm:px-6 flex items-center justify-between gap-3 sticky top-0 z-30">
-      <div class="min-w-0">
-        <div class="editorial-eyebrow">${esc(eyebrow)}</div>
-        <h1 class="font-serif text-lg font-medium text-ink">${esc(title)}</h1>
-        <p class="text-xs text-ink-soft truncate">${esc(subtitle)}</p>
-      </div>
-      <div id="integrity-header-actions" class="flex items-center gap-2"></div>
-    </header>
-    <main class="p-6 md:p-8 space-y-8 max-w-6xl w-full mx-auto">
-      <div id="integrity-body" aria-busy="true"><p class="animate-pulse text-sm text-ink-soft" role="status">Loading integrity workspace…</p></div>
-    </main>
-  </div>`;
+  return '<div class="flex-1 flex flex-col min-w-0" data-integrity-content>' +
+    '<header class="min-h-[4.5rem] py-2 bg-paper/90 backdrop-blur border-b border-ink/10 px-4 sm:px-6 flex items-center justify-between gap-3 sticky top-0 z-30">' +
+      '<div id="integrity-header-actions" class="flex items-center gap-2 min-w-0"></div>' +
+    '</header>' +
+    '<main class="p-4 md:p-8 space-y-8 max-w-6xl w-full mx-auto">' +
+      '<div data-page-heading class="border-b border-ink/10 pb-6 min-w-0">' +
+        '<div class="editorial-eyebrow mb-2">' + esc(eyebrow) + '</div>' +
+        '<h1 class="font-serif text-3xl sm:text-4xl font-medium text-ink tracking-tight">' + esc(title) + '</h1>' +
+        '<p class="text-xs text-ink-soft mt-1">' + esc(subtitle) + '</p>' +
+      '</div>' +
+      '<div id="integrity-body" aria-busy="true"><p class="animate-pulse text-sm text-ink-soft" role="status">Loading integrity workspace…</p></div>' +
+    '</main>' +
+  '</div>';
 }
 
 const PAGE_META = {
@@ -1199,6 +1200,7 @@ export async function boot(page = state.page) {
   document.body.prepend(root);
   document.getElementById('integrity-main').outerHTML = shell(title, subtitle, eyebrow);
   wireMobileNavigation(root.querySelector('aside'), root.querySelector('header'), root);
+  mountPageHeader(root.querySelector('main'));
   await loadWorkspacePage(root);
 }
 

@@ -5,6 +5,7 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { APP_NAVIGATION, APP_ROUTES, INTEGRITY_ROUTES, PROTECTED_PAGE_ROLES, navigationForRole } from '../core/constants.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -135,13 +136,36 @@ const appShellJs = fs.readFileSync(path.join(frontendDir, 'components/app-shell.
 const responsiveTableJs = fs.readFileSync(path.join(frontendDir, 'components/responsive-table.js'), 'utf-8');
 const pageHeaderJs = fs.readFileSync(path.join(frontendDir, 'components/page-header.js'), 'utf-8');
 assert(appShellJs.includes('data-workspace-menu') && appShellJs.includes('aria-expanded'), 'Shared shell exposes an accessible mobile navigation control');
-assert(appShellJs.includes("event.key === 'Escape'") && appShellJs.includes('aside.inert'), 'Mobile navigation supports Escape and hides closed links from keyboard and assistive technology');
+assert(appShellJs.includes("link.classList.add(...(compact ? ['px-3', 'py-2', 'text-xs'] : ['px-3.5', 'py-2.5']))"), 'Sidebar uses valid individual DOM class tokens');
+assert(appShellJs.includes("event.key !== 'Escape'") && appShellJs.includes('aside.inert'), 'Mobile navigation supports Escape and hides closed links from keyboard and assistive technology');
 assert(appShellJs.includes('data-sidebar-toggle') && appShellJs.includes('aegis_sidebar_collapsed'), 'Shared sidebar has a persistent desktop collapse control');
 assert(appShellJs.includes('sidebar-collapsed') && appShellJs.includes('Expand sidebar'), 'Desktop sidebar control updates collapsed state and accessible name');
+assert(appShellJs.includes('sidebarClose') && appShellJs.includes('Close workspace navigation'), 'Mobile drawer exposes a visible close control');
+assert(appShellJs.includes('navGroupToggle') && appShellJs.includes('aria-controls') && appShellJs.includes('aria-expanded'), 'Navigation groups use accessible expand and collapse controls');
+assert(appShellJs.includes('accountMenuToggle') && appShellJs.includes('sidebar-account-menu'), 'Account details open from the sidebar profile control');
+assert(appShellJs.includes('appLogout') && appShellJs.includes('Auth.logout()'), 'Sidebar sign-out remains a working action');
 const componentsStyles = fs.readFileSync(path.join(frontendDir, 'styles/components.css'), 'utf-8');
 assert(componentsStyles.includes('.sidebar-collapsed') && componentsStyles.includes('flex-basis: 4.5rem') && componentsStyles.includes('width: 4.5rem'), 'Collapsed sidebar uses a fixed icon-rail width and flex basis');
+assert(componentsStyles.includes('position: sticky') && componentsStyles.includes('height: 100dvh'), 'Desktop sidebar stays in the viewport and scrolls independently');
+assert(componentsStyles.includes('@media (max-width: 1023px)') && componentsStyles.includes('.app-sidebar.sidebar-open'), 'Tablet and mobile navigation use a responsive drawer');
 assert(responsiveTableJs.includes('data-label') && responsiveTableJs.includes('MutationObserver'), 'Responsive tables label both initial and dynamically added rows');
-assert(pageHeaderJs.includes('[data-page-heading]') && pageHeaderJs.includes('header.insertBefore'), 'Shared page heading mounts in the responsive application header');
+assert(pageHeaderJs.includes("main?.querySelector('[data-page-heading]')") && !pageHeaderJs.includes('header.insertBefore'), 'Page titles stay aligned with the content column');
+assert(fs.readFileSync(path.join(frontendDir, 'pages/integrity/workspace.js'), 'utf-8').includes('data-page-heading'), 'Integrity pages use the shared content heading pattern');
+
+const navPages = items => items.flatMap(item => item.type === 'group' ? item.routes.map(route => route.page) : [item.page]);
+const allNavPages = navPages(APP_NAVIGATION);
+const merchantNavigation = navigationForRole('MERCHANT');
+const complianceNavigation = navigationForRole('COMPLIANCE_OFFICER');
+const settlementNavigation = navigationForRole('SETTLEMENT_OPERATOR');
+const adminNavigation = navigationForRole('ADMIN');
+assert(new Set(allNavPages).size === allNavPages.length, 'Sidebar routes contain no duplicate page entries');
+assert(merchantNavigation.length === 1 && merchantNavigation[0].page === 'dashboard.html', 'Merchant navigation exposes only the merchant workspace');
+assert(navPages(complianceNavigation).includes('compliance.html') && navPages(complianceNavigation).includes('settlement.html') && complianceNavigation.some(item => item.id === 'payment-integrity'), 'Compliance navigation exposes permitted review, settlement, and integrity modules');
+assert(navPages(settlementNavigation).includes('settlement.html') && settlementNavigation.some(item => item.id === 'payment-integrity') && !navPages(settlementNavigation).includes('compliance.html'), 'Settlement navigation exposes its authorized modules only');
+assert(navPages(adminNavigation).includes('operations.html') && navPages(adminNavigation).includes('compliance.html') && adminNavigation.some(item => item.id === 'payment-integrity'), 'Admin navigation exposes operations and permitted staff modules');
+assert(INTEGRITY_ROUTES.length === 9 && !APP_ROUTES.some(route => route.page === 'integrity.html'), 'Payment Integrity overview appears once within its expandable module');
+assert(allNavPages.every(page => Object.hasOwn(PROTECTED_PAGE_ROLES, page)), 'Every sidebar page has a protected-route role definition');
+assert(APP_ROUTES.find(route => route.page === 'dashboard.html')?.activePages?.includes('transaction.html') && APP_ROUTES.find(route => route.page === 'compliance.html')?.activePages?.includes('transaction.html'), 'Transaction details highlight their role-appropriate parent workspace');
 const dashboardHtml = fs.readFileSync(path.join(frontendDir, 'dashboard.html'), 'utf-8');
 assert(!dashboardHtml.includes('md:hidden flex items-center gap-2'), 'Dashboard does not duplicate the shared mobile brand mark');
 

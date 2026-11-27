@@ -1,4 +1,4 @@
-import { APP_ROUTES, INTEGRITY_ROUTES } from '../core/constants.js';
+import { navigationForRole } from '../core/constants.js';
 import { Auth } from '../core/auth.js';
 import { enhanceResponsiveTables } from './responsive-table.js';
 import { mountPageHeader } from './page-header.js';
@@ -13,72 +13,111 @@ function element(tag, className, text) {
 function currentPageFile() {
   const integrityPage = document.body.dataset.integrityPage;
   if (!integrityPage) return location.pathname.split('/').pop();
-  return integrityPage === 'overview' ? 'integrity.html' : `integrity-${integrityPage}.html`;
+  return integrityPage === 'overview' ? 'integrity.html' : 'integrity-' + integrityPage + '.html';
 }
 
-export function createSidebar({ activePage = currentPageFile(), className = '', workspaceStatus = false } = {}) {
+function readPreference(key) {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function writePreference(key, value) {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    // Navigation remains usable when browser storage is unavailable.
+  }
+}
+
+function createRouteLink(route, activePage, compact = false) {
+  const active = route.page === activePage || route.activePages?.includes(activePage);
+  const link = element('a', 'flex items-center gap-3 rounded-full text-sm font-medium transition-colors');
+  link.href = route.page;
+  link.classList.add(...(compact ? ['px-3', 'py-2', 'text-xs'] : ['px-3.5', 'py-2.5']));
+  link.classList.add(active ? 'bg-ink' : 'text-ink-soft', active ? 'text-paper' : 'hover:text-ink');
+  if (!active) link.classList.add('hover:bg-ink/5');
+  if (active) link.setAttribute('aria-current', 'page');
+  link.classList.add('sidebar-link');
+  link.title = route.label;
+  link.setAttribute('aria-label', route.label);
+  if (route.page.startsWith('integrity')) link.dataset.integrityRoute = route.page;
+
+  const icon = element('i', route.icon + (compact ? ' w-3.5 h-3.5' : ' w-4 h-4'));
+  icon.setAttribute('aria-hidden', 'true');
+  link.append(icon, element('span', 'sidebar-link-label', route.label));
+  return link;
+}
+
+function createNavigationGroup(group, activePage) {
+  const wrapper = element('div', 'sidebar-nav-group');
+  const isActive = group.routes.some(route =>
+    route.page === activePage || route.activePages?.includes(activePage));
+  const panel = element('div', 'sidebar-nav-children ml-3 pl-3 border-l border-ink/10 space-y-1');
+  panel.id = 'sidebar-group-' + group.id;
+  panel.setAttribute('aria-label', group.label + ' pages');
+
+  const preferenceKey = 'aegis_nav_group_' + group.id;
+  const expanded = isActive || readPreference(preferenceKey) === 'true';
+  panel.hidden = !expanded;
+
+  const toggle = element('button', 'sidebar-link sidebar-group-toggle flex items-center gap-3 w-full px-3.5 py-2.5 rounded-full text-sm font-medium transition-colors');
+  toggle.type = 'button';
+  toggle.title = group.label;
+  toggle.setAttribute('aria-label', group.label);
+  toggle.setAttribute('aria-controls', panel.id);
+  toggle.setAttribute('aria-expanded', String(expanded));
+  toggle.dataset.navGroupToggle = group.id;
+  if (isActive) toggle.classList.add('bg-ink/5', 'text-ink');
+  else toggle.classList.add('text-ink-soft', 'hover:text-ink', 'hover:bg-ink/5');
+
+  const icon = element('i', group.icon + ' w-4 h-4');
+  icon.setAttribute('aria-hidden', 'true');
+  const chevron = element('i', 'fa-solid fa-chevron-down sidebar-group-chevron w-3 h-3 ml-auto');
+  chevron.setAttribute('aria-hidden', 'true');
+  toggle.append(icon, element('span', 'sidebar-link-label', group.label), chevron);
+
+  for (const route of group.routes) panel.append(createRouteLink(route, activePage, true));
+  toggle.addEventListener('click', () => {
+    const shouldExpand = panel.hidden;
+    panel.hidden = !shouldExpand;
+    toggle.setAttribute('aria-expanded', String(shouldExpand));
+    writePreference(preferenceKey, String(shouldExpand));
+  });
+
+  wrapper.append(toggle, panel);
+  return wrapper;
+}
+
+export function createSidebar({ activePage = currentPageFile(), workspaceStatus = false } = {}) {
   const user = Auth.getUser();
   const role = user?.role || '';
   const name = user?.name || user?.email || 'Account';
-  const aside = element('aside', `${className || 'w-64 bg-paper-dim border-r border-ink/10 flex flex-col justify-between hidden md:flex shrink-0'} app-sidebar`);
+  const aside = element('aside', 'app-sidebar bg-paper-dim border-r border-ink/10 flex flex-col justify-between shrink-0');
   aside.setAttribute('aria-label', 'Application sidebar');
 
   const top = element('div');
   const brandRow = element('div', 'sidebar-brand-row min-h-[4.5rem] px-6 flex items-center gap-3 border-b border-ink/10');
-  const logo = element('a', 'w-8 h-8 rounded-full bg-ink text-paper flex items-center justify-center font-serif text-sm font-bold', 'A');
+  const logo = element('a', 'sidebar-logo w-8 h-8 rounded-full bg-ink text-paper flex items-center justify-center font-serif text-sm font-bold', 'A');
   logo.href = 'index.html';
-  logo.classList.add('sidebar-logo');
   logo.setAttribute('aria-label', 'Aegis-X home');
   const brand = element('div', 'sidebar-brand-copy');
   const wordmark = element('span', 'font-serif text-base tracking-tight font-semibold text-ink block');
   wordmark.append(document.createTextNode('Aegis'));
   wordmark.append(element('span', 'text-rust italic', 'X'));
-  const descriptor = element('span', 'text-[9px] tracking-widest uppercase font-semibold text-ink-soft', role.replaceAll('_', ' '));
-  brand.append(wordmark, descriptor);
+  brand.append(wordmark, element('span', 'text-[9px] tracking-widest uppercase font-semibold text-ink-soft', role.replaceAll('_', ' ')));
   brandRow.append(logo, brand);
 
   const nav = element('nav', 'p-4 space-y-1 font-sans');
   nav.setAttribute('aria-label', 'Workspace navigation');
-  for (const route of APP_ROUTES) {
-    if (!route.roles.includes(role)) continue;
-    const link = element('a', 'flex items-center gap-3 px-3.5 py-2.5 rounded-full text-sm font-medium transition-all');
-    link.href = route.page;
-    link.classList.add(route.page === activePage
-      ? 'bg-ink'
-      : 'text-ink-soft', route.page === activePage ? 'text-paper' : 'hover:text-ink');
-    if (route.page !== activePage) link.classList.add('hover:bg-ink/5');
-    if (route.page === activePage) link.setAttribute('aria-current', 'page');
-    link.classList.add('sidebar-link');
-    link.title = route.label;
-    link.setAttribute('aria-label', route.label);
-    const icon = element('i', `${route.icon} w-4 h-4`);
-    icon.setAttribute('aria-hidden', 'true');
-    link.append(icon, element('span', 'sidebar-link-label', route.label));
-    nav.append(link);
+  for (const item of navigationForRole(role)) {
+    nav.append(item.type === 'group'
+      ? createNavigationGroup(item, activePage)
+      : createRouteLink(item, activePage));
   }
   top.append(brandRow, nav);
-  if (workspaceStatus) {
-    const subnav = element('nav', 'px-4 pb-4 space-y-1 font-sans');
-    subnav.setAttribute('aria-label', 'Payment Integrity pages');
-    for (const route of INTEGRITY_ROUTES) {
-      const link = element('a', 'flex items-center gap-3 px-3.5 py-2 rounded-full text-xs font-medium transition-all');
-      link.href = route.page;
-      link.dataset.integrityRoute = route.page;
-      const selectedWorkspace = sessionStorage.getItem('aegis_integrity_workspace');
-      if (selectedWorkspace) link.href += `?workspace=${encodeURIComponent(selectedWorkspace)}`;
-      link.classList.add(route.page === activePage ? 'bg-ink' : 'text-ink-soft', route.page === activePage ? 'text-paper' : 'hover:text-ink');
-      if (route.page !== activePage) link.classList.add('hover:bg-ink/5');
-      if (route.page === activePage) link.setAttribute('aria-current', 'page');
-      link.classList.add('sidebar-link');
-      link.title = route.label;
-      link.setAttribute('aria-label', route.label);
-      const icon = element('i', `${route.icon} w-3.5 h-3.5`);
-      icon.setAttribute('aria-hidden', 'true');
-      link.append(icon, element('span', 'sidebar-link-label', route.label));
-      subnav.append(link);
-    }
-    top.append(subnav);
-  }
 
   const footer = element('div', 'p-4 border-t border-ink/10');
   if (workspaceStatus) {
@@ -95,15 +134,26 @@ export function createSidebar({ activePage = currentPageFile(), className = '', 
     provider.id = 'integrity-provider';
     footer.append(workspaceLabel, workspace, provider);
   }
+
+  const profileWrap = element('div', 'sidebar-account-wrap');
   const profile = element('div', 'sidebar-profile p-3 rounded-sm bg-white border border-ink/10 flex items-center justify-between');
-  const identity = element('div', 'flex items-center gap-2.5 overflow-hidden');
-  const initials = [...name.trim()].find((character) => /[\p{L}\p{N}]/u.test(character))?.toLocaleUpperCase() || 'A';
-  identity.append(element('div', 'w-8 h-8 rounded-full bg-ink/10 text-ink font-bold flex items-center justify-center text-xs shrink-0 font-serif', initials));
-  const details = element('div', 'sidebar-profile-details truncate');
-  details.append(element('p', 'text-xs font-semibold text-ink truncate', name));
-  details.append(element('p', 'text-[10px] text-ink-soft uppercase font-mono-data', role.replaceAll('_', ' ')));
+  const identity = element('button', 'sidebar-account-toggle flex items-center gap-2.5 overflow-hidden min-w-0 text-left');
+  identity.type = 'button';
+  identity.dataset.accountMenuToggle = '';
+  identity.setAttribute('aria-label', 'Open account details');
+  identity.setAttribute('aria-controls', 'sidebar-account-menu');
+  identity.setAttribute('aria-expanded', 'false');
+  const initials = [...name.trim()].find(character => /[\p{L}\p{N}]/u.test(character))?.toLocaleUpperCase() || 'A';
+  identity.append(element('span', 'sidebar-avatar w-8 h-8 rounded-full bg-ink/10 text-ink font-bold flex items-center justify-center text-xs shrink-0 font-serif', initials));
+  const details = element('span', 'sidebar-profile-details truncate');
+  details.append(element('span', 'text-xs font-semibold text-ink truncate block', name));
+  details.append(element('span', 'text-[10px] text-ink-soft uppercase font-mono-data block', role.replaceAll('_', ' ')));
   identity.append(details);
-  const logout = element('button', 'text-ink-soft hover:text-rust p-1 transition-colors');
+  const accountChevron = element('i', 'fa-solid fa-chevron-down w-3 h-3 text-ink-soft sidebar-account-chevron');
+  accountChevron.setAttribute('aria-hidden', 'true');
+  identity.append(accountChevron);
+
+  const logout = element('button', 'sidebar-logout text-ink-soft hover:text-rust p-2 transition-colors rounded-full');
   logout.type = 'button';
   logout.title = 'Sign out';
   logout.setAttribute('aria-label', 'Sign out');
@@ -113,25 +163,55 @@ export function createSidebar({ activePage = currentPageFile(), className = '', 
   logout.append(logoutIcon);
   logout.addEventListener('click', () => Auth.logout());
   profile.append(identity, logout);
-  footer.append(profile);
+
+  const accountMenu = element('div', 'sidebar-account-menu hidden mt-2 p-3 bg-white border border-ink/10 rounded-sm');
+  accountMenu.id = 'sidebar-account-menu';
+  accountMenu.setAttribute('role', 'region');
+  accountMenu.setAttribute('aria-label', 'Account details');
+  accountMenu.hidden = true;
+  accountMenu.append(
+    element('p', 'text-[10px] uppercase tracking-wider text-ink-soft', 'Signed in as'),
+    element('p', 'text-xs font-semibold text-ink mt-1 break-words', name),
+    element('p', 'text-xs text-ink-soft mt-1 break-all', user?.email || 'Email unavailable'),
+    element('p', 'text-[10px] uppercase tracking-wider text-ink-soft mt-2', role.replaceAll('_', ' '))
+  );
+  identity.addEventListener('click', () => {
+    const shouldOpen = accountMenu.hidden;
+    accountMenu.hidden = !shouldOpen;
+    identity.setAttribute('aria-expanded', String(shouldOpen));
+    if (shouldOpen) aside.dispatchEvent(new Event('aegis-sidebar-expand'));
+  });
+
+  profileWrap.append(profile, accountMenu);
+  footer.append(profileWrap);
   aside.append(top, footer);
   return aside;
 }
 
 export function wireMobileNavigation(aside, header, host) {
   if (!aside || !header || !host || header.querySelector('[data-workspace-menu]') || aside.querySelector('[data-sidebar-toggle]')) return;
-  header.classList.add('flex-wrap');
-  for (const child of header.children) child.classList.add('min-w-0', 'flex-wrap');
-  const collapse = element('button', 'sidebar-collapse hidden md:flex items-center justify-center text-ink-soft hover:text-ink rounded-full transition-colors');
+
+  header.classList.add('app-topbar');
+  for (const child of header.children) child.classList.add('min-w-0');
+
+  const collapse = element('button', 'sidebar-collapse items-center justify-center text-ink-soft hover:text-ink rounded-full transition-colors');
   collapse.type = 'button';
   collapse.dataset.sidebarToggle = '';
   collapse.setAttribute('aria-controls', 'workspace-nav');
   const collapseIcon = element('i', 'fa-solid fa-angles-left w-4 h-4');
   collapseIcon.setAttribute('aria-hidden', 'true');
   collapse.append(collapseIcon, element('span', 'sr-only', 'Collapse sidebar'));
-  aside.querySelector('.sidebar-brand-row')?.append(collapse);
 
-  const menu = element('button', 'md:hidden shrink-0 aegis-btn-outline py-2 px-3 text-xs');
+  const close = element('button', 'sidebar-close items-center justify-center text-ink-soft hover:text-ink rounded-full transition-colors');
+  close.type = 'button';
+  close.dataset.sidebarClose = '';
+  close.setAttribute('aria-label', 'Close workspace navigation');
+  const closeIcon = element('i', 'fa-solid fa-xmark w-4 h-4');
+  closeIcon.setAttribute('aria-hidden', 'true');
+  close.append(closeIcon);
+  aside.querySelector('.sidebar-brand-row')?.append(close, collapse);
+
+  const menu = element('button', 'sidebar-menu-toggle shrink-0 aegis-btn-outline py-2 px-3 text-xs');
   menu.type = 'button';
   menu.dataset.workspaceMenu = '';
   menu.setAttribute('aria-label', 'Open workspace navigation');
@@ -142,14 +222,18 @@ export function wireMobileNavigation(aside, header, host) {
   menu.append(menuIcon, element('span', 'sr-only', 'Menu'));
   header.prepend(menu);
 
-  const backdrop = element('button', 'hidden fixed inset-0 z-40 bg-ink/40 md:hidden');
+  const backdrop = element('button', 'sidebar-backdrop hidden fixed inset-0 z-40 bg-ink/40');
   backdrop.type = 'button';
   backdrop.setAttribute('aria-label', 'Close workspace navigation');
   host.insertBefore(backdrop, header.closest('[data-app-main]') || host.lastElementChild);
 
+  const accountToggle = aside.querySelector('[data-account-menu-toggle]');
+  const accountMenu = aside.querySelector('#sidebar-account-menu');
+  const isMobile = () => window.matchMedia('(max-width: 1023px)').matches;
   let returnFocus = menu;
-  const isMobile = () => window.matchMedia('(max-width: 767px)').matches;
+
   const setCollapsed = (collapsed, persist = true) => {
+    if (isMobile()) return;
     aside.classList.toggle('sidebar-collapsed', collapsed);
     collapse.setAttribute('aria-expanded', String(!collapsed));
     collapse.setAttribute('aria-label', collapsed ? 'Expand sidebar' : 'Collapse sidebar');
@@ -157,39 +241,59 @@ export function wireMobileNavigation(aside, header, host) {
     collapseIcon.classList.toggle('fa-angles-left', !collapsed);
     collapseIcon.classList.toggle('fa-angles-right', collapsed);
     collapse.querySelector('.sr-only').textContent = collapsed ? 'Expand sidebar' : 'Collapse sidebar';
-    if (persist) localStorage.setItem('aegis_sidebar_collapsed', String(collapsed));
+    if (persist) writePreference('aegis_sidebar_collapsed', String(collapsed));
   };
+
   collapse.addEventListener('click', () => setCollapsed(!aside.classList.contains('sidebar-collapsed')));
-  const storedCollapsed = localStorage.getItem('aegis_sidebar_collapsed') === 'true';
-  setCollapsed(storedCollapsed, false);
+  aside.addEventListener('aegis-sidebar-expand', () => setCollapsed(false));
+  setCollapsed(readPreference('aegis_sidebar_collapsed') === 'true', false);
+
+  const closeAccountMenu = () => {
+    if (!accountMenu || accountMenu.hidden) return;
+    accountMenu.hidden = true;
+    accountToggle?.setAttribute('aria-expanded', 'false');
+  };
+
   const closeMenu = () => {
     if (!isMobile()) return;
-    aside.classList.add('hidden');
-    aside.classList.remove('fixed', 'inset-y-0', 'left-0', 'z-50');
+    aside.classList.remove('sidebar-open');
+    aside.setAttribute('aria-hidden', 'true');
     backdrop.classList.add('hidden');
     document.body.classList.remove('overflow-hidden');
     menu.setAttribute('aria-expanded', 'false');
-    aside.inert = isMobile();
-    if (isMobile()) returnFocus.focus();
+    aside.inert = true;
+    closeAccountMenu();
+    returnFocus.focus();
   };
+
   const openMenu = () => {
+    if (!isMobile()) return;
     returnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : menu;
-    aside.classList.remove('hidden');
-    aside.classList.add('fixed', 'inset-y-0', 'left-0', 'z-50');
+    aside.classList.add('sidebar-open');
+    aside.setAttribute('aria-hidden', 'false');
     backdrop.classList.remove('hidden');
     document.body.classList.add('overflow-hidden');
     menu.setAttribute('aria-expanded', 'true');
     aside.inert = false;
-    aside.querySelector('a')?.focus();
+    close.focus();
   };
+
   aside.id = 'workspace-nav';
   aside.inert = isMobile();
+  aside.setAttribute('aria-hidden', String(isMobile()));
   menu.addEventListener('click', openMenu);
+  close.addEventListener('click', closeMenu);
   backdrop.addEventListener('click', closeMenu);
-  aside.querySelectorAll('a').forEach((link) => link.addEventListener('click', closeMenu));
-  aside.addEventListener('keydown', (event) => {
+  aside.querySelectorAll('a').forEach(link => link.addEventListener('click', closeMenu));
+  document.addEventListener('pointerdown', event => {
+    const accountWrap = aside.querySelector('.sidebar-account-wrap');
+    if (accountMenu && !accountMenu.hidden && accountWrap && !accountWrap.contains(event.target)) closeAccountMenu();
+  });
+
+  aside.addEventListener('keydown', event => {
     if (event.key !== 'Tab') return;
-    const focusable = [...aside.querySelectorAll('a[href], button:not([disabled])')];
+  const focusable = [...aside.querySelectorAll('a[href], button:not([disabled])')]
+      .filter(item => !item.closest('[hidden]') && item.getClientRects().length > 0);
     if (!focusable.length) return;
     if (event.shiftKey && document.activeElement === focusable[0]) {
       event.preventDefault();
@@ -199,20 +303,21 @@ export function wireMobileNavigation(aside, header, host) {
       focusable[0].focus();
     }
   });
-  document.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape' && menu.getAttribute('aria-expanded') === 'true') closeMenu();
+
+  document.addEventListener('keydown', event => {
+    if (event.key !== 'Escape') return;
+    if (menu.getAttribute('aria-expanded') === 'true') closeMenu();
+    else closeAccountMenu();
   });
-  window.matchMedia('(min-width: 768px)').addEventListener('change', (event) => {
-    if (event.matches) {
-      aside.classList.remove('fixed', 'inset-y-0', 'left-0', 'z-50');
-      backdrop.classList.add('hidden');
-      document.body.classList.remove('overflow-hidden');
-      menu.setAttribute('aria-expanded', 'false');
-      aside.inert = false;
-    } else {
-      aside.classList.add('hidden');
-      aside.inert = true;
-    }
+
+  window.matchMedia('(min-width: 1024px)').addEventListener('change', event => {
+    aside.classList.remove('sidebar-open');
+    backdrop.classList.add('hidden');
+    document.body.classList.remove('overflow-hidden');
+    menu.setAttribute('aria-expanded', 'false');
+    aside.inert = !event.matches;
+    aside.setAttribute('aria-hidden', String(!event.matches));
+    if (event.matches) setCollapsed(readPreference('aegis_sidebar_collapsed') === 'true', false);
   });
 }
 

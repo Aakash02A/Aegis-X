@@ -6,11 +6,10 @@ export const ROLE_HOME = Object.freeze({
 });
 
 export const APP_ROUTES = Object.freeze([
-  { page: 'dashboard.html', label: 'Merchant Console', icon: 'fa-solid fa-table-columns', roles: ['MERCHANT'] },
-  { page: 'compliance.html', label: 'Compliance Queue', icon: 'fa-solid fa-shield', roles: ['COMPLIANCE_OFFICER', 'ADMIN'] },
+  { page: 'dashboard.html', label: 'Merchant Console', icon: 'fa-solid fa-table-columns', roles: ['MERCHANT'], activePages: ['transaction.html'] },
+  { page: 'compliance.html', label: 'Compliance Queue', icon: 'fa-solid fa-shield', roles: ['COMPLIANCE_OFFICER', 'ADMIN'], activePages: ['transaction.html'] },
   { page: 'settlement.html', label: 'Settlement Desk', icon: 'fa-solid fa-landmark', roles: ['COMPLIANCE_OFFICER', 'SETTLEMENT_OPERATOR', 'ADMIN'] },
-  { page: 'operations.html', label: 'Operations & Health', icon: 'fa-solid fa-chart-line', roles: ['ADMIN'] },
-  { page: 'integrity.html', label: 'Payment Integrity', icon: 'fa-solid fa-shield-halved', roles: ['ADMIN', 'COMPLIANCE_OFFICER', 'SETTLEMENT_OPERATOR'] }
+  { page: 'operations.html', label: 'Operations & Health', icon: 'fa-solid fa-chart-line', roles: ['ADMIN'] }
 ]);
 
 export const INTEGRITY_ROUTES = Object.freeze([
@@ -24,6 +23,26 @@ export const INTEGRITY_ROUTES = Object.freeze([
   ['integrity-audit.html', 'Audit Trail', 'fa-solid fa-scroll'],
   ['integrity-settings.html', 'Settings', 'fa-solid fa-gear']
 ].map(([page, label, icon]) => Object.freeze({ page, label, icon, roles: ['ADMIN', 'COMPLIANCE_OFFICER', 'SETTLEMENT_OPERATOR'] })));
+
+export const APP_NAVIGATION = Object.freeze([
+  ...APP_ROUTES.map(route => Object.freeze({ type: 'link', ...route })),
+  Object.freeze({
+    type: 'group',
+    id: 'payment-integrity',
+    label: 'Payment Integrity',
+    icon: 'fa-solid fa-shield-halved',
+    roles: ['ADMIN', 'COMPLIANCE_OFFICER', 'SETTLEMENT_OPERATOR'],
+    routes: INTEGRITY_ROUTES
+  })
+]);
+
+export function navigationForRole(role) {
+  return APP_NAVIGATION
+    .filter(item => item.roles.includes(role))
+    .map(item => item.type === 'group'
+      ? Object.freeze({ ...item, routes: Object.freeze(item.routes.filter(route => route.roles.includes(role))) })
+      : item);
+}
 
 export const PROTECTED_PAGE_ROLES = Object.freeze({
   ...Object.fromEntries(APP_ROUTES.map((route) => [route.page, route.roles])),

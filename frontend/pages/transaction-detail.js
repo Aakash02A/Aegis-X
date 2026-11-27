@@ -19,7 +19,8 @@ export const TransactionPage = {
   async init() {
     // Guard page
     if (!await requireUser(['MERCHANT', 'COMPLIANCE_OFFICER', 'ADMIN'])) return;
-    AppShell.mount({ activePage: 'transaction.html' });
+    const parentPage = Auth.getUser()?.role === 'MERCHANT' ? 'dashboard.html' : 'compliance.html';
+    AppShell.mount({ activePage: parentPage });
 
     const urlParams = new URLSearchParams(window.location.search);
     this.transactionId = urlParams.get('id');
