@@ -12,7 +12,7 @@ Aegis-X implements fintech compliance workflows with advisory AI and determinist
 | **📡 API Backend** | [aegis-x-api.railway.app](https://aegis-x-api.railway.app) | Listed deployment endpoint; availability is not verified |
 | **📊 API Docs** | [/swagger-ui.html](https://aegis-x-api.railway.app/swagger-ui.html) | Listed API documentation endpoint; availability is not verified |
 | **💻 Source Code** | [GitHub Repository](https://github.com/Aakash02A/Aegis-X) | Complete codebase with documentation |
-| **🎥 Demo Script** | [Guided walkthrough](./DEMO_SCRIPT.md) | Local walkthrough notes |
+| **📚 Documentation** | [docs/README.md](docs/README.md) | Architecture, API, database, and SRS/TAS docs |
 
 ## ⚡ Key Features & Demo Highlights
 
@@ -148,10 +148,8 @@ compose, launches Vite and opens the browser.
 
 To stop: `docker compose down` (add `-v` to discard the database volume).
 
-### ☁️ **Option 2: Cloud Deployment**
-- **Backend**: Deploy to [Railway](./RAILWAY_DEPLOY.md) (managed MySQL included)
-- **Frontend**: Deploy to [Netlify](./NETLIFY_DEPLOY.md) (global CDN distribution)
-- **Database**: Railway MySQL (automatic provisioning)
+### ☁️ **Option 2: Cloud / Production Deployment**
+- See [docs/DEPLOYMENT_AND_CONFIGURATION.md](docs/DEPLOYMENT_AND_CONFIGURATION.md) and [deployment/](deployment/) (`compose.prod.yaml`, `Dockerfile`, `nginx/aegis-x.conf`, `cloud/railway.json`).
 
 ### 🛠️ **Option 3: Local Development (no Docker)**
 
@@ -259,7 +257,7 @@ The application implements JWT authentication, role checks, webhook signature va
 ## 🔧 Development & Testing
 
 ### **Automated Validation Framework**
-Verification commands and evidence are recorded in `docs/HANDOFF.md`.
+Run the backend, frontend, and MySQL-backed E2E suites directly:
 
 ```bash
 # Backend unit and integration suite
@@ -267,7 +265,12 @@ cd backend
 ./mvnw test
 cd ..
 
-# MySQL-backed HTTP end-to-end flow (uses local aegisx_audit)
+# Frontend checks and production build
+cd frontend
+npm test && npm run build
+cd ..
+
+# MySQL-backed HTTP end-to-end flow (uses disposable local aegisx_e2e)
 bash tests/e2e/run-e2e.sh
 ```
 
@@ -502,22 +505,22 @@ cannot produce.
 └── 📂 assets/               # Images, documents, sample files
 ```
 
-### **Documentation & Demo Materials**
+### **Documentation**
 ```text
-├── 📋 README.md                        # This comprehensive guide
-├── 🏗️ ARCHITECTURE_DIAGRAM.md         # Detailed system architecture  
-├── 🎯 DEMO_SCRIPT.md                   # Local walkthrough script
-├── ✅ DEMO_PREPARATION_CHECKLIST.md    # Pre-demo validation checklist
-├── 🎨 AEGIS_X_PITCH_DECK.md           # Hackathon presentation slides
-├── 📝 PRESENTATION_NOTES.md           # Speaking notes & Q&A prep
-├── 🔍 DEMO_VALIDATION_CHECKLIST.md    # Complete workflow validation
-├── 🔗 INTEGRATION_VERIFICATION.md     # External API integration status
-├── ⚡ PERFORMANCE_VALIDATION.md       # Response time & load testing
-├── 🛡️ SECURITY_VERIFICATION_CHECKLIST.md # Security controls assessment
-├── 📊 INTEGRATION_SUMMARY.md          # Integration test results
-├── 🚂 RAILWAY_DEPLOY.md               # Backend deployment guide
-├── 🌐 NETLIFY_DEPLOY.md               # Frontend deployment guide  
-└── 🔧 .env.example                    # Environment configuration template
+├── 📋 README.md                                  # Project overview & quickstart
+├── 🔧 .env.example                               # Environment configuration template
+└── 📂 docs/
+    ├── README.md                                 # Documentation hub
+    ├── SRS_Aegis_X.md                            # Software Requirements Specification
+    ├── TAS_Aegis_X.md                            # Technical Architecture Specification
+    ├── SYSTEM_ARCHITECTURE.md                    # Modular monolith & integrity engine
+    ├── API_REFERENCE.md                          # REST API reference
+    ├── DATABASE_AND_MIGRATIONS.md                # MySQL 8.4 schema & Flyway migrations
+    ├── DEPLOYMENT_AND_CONFIGURATION.md           # Deployment & environment guide
+    ├── STAGING_DEPLOYMENT_CHECKLIST.md           # Staging & pre-deployment checklist
+    ├── MODULE_INVENTORY.md                       # Frontend/backend module inventory
+    ├── razorpay-production-setup.md              # Razorpay Checkout & RazorpayX setup
+    └── design-baseline.json                      # CSS token & typography baseline
 ```
 
 ---
@@ -747,15 +750,8 @@ application degrades rather than failing when one is absent — see
 
 ### **Deployment Options**
 
-#### **🚂 Option 1: Railway + Netlify (Recommended)**
-- **Backend**: [Railway Deploy Guide](./RAILWAY_DEPLOY.md) 
-  - Managed MySQL database included
-  - Automatic scaling and health checks
-  - Built-in monitoring and logging
-- **Frontend**: [Netlify Deploy Guide](./NETLIFY_DEPLOY.md)
-  - Global CDN distribution
-  - Automatic HTTPS certificates
-  - Branch-based deployments
+#### **🚂 Option 1: Cloud / Managed Hosting**
+- See [docs/DEPLOYMENT_AND_CONFIGURATION.md](docs/DEPLOYMENT_AND_CONFIGURATION.md), [docs/STAGING_DEPLOYMENT_CHECKLIST.md](docs/STAGING_DEPLOYMENT_CHECKLIST.md), and [`deployment/cloud/railway.json`](deployment/cloud/railway.json).
 
 #### **🐳 Option 2: Docker Self-Hosted**
 ```bash
@@ -882,36 +878,24 @@ start frontend/index.html
 
 ---
 
-## Verification History
+## Verification & Project Summary
 
-No independent performance benchmark, external integration verification, or security grade is claimed here. Phase-specific evidence, commands, and limitations are recorded in [docs/HANDOFF.md](docs/HANDOFF.md).
-
----
-## Project Summary
-
-Aegis-X combines evidence handling, advisory AI, deterministic policy evaluation, and audit records. AI output does not make payment decisions.
-
-Current verification results and unsupported modules are listed in [docs/HANDOFF.md](docs/HANDOFF.md). The repository does not claim production readiness.
+Aegis-X combines evidence handling, advisory AI, deterministic policy evaluation, and audit records. AI output does not make payment decisions. No independent performance benchmark, external live integration verification, or security grade is claimed here; see [docs/DEPLOYMENT_AND_CONFIGURATION.md](docs/DEPLOYMENT_AND_CONFIGURATION.md) and [docs/STAGING_DEPLOYMENT_CHECKLIST.md](docs/STAGING_DEPLOYMENT_CHECKLIST.md) for deployment gates.
 
 ---
 ## 📞 Contact & Links
 
 ### **🔗 Resources**
-- **🌐 Live Demo**: [aegis-x-demo.netlify.app](https://aegis-x-demo.netlify.app)
-- **📡 API Backend**: [aegis-x-api.railway.app](https://aegis-x-api.railway.app)  
 - **💻 Source Code**: [GitHub Repository](https://github.com/Aakash02A/Aegis-X)
-- **📚 API Documentation**: [Swagger UI](https://aegis-x-api.railway.app/swagger-ui.html)
+- **📚 Documentation Hub**: [docs/README.md](docs/README.md)
 
 ### **📋 Documentation**
-- **🎯 [Demo Script](./DEMO_SCRIPT.md)**: Local guided walkthrough
-- **🏗️ [Architecture Guide](./ARCHITECTURE_DIAGRAM.md)**: Detailed system design
-- **🎨 [Pitch Deck](./AEGIS_X_PITCH_DECK.md)**: Hackathon presentation
-- **🔧 [Railway Deploy](./RAILWAY_DEPLOY.md)**: Backend deployment guide
-- **🌐 [Netlify Deploy](./NETLIFY_DEPLOY.md)**: Frontend deployment guide
-
-### **Demo Availability**
-
-The external demo link is listed above; its availability and behavior have not been verified.
+- **🏗️ [System Architecture](docs/SYSTEM_ARCHITECTURE.md)**: Modular monolith, state machine, and integrity engine
+- **📡 [API Reference](docs/API_REFERENCE.md)**: REST endpoints, auth, payloads, and error schemas
+- **🗄️ [Database & Migrations](docs/DATABASE_AND_MIGRATIONS.md)**: MySQL 8.4 schema and Flyway migrations
+- **🚀 [Deployment & Configuration](docs/DEPLOYMENT_AND_CONFIGURATION.md)**: Environment, Docker Compose, and integrations
+- **💳 [Razorpay Setup](docs/razorpay-production-setup.md)**: Razorpay Checkout & RazorpayX payout configuration
+- **📘 [SRS](docs/SRS_Aegis_X.md)** & **[TAS](docs/TAS_Aegis_X.md)**: Requirements and technical architecture specifications
 
 ### **⚙️ Local Setup (One Command)**
 ```bash

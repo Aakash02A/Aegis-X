@@ -13,12 +13,15 @@ Aegis-X enforces deterministic compliance rules, real-time Razorpay payment veri
 
 | Document | Description | Target Audience |
 | :--- | :--- | :--- |
-| **[System Architecture](file:///a:/GITHUB/Aegis-X/docs/SYSTEM_ARCHITECTURE.md)** | Modular monolith layout, transaction state machine, payment integrity bounded context, OCR pipeline, and frontend SPA design. | Architects, Tech Leads, Developers |
-| **[API Reference](file:///a:/GITHUB/Aegis-X/docs/API_REFERENCE.md)** | Complete REST API endpoint reference, authentication protocols, request/response payloads, and error schemas. | Frontend Developers, API Consumers, Integrators |
-| **[Database & Migrations](file:///a:/GITHUB/Aegis-X/docs/DATABASE_AND_MIGRATIONS.md)** | MySQL 8.4 schema specification, Flyway migration sequence (V1 to V30), ER relationships, UTC timestamp handling, and constraints. | Database Administrators, Backend Engineers |
-| **[Deployment & Configuration](file:///a:/GITHUB/Aegis-X/docs/DEPLOYMENT_AND_CONFIGURATION.md)** | Environment variables, Docker Compose orchestration, production secrets, external integrations (Razorpay, Meta WhatsApp, OpenAI), and operational health. | DevOps, SRE, Systems Administrators |
-| **[Software Requirements Specification (SRS)](file:///a:/GITHUB/Aegis-X/docs/SRS_Aegis_X.md)** | Baseline functional and non-functional requirements, business rules, regulatory standards, and transaction lifecycle definitions. | Product Managers, QA, Compliance Officers |
-| **[Technical Architecture Specification (TAS)](file:///a:/GITHUB/Aegis-X/docs/TAS_Aegis_X.md)** | Architectural principles, component diagrams, sequence flows, and design decisions. | Systems Architects, Core Developers |
+| **[System Architecture](SYSTEM_ARCHITECTURE.md)** | Modular monolith layout, transaction state machine, payment integrity bounded context, OCR pipeline, and frontend SPA design. | Architects, Tech Leads, Developers |
+| **[API Reference](API_REFERENCE.md)** | Complete REST API endpoint reference, authentication protocols, request/response payloads, and error schemas. | Frontend Developers, API Consumers, Integrators |
+| **[Database & Migrations](DATABASE_AND_MIGRATIONS.md)** | MySQL 8.4 schema specification, Flyway migration sequence, ER relationships, UTC timestamp handling, and constraints. | Database Administrators, Backend Engineers |
+| **[Deployment & Configuration](DEPLOYMENT_AND_CONFIGURATION.md)** | Environment variables, Docker Compose orchestration, production secrets, external integrations (Razorpay, Meta WhatsApp, OpenAI), and operational health. | DevOps, SRE, Systems Administrators |
+| **[Razorpay Production Setup](razorpay-production-setup.md)** | Razorpay Test/Live Checkout and RazorpayX India payout setup and webhook configuration. | Integrators, DevOps |
+| **[Staging Deployment Checklist](STAGING_DEPLOYMENT_CHECKLIST.md)** | Pre-deployment checks, security gates, and staging verification steps. | DevOps, Release Managers |
+| **[Module Inventory](MODULE_INVENTORY.md)** | Frontend pages, backend capabilities, and role navigation matrix. | Product, QA, Frontend Engineers |
+| **[Software Requirements Specification (SRS)](SRS_Aegis_X.md)** | Baseline functional and non-functional requirements, business rules, regulatory standards, and transaction lifecycle definitions. | Product Managers, QA, Compliance Officers |
+| **[Technical Architecture Specification (TAS)](TAS_Aegis_X.md)** | Architectural principles, component diagrams, sequence flows, and design decisions. | Systems Architects, Core Developers |
 
 ---
 
@@ -26,7 +29,7 @@ Aegis-X enforces deterministic compliance rules, real-time Razorpay payment veri
 
 * **Backend Framework:** Spring Boot 3.3.4 &bull; Java 21 LTS
 * **Database Engine:** MySQL 8.4 LTS (`utf8mb4_0900_ai_ci`, session UTC, `READ-COMMITTED`)
-* **Database Migrations:** Flyway 11.x (`V1__mysql_baseline.sql`, `V28`, `V29`, `V30`)
+* **Database Migrations:** Flyway (`V1` baseline through `V34`)
 * **Security & Auth:** Spring Security 6 with stateless JWT (HMAC-SHA256) & BCrypt password hashing
 * **Document Processing:** Apache Tika 2.9 (text extraction), Apache PDFBox 3.0 (rasterisation), Tesseract OCR fallback
 * **AI Integration:** Spring AI with OpenAI GPT-4o-mini (non-blocking, advisory with startup safety fallbacks)
