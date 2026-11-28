@@ -36,7 +36,7 @@ public class RazorpayOrderController {
     public ResponseEntity<ApiResponse<Map<String, Object>>> getConfiguration() {
         Map<String, Object> configuration = Map.of(
                 "checkoutEnabled", razorpayOrderService.isCheckoutConfigured(),
-                "localTestEnabled", environment.acceptsProfiles(Profiles.of("dev")));
+                "localTestEnabled", environment.acceptsProfiles(Profiles.of("dev", "xampp")));
         return ResponseEntity.ok(ApiResponse.success(configuration, "Payment configuration retrieved"));
     }
 

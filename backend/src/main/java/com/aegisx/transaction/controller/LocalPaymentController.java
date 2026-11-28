@@ -19,7 +19,7 @@ import java.util.UUID;
 @RestController
 @RequestMapping("/api/transactions")
 @RequiredArgsConstructor
-@Profile("dev")
+@Profile({"dev", "xampp"})
 public class LocalPaymentController {
 
     private final TransactionService transactionService;
